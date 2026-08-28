@@ -1,0 +1,36 @@
+{
+  "name": "tizen-youtube",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone ad-free YouTube for Samsung Tizen TVs.",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SushyDev/tizen-youtube.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "mods",
+    "service",
+    "ui"
+  ],
+  "scripts": {
+    "doctor": "node tools/doctor.js",
+    "lint": "eslint .",
+    "build": "node tools/build.js",
+    "test": "node tools/test.js",
+    "package": "node tools/package.js",
+    "release": "node tools/release.js",
+    "dev": "npm run dev --workspace ui",
+    "dev:service": "node service/index.js",
+    "clean": "node tools/clean.js",
+    "version": "node tools/version.js",
+    "version:check": "node tools/version.js --check"
+  },
+  "devDependencies": {
+    "eslint": "^10.9.1",
+    "tizen": "https://github.com/reisxd/tizen.js/tarball/main"
+  }
+}

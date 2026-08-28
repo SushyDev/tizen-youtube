@@ -1,0 +1,6 @@
+{
+  "version": "0.1.0",
+
+  "comment": "Origin serving the userScript bundles, latest.json and the language-name fallback. Versioned paths under it are immutable and safe to cache forever; see README.md.",
+  "origin": "https://cdn.example.com/tube"
+}

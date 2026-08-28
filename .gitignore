@@ -1,0 +1,15 @@
+node_modules/
+dist/
+release/
+.ncc/
+.package/
+*.wgt
+*.p12
+*.log
+
+# npm workspaces: only the root lockfile is authoritative.
+*/package-lock.json
+!/package-lock.json
+
+# macOS finder metadata
+.DS_Store

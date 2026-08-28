@@ -1,0 +1,47 @@
+# Everything that can be checked without a television.
+#
+# The build is here for one reason above the others: `ui/build.js` reads its own
+# output back and refuses CSS a Tizen webview would silently drop, and
+# `service/build/check-node4.js` refuses syntax Tizen 3's Node cannot parse.
+# Both checks are worth nothing if they only run on the machine of whoever
+# remembers.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Doctor
+        run: npm run doctor
+
+      - name: Versions agree
+        run: npm run version:check
+
+      # The placeholder origin in tizen.config.json is fine here: both bundles
+      # ship inside the .wgt, so a development build needs no origin at all.
+      # Only `release` and `package --release` refuse it.
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+
+      - name: Test
+        run: npm test

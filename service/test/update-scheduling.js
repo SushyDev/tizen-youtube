@@ -1,0 +1,107 @@
+'use strict';
+
+// The service outlives the app, so update checks are driven by /__tube/state,
+// which the shell hits once per launch. This verifies two things that matter
+// operationally: a launch does trigger a check, and repeated launches inside
+// the debounce window do not hammer the origin.
+
+const http = require('http');
+const { mkdtempSync } = require('fs');
+const { tmpdir } = require('os');
+const { join } = require('path');
+const { spawn } = require('child_process');
+
+const results = [];
+function check(name, ok, detail) {
+    results.push(ok);
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
+}
+
+let manifestRequests = 0;
+
+const origin = http.createServer((req, res) => {
+    if (req.url === '/latest.json') {
+        manifestRequests++;
+        res.setHeader('content-type', 'application/json');
+        // No bundles listed: the check runs, finds nothing applicable, gives up
+        // cleanly. That is enough to observe that it ran.
+        return res.end(JSON.stringify({ version: '0.0.0', bundles: {} }));
+    }
+    res.statusCode = 404;
+    res.end('no');
+});
+
+function get(path) {
+    return new Promise((resolve, reject) => {
+        const req = http.get({ host: '127.0.0.1', port: 8099, path, timeout: 8000 }, (res) => {
+            let body = '';
+            res.on('data', (c) => { body += c; });
+            res.on('end', () => resolve(body));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timed out')); });
+    });
+}
+
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+origin.listen(0, '127.0.0.1', () => {
+    const originUrl = `http://127.0.0.1:${origin.address().port}`;
+
+    const service = spawn(process.execPath, [join(__dirname, '..', 'index.js')], {
+        env: Object.assign({}, process.env, {
+            TUBE_ORIGIN: originUrl,
+            TUBE_CACHE_DIR: mkdtempSync(join(tmpdir(), 'tube-sched-'))
+        }),
+        stdio: 'ignore'
+    });
+
+    function finish(code) {
+        service.kill();
+        origin.close();
+        process.exit(code);
+    }
+
+    wait(1200)
+        .then(() => get('/__tube/state'))
+        .then((body) => {
+            const state = JSON.parse(body);
+            check('state reports which script this TV would run',
+                !!state.script && typeof state.script.version === 'string',
+                JSON.stringify(state.script));
+            check('state reports the bundle variant',
+                state.script.variant === 'legacy' || state.script.variant === 'modern',
+                JSON.stringify(state.script));
+
+            // Give the fire-and-forget check time to reach the origin.
+            return wait(600);
+        })
+        .then(() => {
+            check('a launch triggers an update check', manifestRequests >= 1, `${manifestRequests} requests`);
+            const after = manifestRequests;
+
+            // Five more launches inside the debounce window.
+            return get('/__tube/state')
+                .then(() => get('/__tube/state'))
+                .then(() => get('/__tube/state'))
+                .then(() => get('/__tube/state'))
+                .then(() => get('/__tube/state'))
+                .then(() => wait(600))
+                .then(() => {
+                    check('repeated launches do not re-hit the origin',
+                        manifestRequests === after,
+                        `${manifestRequests - after} extra requests`);
+                });
+        })
+        .then(() => {
+            const failed = results.filter((r) => !r).length;
+            console.log(`\n${results.length - failed}/${results.length} checks passed.`);
+            finish(failed ? 1 : 0);
+        })
+        .catch((err) => {
+            console.error('Harness error:', err.message);
+            finish(1);
+        });
+});

@@ -1,0 +1,148 @@
+# Builds and signs the widget, and attaches it to the release that triggered it.
+#
+# `published` fires once for a release and once for a prerelease, which is why
+# it is the only trigger listed: adding `prereleased` as well would run this
+# twice for every prerelease.
+#
+# Exactly one .wgt is attached, and that is load bearing: Tizen Homebrew's
+# catalogue resolves a GitHub entry to the first package asset it finds, so a
+# release carrying two would install whichever GitHub happens to list first.
+#
+# Secrets this needs, all set in Settings → Secrets and variables → Actions:
+#
+#   TIZEN_AUTHOR_P12        base64 of author.p12       (base64 -i author.p12 | pbcopy)
+#   TIZEN_AUTHOR_PW         its password
+#   TIZEN_DISTRIBUTOR_P12   base64 of distributor.p12
+#   TIZEN_DISTRIBUTOR_PW    its password, if it differs from the author's
+#
+# And one variable:
+#
+#   TUBE_ORIGIN             where the TV checks for a newer userscript
+#
+# Both certificates are required. A Samsung TV rejects the stock Tizen
+# distributor certificate at install time, so the pair has to be one minted for
+# this TV — see the README.
+
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  widget:
+    name: Build and sign the widget
+    runs-on: ubuntu-latest
+
+    env:
+      TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The source of the release being published, rather than whatever the
+          # default branch happens to hold at this moment.
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The tag names a version and tizen.config.json names one too, and it is
+      # the second that ends up inside the package and in latest.json. A release
+      # tagged v1.2.0 whose widget reports 1.1.0 is a support question nobody
+      # can answer from the outside.
+      - name: Check the tag matches the version
+        if: github.event_name == 'release'
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          declared="$(node -p "require('./tizen.config.json').version")"
+          if [ "$tagged" != "$declared" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match tizen.config.json, which says $declared."
+            echo "Run 'npm run version -- $tagged', commit, and re-tag."
+            exit 1
+          fi
+
+      - name: Test
+        run: npm test
+
+      - name: Restore the signing certificates
+        env:
+          AUTHOR: ${{ secrets.TIZEN_AUTHOR_P12 }}
+          DISTRIBUTOR: ${{ secrets.TIZEN_DISTRIBUTOR_P12 }}
+        run: |
+          if [ -z "$AUTHOR" ] || [ -z "$DISTRIBUTOR" ]; then
+            echo "::error::Set TIZEN_AUTHOR_P12 and TIZEN_DISTRIBUTOR_P12 (base64 of each .p12) in Actions secrets."
+            exit 1
+          fi
+          printf '%s' "$AUTHOR" | base64 -d > "$RUNNER_TEMP/author.p12"
+          printf '%s' "$DISTRIBUTOR" | base64 -d > "$RUNNER_TEMP/distributor.p12"
+
+      # A full release must point at a real origin: the URL is baked into the
+      # package and into every TV that installs it, so shipping the placeholder
+      # produces an app that can never be updated over the air. A prerelease may
+      # carry it, because that is what a prerelease is for.
+      - name: Package
+        env:
+          TIZEN_AUTHOR_P12: ${{ runner.temp }}/author.p12
+          TIZEN_AUTHOR_PW: ${{ secrets.TIZEN_AUTHOR_PW }}
+          TIZEN_DISTRIBUTOR_P12: ${{ runner.temp }}/distributor.p12
+          TIZEN_DISTRIBUTOR_PW: ${{ secrets.TIZEN_DISTRIBUTOR_PW }}
+        run: npm run package ${{ (github.event_name == 'release' && !github.event.release.prerelease) && '-- --release' || '' }}
+
+      - name: Remove the certificates
+        if: always()
+        run: rm -f "$RUNNER_TEMP/author.p12" "$RUNNER_TEMP/distributor.p12"
+
+      # The other half of a release: the userscript bundles the TV downloads
+      # after it is installed, with the digests latest.json advertises. Staged
+      # only when there is a real origin to serve them from — the packaged app
+      # already carries both bundles, so an origin is an update path rather than
+      # a requirement.
+      - name: Stage the origin release
+        if: vars.TUBE_ORIGIN != ''
+        run: npm run release
+
+      - name: Upload the origin release
+        if: vars.TUBE_ORIGIN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: origin-${{ github.event.release.tag_name || github.ref_name }}
+          path: release/origin/
+          if-no-files-found: error
+
+      # Named for a person downloading it from the releases page, where
+      # "tube.wgt" on its own says nothing about which build it is.
+      - name: Name the widget after the version
+        id: widget
+        run: |
+          version="$(node -p "require('./tizen.config.json').version")"
+          name="tizen-youtube-${version}.wgt"
+          mv release/tube.wgt "release/${name}"
+          echo "path=release/${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Attach it to the release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: ${{ steps.widget.outputs.path }}
+          fail_on_unmatched_files: true
+
+      # A hand-run build has no release to attach to, so it lands as an
+      # artifact instead — which is the point of being able to run it by hand.
+      - name: Upload it as an artifact
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tizen-youtube-widget
+          path: ${{ steps.widget.outputs.path }}
+          if-no-files-found: error

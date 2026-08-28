@@ -353,6 +353,11 @@ export function openAdditionalOptions(update, parameters) {
             },
             options: [
                 {
+                    name: 'High contrast (OLED)',
+                    icon: 'MOON',
+                    value: 'enableOledTheme'
+                },
+                {
                     name: 'Hide Watched Videos',
                     icon: 'VISIBILITY_OFF',
                     value: null,

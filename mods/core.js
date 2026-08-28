@@ -10,6 +10,10 @@ import './features/standaloneUserscript.js';
 // Features: each registers what it wants and does nothing else at import time.
 // Nothing is intercepted until the last line of this file.
 
+// First of the features: it repaints the splash that is already on screen, so every
+// module evaluated ahead of it is a frame the screen stays grey.
+import './features/oledTheme.js';     // true black, when the setting asks for it
+
 import './features/adblock.js';        // and DeArrow, shelves, thumbnails
 import './features/sponsorblock.js';
 import './features/guide.js';          // the sidebar, trimmed

@@ -50,6 +50,10 @@ const defaultConfig = {
   disabledSidebarContents: HIDDEN_SIDEBAR_ITEMS,
   disableChannelsOnSidebar: false,
 
+  // Off by default: on an LCD, #0f0f0f and #000000 look the same and the second is
+  // only a loss of contrast.
+  enableOledTheme: false,
+
   // YouTube treats a TV as a low-end device and disables animations and long-press.
   enableFixedUI: true,
   enableLongPress: true,

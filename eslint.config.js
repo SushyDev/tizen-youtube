@@ -57,6 +57,8 @@ const BROWSER_GLOBALS = {
     HTMLImageElement: 'readonly',
     HTMLScriptElement: 'readonly',
     Reflect: 'readonly',
+    atob: 'readonly',
+    btoa: 'readonly',
     // Provided by the Tizen platform inside the TV's webview and services.
     tizen: 'readonly',
     webapis: 'readonly'

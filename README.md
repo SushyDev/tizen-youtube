@@ -18,28 +18,32 @@ update path, not a dependency.
 
 ## Install
 
-The widget is signed for the television it was built for — Tizen names the
-device inside the distributor certificate and enforces it from Tizen 7 — so a
-release downloaded from here installs nowhere but its builder's set.
+**Use [Tizen Homebrew](https://github.com/SushyDev/tizen-homebrew).** Open it on
+the TV, pick this app out of the catalogue, done — no computer involved.
 
-**Use [Tizen Homebrew](https://github.com/SushyDev/tizen-homebrew).** It re-signs
-every package for the TV it is running on, which is the whole reason it exists:
-open it on the TV, pick this app out of the catalogue, done. That is the
-supported path and the one that needs no computer.
+That is not a convenience. A Tizen signature names the television it may be
+installed on, inside the distributor certificate, and sets enforce it from
+Tizen 7 — so a widget signed by whoever built it installs on their set and
+nowhere else. Tizen Homebrew re-signs whatever it installs with the pair the TV
+itself holds, which is what makes a package written by somebody else
+installable at all.
 
-Building it yourself needs **Node 20+** and a certificate pair minted for your
-TV. Tizen Homebrew mints them into `~/.tizen-certs`, which is where this
-repository looks:
+So the widget attached to each [release](../../releases) is **unsigned**, and
+Homebrew's **GitHub** or **Upload** tab takes it as it is. A television will
+refuse it over sdb, which is the expected half of the same fact.
+
+Building it yourself needs **Node 20+**:
 
 ```sh
 git clone https://github.com/SushyDev/tizen-youtube.git
 cd tizen-youtube
 npm install
-npm run package          # builds, signs, writes release/tube.wgt
+npm run package -- --unsigned    # release/tube.wgt, for Tizen Homebrew
 ```
 
-Then install `release/tube.wgt` from Tizen Homebrew's **Upload** tab, or over
-sdb if the TV still points at your machine.
+Drop `--unsigned` to sign it for your own TV instead, for `sdb install`. That
+needs a certificate pair minted for the set; Tizen Homebrew mints them into
+`~/.tizen-certs`, which is where this repository looks.
 
 ---
 
@@ -50,7 +54,8 @@ sdb if the TV still points at your machine.
 | `npm run doctor` | Check prerequisites when something looks wrong |
 | `npm run build` | Boot screen, both userscript bundles, the service |
 | `npm test` | Lint, rewrite parity, routing, loader, update flow |
-| `npm run package` | Build and sign a `.wgt` (`-- --release` refuses a placeholder origin) |
+| `npm run package` | Build and sign a `.wgt` for your own television |
+| `npm run package -- --unsigned` | The same package, signed by nobody — what a release carries |
 | `npm run release` | Stage `release/origin/` — the bundles and `latest.json` |
 | `npm run dev` | The boot screen in a browser, no hardware needed |
 | `npm run dev:service` | The service off-TV, on `:8099` |
@@ -243,15 +248,18 @@ this.
 
 ### Releasing
 
-Publishing a GitHub release builds, signs and attaches the widget, and stages
-the origin bundles as a run artefact. Set once under **Settings → Secrets and
-variables → Actions**: `TIZEN_AUTHOR_P12`, `TIZEN_AUTHOR_PW`,
-`TIZEN_DISTRIBUTOR_P12` as secrets (the p12s base64-encoded, plus
-`TIZEN_DISTRIBUTOR_PW` if it differs), and `TUBE_ORIGIN` as a variable. Tag and
-version have to agree — `npm run version -- 1.2.0` sets it everywhere.
+Publishing a GitHub release builds the unsigned widget and attaches it. It
+needs no secrets at all — there is nothing to sign with, on purpose — so it
+works on a fresh clone of this repository. Tag and version have to agree:
+`npm run version -- 1.2.0` sets it everywhere, then commit and tag.
 
 Exactly one `.wgt` is attached per release, and that is load bearing: Tizen
 Homebrew's catalogue takes the first package asset it finds.
+
+Set `TUBE_ORIGIN` as a repository **variable** to publish over-the-air updates
+too. With it, a release also stages the origin bundles as a run artefact, ready
+to upload; without it the release still builds, and the app simply never
+updates itself between releases.
 
 ---
 

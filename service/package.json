@@ -1,6 +1,6 @@
 {
   "name": "tube-service",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "Injection, proxy fallback and DIAL for the tube app.",
   "main": "index.js",
   "license": "GPL-3.0-only",

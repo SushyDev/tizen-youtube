@@ -1,7 +1,6 @@
 'use strict';
 
-// Checks everything needed to build, and says exactly how to fix what is
-// missing. Run this first when something is wrong.
+// Checks everything needed to build and says how to fix what is missing.
 
 const { existsSync, statSync } = require('fs');
 const { join } = require('path');
@@ -36,9 +35,8 @@ check('dependencies installed', () => {
     if (!existsSync(join(ROOT, 'node_modules'))) {
         throw new Error('No node_modules. Run: npm install');
     }
-    // Workspaces hoist here; a missing one means an incomplete install. One
-    // package is named per workspace — rollup builds the userscript, ncc the
-    // service, vite the boot screen — plus the one the root itself owns.
+    // Workspaces hoist here, so a missing one means an incomplete install. One package
+    // is named per workspace, plus the one the root itself owns.
     const probes = ['rollup', '@vercel/ncc', '@babel/core', 'vite', 'eslint'];
     const missing = probes.filter((name) => !existsSync(join(ROOT, 'node_modules', name)));
     if (missing.length) {
@@ -77,9 +75,9 @@ check('signing certificate (packaging only)', () => {
 
     if (absent.length) throw new Error(absent.join('; '));
 
-    // Both halves have to be Samsung's. Without a distributor certificate
-    // tizenjs signs with the stock Tizen one, which expired in 2022 and which
-    // the TV refuses — the package builds and only fails on the TV.
+    // Both halves have to be Samsung's. Without a distributor certificate tizenjs signs
+    // with the stock Tizen one, which expired in 2022 — the package builds and only
+    // fails on the TV.
     return {
         detail: `author ${statSync(found.author).size}B + distributor ${statSync(found.distributor).size}B`
     };

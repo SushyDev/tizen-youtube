@@ -1,11 +1,8 @@
 'use strict';
 
-// One place for every port this app binds.
-//
-// The reference hardcoded these at each use site and drifted: its injector
-// navigated with `additionalDataUrl=...localhost:8085...` while the standalone
-// DIAL server actually binds 8095, so cast payloads were silently dropped on
-// the CDP path. Naming them once makes that class of bug impossible.
+// One place for every port this app binds. The reference hardcoded them at each use
+// site and drifted: its injector navigated to localhost:8085 while the DIAL server
+// binds 8095, so cast payloads were silently dropped on the CDP path.
 
 module.exports = {
     PROXY: 8099,   // MITM proxy used when Developer Mode is off

@@ -1,11 +1,7 @@
 'use strict';
 
-// tube service.
-//
-// Two ways in: CDP injection when Developer Mode is on (clean, no rewriting),
-// and a local proxy when it is off. The shell asks which is available and goes
-// straight there — there is no loading screen, because the only thing the
-// reference was covering up was the app relaunching itself under a debugger.
+// tube service: CDP injection when Developer Mode is on, a local proxy when it is off.
+// The shell asks which is available and goes straight there.
 
 const express = require('express');
 
@@ -15,28 +11,20 @@ const injector = require('./lib/injector.js');
 const proxy = require('./lib/proxy.js');
 const dial = require('./lib/dial.js');
 
-// Off-TV the proxy, loader and rewrite rules all still work; only DIAL and
-// debugger injection need the platform. Running headless like this is what
-// `npm run dev` and `npm run dev:service` use.
+// Off-TV the proxy, loader and rewrite rules still work; only DIAL and injection need
+// the platform. This is what `npm run dev` uses.
 const isTV = typeof tizen !== 'undefined';
 
-// Off-TV there is no platform to ask, so the variant would always come out
-// `legacy` — the one a desktop browser is least like. TUBE_PLATFORM_VERSION
-// says which television to pretend to be, which is how both bundles get
-// exercised off hardware. Unset on a TV, where the real answer is available.
+// Off-TV the variant would always come out `legacy`, so this says which TV to be.
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
 const app = proxy.create(platformVersion);
 
-// How often the origin may be asked for a newer userscript.
-//
-// The service is background-support="enable", so it outlives the app and can
-// stay resident for days. Checking only at service start would mean a pushed
-// update lands only after a TV reboot. The shell hits /__tube/state exactly
-// once per launch, which makes it the natural place to check, debounced so
-// repeated launches cannot hammer the origin.
+// The service outlives the app and can stay resident for days, so checking only at
+// start would mean an update lands after a reboot. The shell hits /__tube/state once
+// per launch; debounced so repeated launches cannot hammer the origin.
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
 let lastUpdateCheck = 0;
@@ -55,25 +43,16 @@ function maybeCheckForUpdate() {
     );
 }
 
-// A debug injection that failed, remembered just long enough.
-//
-// The shell has to exit for the debugger to relaunch the app in its place, so
-// by the time an injection fails there is nothing left on screen to notice.
-// The service brings the app back and leaves this behind, so the launch that
-// returns takes the proxy instead of trying the same thing again — which is
-// the difference between one slow start and an endless relaunch loop.
-//
-// It expires because developer mode is something a person turns back on: a
-// launch a minute later deserves a fresh attempt.
+// A failed injection, remembered just long enough. The shell has already exited by the
+// time one fails, so the service brings the app back and leaves this behind — the next
+// launch takes the proxy instead of looping. Expires: developer mode gets turned back on.
 const FAILURE_MEMORY = 60 * 1000;
 
 let injectionFailedAt = 0;
 
 const injectionRecentlyFailed = () => Date.now() - injectionFailedAt < FAILURE_MEMORY;
 
-// Puts the app back on screen after a failed injection. Without this the
-// television is simply left on the home row with nothing having happened,
-// which is exactly the failure this whole path exists to avoid.
+// Without this the television is left on the home row with nothing having happened.
 function relaunchApp(reason) {
     injectionFailedAt = Date.now();
     injector.stopConnecting();
@@ -94,8 +73,7 @@ app.get('/__tube/state', (_, res) => {
     maybeCheckForUpdate();
 
     injector.canConnectToDaemon().then((state) => {
-        // Report which script this TV would actually run, so "did my update
-        // land?" is answerable without guessing.
+        // Which script this TV would run, so "did my update land?" is answerable.
         let script = null;
         try {
             const resolved = loader.resolve(platformVersion);
@@ -113,8 +91,7 @@ app.get('/__tube/state', (_, res) => {
             variant: loader.variantFor(platformVersion),
             script,
 
-            // DIAL only runs on a TV, so off one the client is pointed at a
-            // cast endpoint that would never answer. Better to have none.
+            // DIAL only runs on a TV, so off one there is no cast endpoint to point at.
             proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
                 ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
                 : '')
@@ -122,8 +99,7 @@ app.get('/__tube/state', (_, res) => {
     });
 });
 
-// Starts the debugger and injects. The shell exits immediately after calling
-// this, because the app is about to be relaunched under the debugger.
+// Starts the debugger and injects. The shell exits immediately after calling this.
 app.get('/__tube/inject', (req, res) => {
     if (!isTV) {
         return res.status(501).json({ error: 'Injection needs a TV; this service is running off-device.' });
@@ -132,10 +108,8 @@ app.get('/__tube/inject', (req, res) => {
     const args = req.originalUrl.split('?')[1] || '';
     const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
 
-    // The debug launch has to replace a window that is already gone, so this
-    // waits for the shell to exit first. It also gives up: an app that never
-    // exits used to leave this interval running at 50ms for the life of the
-    // service, and nothing ever came of it.
+    // The debug launch has to replace a window that is already gone, so wait for the
+    // shell to exit — and give up, rather than polling for the life of the service.
     const startedWaiting = Date.now();
 
     const waitForExit = setInterval(() => {
@@ -150,9 +124,7 @@ app.get('/__tube/inject', (req, res) => {
             clearInterval(waitForExit);
 
             injector.startDebugger(args).then(
-                // `false` means the daemon refused, which is a failure even
-                // though nothing threw. The reference treated it as success
-                // and left the television showing its home screen.
+                // `false` means the daemon refused: a failure even though nothing threw.
                 (attached) => { if (!attached) relaunchApp('sdb would not accept a connection'); },
                 (err) => relaunchApp(err.message)
             );
@@ -175,7 +147,6 @@ app.listen(ports.PROXY, '127.0.0.1', () => {
 // DIAL discovery needs the platform to launch the app on a cast request.
 if (isTV) dial.start();
 
-// One check shortly after startup, then per-launch via /__tube/state. A newly
-// downloaded script is used from the next launch onward, so a bad one can
-// never break the session that fetched it.
+// A new script is used from the next launch onward, so a bad one cannot break the
+// session that fetched it.
 setTimeout(maybeCheckForUpdate, 5000);

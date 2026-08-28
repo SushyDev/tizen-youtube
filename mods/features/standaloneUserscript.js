@@ -104,13 +104,10 @@ export default function installProxyPatches() {
         }
     });
 }
-// Self-installing on import.
-//
-// ES module imports are hoisted, so the reference's `if (...) initPatches()`
-// in the entry file ran only after every other module's top-level code had
-// already executed — meaning anything that captured window.fetch during its
-// own evaluation captured the unpatched original. Installing here, in the
-// first module the entry imports, makes the ordering guarantee real.
+// Self-installing on import. ES module imports are hoisted, so the reference's
+// `if (...) initPatches()` in the entry file ran after every other module's top-level
+// code, and anything capturing window.fetch got the unpatched original. Installing in
+// the first module the entry imports makes the ordering guarantee real.
 if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
     installProxyPatches();
 }

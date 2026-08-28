@@ -2,17 +2,9 @@ import { configRead, configChangeEmitter } from '../config.js';
 import { onResponse } from '../youtube/json.js';
 import { reloadGuide } from '../youtube/internals.js';
 
-// The sidebar, trimmed.
-//
-// YouTube's guide arrives as a list of sections, each a list of entries, each
-// tagged with an icon type — WHAT_TO_WATCH for home, TAB_LIBRARY for library,
-// GAMING for gaming, and so on. Dropping an entry before the guide is drawn is
-// the whole feature; which entries to drop is a setting.
-//
-// The version this replaces checked `r.items && Array.isArray(r.items) &&
-// r.items[0].guideSectionRenderer`, which proves the array exists and then
-// indexes it anyway. An empty `items` array — from anywhere in the app, on any
-// JSON at all — threw a TypeError out of `JSON.parse`.
+// The sidebar, trimmed. YouTube's guide arrives as sections of entries, each tagged
+// with an icon type — WHAT_TO_WATCH for home, TAB_LIBRARY for library, and so on.
+// Dropping an entry before the guide is drawn is the whole feature.
 
 const GUIDE_KEYS = ['items'];
 
@@ -28,9 +20,8 @@ onResponse('guide', GUIDE_KEYS, (response) => {
 
     if (hidden.length === 0 && !hideChannels) return;
 
-    // Rebuilding the entry lists rather than splicing while iterating: the
-    // original decremented its own loop counter after each removal, which is
-    // correct and also the kind of thing nobody should have to verify twice.
+    // Rebuilt rather than spliced while iterating: the original decremented its own
+    // loop counter after each removal.
     const keep = (entry) => {
         const item = entry.guideEntryRenderer;
         if (!item) return true;
@@ -49,8 +40,8 @@ onResponse('guide', GUIDE_KEYS, (response) => {
     });
 });
 
-// The guide is built once and cached, so changing the setting has no visible
-// effect until YouTube is asked to build it again.
+// The guide is built once and cached, so a changed setting has no visible effect until
+// YouTube is asked to build it again.
 configChangeEmitter.addEventListener('configChange', (event) => {
     if (event.detail.key === 'disabledSidebarContents' || event.detail.key === 'disableChannelsOnSidebar') {
         reloadGuide();

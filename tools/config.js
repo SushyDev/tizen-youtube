@@ -1,12 +1,9 @@
 'use strict';
 
-// Single source of truth for build-time configuration.
-//
-// The update origin used to be a hardcoded placeholder in the source. It now
-// lives in tizen.config.json, is validated before any build starts, and is
-// baked into both the userscript bundles and the service so a TV never depends
-// on an environment variable being set. TUBE_ORIGIN still overrides, which is
-// what CI, the tests and one-off builds use.
+// Single source of truth for build-time configuration. The update origin lives in
+// tizen.config.json, is validated before any build starts, and is baked into both the
+// userscript bundles and the service so a TV never depends on an environment variable.
+// TUBE_ORIGIN still overrides, for CI, the tests and one-off builds.
 
 const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');
@@ -40,8 +37,8 @@ function validUrl(value, field) {
     } catch (e) {
         fail(`${field} is not a valid URL: ${JSON.stringify(value)}`);
     }
-    // https everywhere, except a loopback origin, which is how a local mirror
-    // is exercised during development.
+    // https everywhere, except a loopback origin, which is how a local mirror is
+    // exercised during development.
     const isLoopback = ['localhost', '127.0.0.1', '::1'].indexOf(url.hostname) !== -1;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
         fail(`${field} must use https, got ${url.protocol.replace(':', '')}: ${value}`);
@@ -65,11 +62,10 @@ function load(options) {
 
     const origin = validUrl(config.origin, 'origin');
 
-    // A placeholder is fine while developing — both bundles ship inside the
-    // .wgt, so the app works without an origin at all. Shipping one produces an
-    // app that silently never updates, and the URL is baked in, so every TV
-    // that installed it has to be reinstalled to change it. Release builds
-    // refuse it.
+    // A placeholder is fine while developing — both bundles ship inside the .wgt, so
+    // the app works without an origin. Shipping one produces an app that silently never
+    // updates, and the URL is baked in, so every TV would need reinstalling to change
+    // it. Release builds refuse it.
     config.placeholders = PLACEHOLDER_HOSTS.indexOf(origin.hostname) !== -1 ? ['origin'] : [];
 
     if (config.placeholders.length && opts.requireReal) {

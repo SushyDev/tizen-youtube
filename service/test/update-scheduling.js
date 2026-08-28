@@ -1,9 +1,8 @@
 'use strict';
 
-// The service outlives the app, so update checks are driven by /__tube/state,
-// which the shell hits once per launch. This verifies two things that matter
-// operationally: a launch does trigger a check, and repeated launches inside
-// the debounce window do not hammer the origin.
+// Update checks are driven by /__tube/state, which the shell hits once per launch.
+// Verifies that a launch triggers a check, and that repeated launches inside the
+// debounce window do not hammer the origin.
 
 const http = require('http');
 const net = require('net');
@@ -24,8 +23,7 @@ const origin = http.createServer((req, res) => {
     if (req.url === '/latest.json') {
         manifestRequests++;
         res.setHeader('content-type', 'application/json');
-        // No bundles listed: the check runs, finds nothing applicable, gives up
-        // cleanly. That is enough to observe that it ran.
+        // No bundles listed: the check runs, finds nothing applicable, gives up cleanly.
         return res.end(JSON.stringify({ version: '0.0.0', bundles: {} }));
     }
     res.statusCode = 404;
@@ -48,11 +46,9 @@ function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// This spawns the real service, which binds the real port, so it cannot share
-// a machine with a running `npm run dev`. Without this the service would fail
-// to bind, every request here would be answered by the *other* service, and
-// the failure would read as "a launch triggers no update check" — which is
-// true and says nothing about the code.
+// Spawns the real service on the real port, so it cannot share a machine with a
+// running `npm run dev` — the other service would answer every request here and the
+// failure would read as "a launch triggers no update check".
 function proxyPortIsFree() {
     return new Promise((resolve) => {
         const probe = net.createServer();

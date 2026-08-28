@@ -1,67 +1,29 @@
 import './boot.css';
 
-// Getting from "the user pressed YouTube" to YouTube.
-//
-// There are two ways in. When Developer Mode is on, the service relaunches
-// this app under the Chrome DevTools Protocol and evaluates the userscript
-// straight into youtube.com — no rewriting, no proxy, nothing between the app
-// and Google. When it is off, the service serves youtube.com through a local
-// proxy that splices the same script in.
-//
-// The rule this file is built around: **every path ends at YouTube.** The
-// previous version could exit without ever arriving — it asked the service to
-// inject, closed itself so the debug relaunch could take over, and if that
-// relaunch then failed there was nothing left running to notice. An app that
-// disappears when you open it is worse than one with no modifications at all,
-// so nothing here is allowed to be a dead end: every failure falls through to
-// the proxy, and a deadline catches anything that fails by not answering.
+// Two ways in: the debugger evaluates the userscript into youtube.com, or a local
+// proxy splices it in. Every failure falls through to the proxy, so no path dead-ends.
 
 const PORT = 8099;
 
-// Off a television there is no `tizen` object at all. That single fact
-// decides where the service lives — the loopback port on a TV, this page's
-// own origin in a browser, where Vite proxies to whatever is answering — and
-// whether this file may exit the application, which off a TV does nothing and
-// is therefore reported rather than performed.
-//
-// Navigating away is the other irreversible thing, and it is not decided
-// here: off a TV it depends on whether anything is actually serving the page
-// at the far end. See `canHandOver` below.
+// No `tizen` object off a television, which decides whether this file may exit.
 const platform = typeof tizen === 'undefined' ? null : tizen;
 const application = platform ? platform.application.getCurrentApplication() : null;
 const onTv = !!application;
 
 const BASE = onTv ? `http://localhost:${PORT}` : '';
 
-// Long enough for a cold service start on a slow TV, short enough that nobody
-// sits looking at a log wondering whether it is stuck.
+// Long enough for a cold service start on a slow TV.
 const GIVE_UP_AFTER = 20000;
 const POLL_INTERVAL = 200;
 
-// Media keys have to be claimed before the player can receive them, and the
-// player does not exist yet — so it happens here, first.
+// Media keys must be claimed before the player exists.
 const MEDIA_KEYS = [
     'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
     'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'MediaTrackPrevious',
     'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue'
 ];
 
-// ── The log ───────────────────────────────────────────────────────────
-//
-// This is a kernel log and it is formatted as one, because the format is
-// right and because a screen that is only ever seen for two seconds should
-// look like something you already know how to read.
-//
-// dmesg's line is `[   12.345678] facility: what happened`, and all three
-// parts do work. The timestamp is monotonic since power-on, right-aligned in
-// a fixed column so the decimal points line up and the gaps between events
-// are visible as shape rather than arithmetic. The facility says which part
-// of the system is talking, which is what makes a hundred lines skimmable.
-// The message is lower case and terse, because it is one of a hundred.
-//
-// The colours are util-linux's own roles from `dmesg.c` — the timestamp
-// green, the facility brown — over the console's sixteen. See boot.css.
-
+// dmesg-style log: timestamp, facility, terse message. See boot.css.
 const startedAt = (window.performance && window.performance.now)
     ? window.performance.now()
     : Date.now();
@@ -74,19 +36,10 @@ const logElement = document.getElementById('log');
 
 let handedOver = false;
 
-// Enough to fill a 1080-line screen at this size and no more. Oldest lines
-// fall off the top rather than scrolling: TV webviews handle scrollTop
-// inconsistently, and the newest line must always be visible.
+// Oldest lines fall off the top; TV webviews handle scrollTop inconsistently.
 const MAX_LINES = 34;
 
-/**
- * Writes one line.
- *
- * `facility` is the subsystem, as in `usb 1-1:` or `EXT4-fs (sda1):`, and is
- * the thing that makes a verbose log readable rather than a wall. `tone`
- * carries severity and is left off for the ordinary case, which is most of
- * them — a log where every line is coloured has no colour at all.
- */
+/** Writes one line. `tone` is omitted for the ordinary case. */
 const say = (facility, message, tone) => {
     if (handedOver) return;
 
@@ -94,9 +47,6 @@ const say = (facility, message, tone) => {
 
     const stamp = document.createElement('span');
     stamp.className = 't';
-    // Six decimals and a five-wide seconds field, which is dmesg's own
-    // `[%5lu.%06lu]`. The precision is real: performance.now() is
-    // sub-millisecond, so these digits are measurements rather than zeroes.
     stamp.textContent = `[${(now() / 1000).toFixed(6).padStart(12, ' ')}] `;
 
     const subsys = document.createElement('span');
@@ -115,24 +65,13 @@ const say = (facility, message, tone) => {
     while (logElement.childNodes.length > MAX_LINES) logElement.removeChild(logElement.firstChild);
 };
 
-// The log exists to be gone. Whatever happens next paints over a black page,
-// not over a list of log lines.
+// Whatever happens next paints over a black page, not over the log.
 const handOver = () => {
     handedOver = true;
     document.body.className = 'done';
 };
 
-// Whether there is anywhere to go.
-//
-// On a TV, always: the service is on loopback and the proxy URL it reports is
-// its own. Off one, only the development server knows — the proxy URL points
-// at localhost either way, and whether anything is there depends on how
-// `npm run dev` was started. So it says, by adding `handOver` to the state as
-// it passes through. See ui/dev/tube.js, which sets it when it is running the
-// service itself, and does not when the state is coming from a television
-// across the room or from the stand-in in ui/dev/service.js.
-//
-// Nothing on a TV ever sends this field, and nothing needs to.
+// Whether there is anywhere to go. Off a TV only the dev server knows — see dev/tube.js.
 const canHandOver = (state) => onTv || !!(state && state.handOver);
 
 /** Reports what the TV would have done next, and stops. */
@@ -142,15 +81,7 @@ const hold = (facility, what) => {
     document.body.className = 'held';
 };
 
-/**
- * The last line, and the only one anybody reads twice.
- *
- * systemd ends with `Startup finished in 1.2s (kernel) + 3.4s (userspace)`
- * and it is the most useful line it prints, because it turns "that felt slow"
- * into a number and says which half was responsible. This does the same with
- * the two halves that exist here: what the shell did on its own, and how long
- * it then spent waiting for the service.
- */
+/** Splits startup into shell time and time spent waiting on the service. */
 const summarise = () => {
     const total = now();
     const shell = shellReadyAt;
@@ -165,13 +96,7 @@ const summarise = () => {
 
 window.onerror = (message, _source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
 
-// ── Talking to the service ────────────────────────────────────────────
-
-// `timeout` is a budget rather than a constant because the state poll has a
-// deadline it has announced on screen. A fixed 8s request timeout means the
-// last poll before a 20s deadline can run until 28s, so the log would promise
-// one number and do another — and the give-up path is the one place nobody is
-// watching closely enough to notice it lied.
+// A budget, not a constant, so the last poll cannot outlive the announced deadline.
 const ask = (path, timeout) => new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open('GET', BASE + path, true);
@@ -192,11 +117,7 @@ const ask = (path, timeout) => new Promise((resolve, reject) => {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ── What this thing is running on ─────────────────────────────────────
-
-// The engine, from the user agent. Which Chromium this is decides what the
-// page may use, and it is the first thing anyone asks when a TV renders
-// something wrong — so it is stated rather than looked up later.
+// Which Chromium this is decides what the page may use.
 const engine = () => {
     const agent = navigator.userAgent || '';
     const chromium = /Chrome\/(\d+)/.exec(agent);
@@ -208,36 +129,24 @@ const engine = () => {
     ].filter(Boolean).join(', ');
 };
 
-// The surface actually handed to the app, which is not always the 1920×1080
-// the platform promises — and when it is not, everything sized in viewport
-// units is wrong. Cheap to print, and it has been the answer before.
-//
-// Nothing here reaches for `webapis`. Model and firmware would be the best
-// device line this log could have, and they need the productinfo privilege
-// this app does not carry — so it reports what it can actually see rather
-// than calling something that will be refused.
+// Not always the 1920x1080 the platform promises. Model and firmware would need a
+// privilege this app lacks.
 const surface = () => {
     const view = { w: window.innerWidth, h: window.innerHeight };
     const panel = { w: window.screen.width, h: window.screen.height };
 
-    // Two decimals: a television reports exactly 1 and a desktop reports
-    // 1.3333333730697632, and nobody needs thirteen digits of that.
+    // A television reports exactly 1, a desktop 1.3333333730697632.
     const ratio = Math.round((window.devicePixelRatio || 1) * 100) / 100;
 
     return {
         text: `viewport ${view.w}x${view.h}, screen ${panel.w}x${panel.h}, dpr ${ratio}`,
-        // The webview being handed something other than the panel is the
-        // exact shape of a bug this repo has already shipped once: every size
-        // on the page is a fraction of the viewport, so a viewport that is not
-        // the screen renders the whole interface at the wrong scale.
+        // A viewport that is not the panel renders every vw-sized element wrong.
         mismatched: view.w !== panel.w || view.h !== panel.h
     };
 };
 
-// An origin still pointing at the documentation's example host. The build
-// warns about this and then happily produces a package with it baked in, so
-// it can reach a television — where it presents as YouTube simply loading
-// without any of the modifications and no explanation on screen.
+// An origin still pointing at the example host presents as YouTube loading with none
+// of the modifications and no explanation on screen.
 const PLACEHOLDER = /(^|\.)example\.(com|net|org|invalid)$/;
 
 const isPlaceholder = (origin) => {
@@ -248,10 +157,7 @@ const isPlaceholder = (origin) => {
     }
 };
 
-// ── Starting up ───────────────────────────────────────────────────────
-
-// A cast from a phone arrives as an app-control argument rather than a URL,
-// and has to be carried through whichever path is taken.
+// A cast from a phone arrives as an app-control argument rather than a URL.
 const castArguments = () => {
     if (!onTv) return '';
 
@@ -260,12 +166,10 @@ const castArguments = () => {
         const args = data.filter((entry) => entry.key === 'args')[0];
         return args ? (JSON.parse(args.value[0]).args || '') : '';
     } catch (e) {
-        return '';   // a plain launch carries no payload
+        return '';   // plain launch, no payload
     }
 };
 
-// Returns which keys were claimed and which the model does not have, because
-// "8 of 12" is a fact you can act on and "claimed keys" is not.
 const claimMediaKeys = () => (onTv ? MEDIA_KEYS : []).reduce((result, key) => {
     try {
         platform.tvinputdevice.registerKey(key);
@@ -291,9 +195,7 @@ const launchService = () => new Promise((resolve) => {
         serviceId,
         () => { say('service', 'launch accepted', 'ok'); resolve(); },
         (error) => {
-            // Very often it is already running from a previous launch, in
-            // which case this "failure" means nothing at all. Either way the
-            // next step is the same: ask it.
+            // Usually it is already running from a previous launch.
             say('service', `launch refused: ${error.message}`, 'warn');
             say('service', 'probably already running; asking it anyway');
             resolve();
@@ -301,16 +203,13 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
-// How long the shell spent on itself before it had to wait for anything, so
-// the summary at the end can apportion the blame.
+// Lets the summary apportion shell time against service wait.
 let shellReadyAt = 0;
 let serviceUpAt = 0;
 
 const boot = async () => {
     const info = application ? application.appInfo : null;
 
-    // The banner, in the shape of `Linux version ...`: what this is, then
-    // what it is running on, before anything is attempted.
     say('tube', `YouTube ${(info && info.version) || 'dev'}`, 'note');
     if (info) say('tube', `package ${info.packageId}, app ${info.id}`);
 
@@ -324,8 +223,6 @@ const boot = async () => {
 
     say('webview', `locale ${navigator.language || 'unknown'}`);
 
-    // Not a line that earns its place most of the time, and the one time it
-    // does it explains every failure below it.
     say('net', navigator.onLine === false ? 'offline' : 'online',
         navigator.onLine === false ? 'bad' : undefined);
 
@@ -335,8 +232,7 @@ const boot = async () => {
         say('tvinputdevice', `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered`,
             keys.refused.length ? 'warn' : 'ok');
 
-        // Named rather than counted. Which key a model lacks decides which
-        // button does nothing on the remote, and that is worth one line.
+        // Which key a model lacks decides which button does nothing on the remote.
         if (keys.refused.length) {
             say('tvinputdevice', `not on this model: ${keys.refused.join(' ')}`);
         }
@@ -365,8 +261,7 @@ const boot = async () => {
         polls += 1;
 
         try {
-            // Never longer than what is left of the deadline, and never so
-            // short it cannot complete a request on a slow TV.
+            // Never longer than what is left of the deadline.
             const left = Math.max(deadline - now(), 500);
 
             state = await ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, 8000));
@@ -378,17 +273,14 @@ const boot = async () => {
             }
         }
 
-        // The kernel says so when a task has been blocked too long, and for
-        // the same reason: a log that has gone quiet is indistinguishable
-        // from one that has stopped.
+        // A log that has gone quiet is indistinguishable from one that has stopped.
         if (!state && now() > nextNudge) {
             say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
             nextNudge = now() + 5000;
         }
 
         if (state) {
-            // Said once, not on every poll: a log that repeats itself buries
-            // the one line that mattered.
+            // Said once, not on every poll.
             if (!described) {
                 described = true;
                 serviceUpAt = now();
@@ -397,16 +289,11 @@ const boot = async () => {
                              `${((serviceUpAt - started) / 1000).toFixed(3)}s`, 'ok');
 
                 if (state.platformVersion) {
-                    // Which script a TV gets is derived from its platform
-                    // version, and that derivation is the only reason an old
-                    // set behaves differently. Stated as the inference it is.
+                    // Which script a TV gets follows from its platform version.
                     say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
                 }
                 if (state.ip) say('state', `device ${state.ip}`);
 
-                // The flags, verbatim. This is the whole decision the next
-                // few lines are about, so it is worth being able to read it
-                // rather than infer it from what happened afterwards.
                 say('state', `canInject=${state.canInject ? 1 : 0} ` +
                              `connecting=${state.isConnecting ? 1 : 0} ` +
                              `lastInjectFailed=${state.injectionFailed ? 1 : 0}`);
@@ -429,9 +316,7 @@ const boot = async () => {
                 }
             }
 
-            // A debug attempt that already failed will fail again. Going
-            // straight to the proxy is both faster and the only way this
-            // does not become a relaunch loop.
+            // A debug attempt that already failed will fail again, and retrying loops.
             if (state.injectionFailed) {
                 say('inject', 'skipped, the last attempt failed', 'warn');
                 return useProxy(state, args);
@@ -440,10 +325,7 @@ const boot = async () => {
             if (state.canInject && !state.isConnecting) return useDebugger(state, args);
 
             if (state.canInject && state.isConnecting) {
-                // Another launch of this app is mid-injection. It will replace
-                // this window when it succeeds, so the only thing to do is
-                // wait — but keep waiting, rather than stopping forever as
-                // the previous version did.
+                // Another launch is mid-injection and will replace this window.
                 if (!announcedWait) {
                     say('inject', 'another launch is already connecting, waiting for it', 'note');
                     announcedWait = true;
@@ -460,9 +342,8 @@ const boot = async () => {
     }
 };
 
-// Injection relaunches this app under the debugger, so this window is about
-// to be replaced. Exiting is what makes room for it — and if the relaunch
-// does not happen, the service brings the app back on the proxy path.
+// Injection relaunches this app under the debugger, so exiting makes room for it. If
+// the relaunch never happens the service brings the app back on the proxy path.
 const useDebugger = async (state, args) => {
     say('inject', 'available, developer mode is on', 'ok');
     say('inject', `asking the service to attach on ${state.ip || 'loopback'}`);
@@ -503,18 +384,14 @@ const useProxy = (state, args) => {
     }, 120);
 };
 
-// Everything has failed to answer. The proxy URL is a constant, so it is
-// still worth trying blind — the service may simply be slow rather than dead,
-// and a page that loads late beats an app that never opens.
+// Nothing answered, but the proxy URL is a constant: a page that loads late beats an
+// app that never opens.
 const giveUp = (state, args) => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
 
     if (state && state.proxyUrl) return useProxy(state, args);
 
-    // The proxy URL is a constant even when nothing answered, so this is
-    // still worth trying: the service may be slow rather than dead, and a
-    // page that loads late beats an app that never opens.
     say('proxy', 'no state was ever read; trying the proxy blind', 'warn');
 
     summarise();
@@ -527,7 +404,7 @@ const giveUp = (state, args) => {
     }, 400);
 };
 
-// Leaving with the remote's Return key, at any point during startup.
+// Return key exits at any point during startup.
 document.addEventListener('keydown', (event) => {
     if (onTv && (event.keyCode === 10009 || event.keyCode === 27)) application.exit();
 });

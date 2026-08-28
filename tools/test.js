@@ -16,8 +16,8 @@ ui.heading('test');
 
 let failures = 0;
 
-// Lint first. `node --check` only validates syntax, so an undeclared variable
-// reaches runtime and fails on whichever machine hits that line first.
+// Lint first. `node --check` only validates syntax, so an undeclared variable reaches
+// runtime and fails on whichever machine hits that line first.
 {
     const started = Date.now();
     try {

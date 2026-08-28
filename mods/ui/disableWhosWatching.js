@@ -14,7 +14,7 @@ function disableWhosWatching(value) {
     const shouldPermanentlyEnable = configRead('permanentlyEnableWhoIsWatchingMenu');
     const date = new Date();
     if (!value) {
-        // Setting it after 7 days should be enough, as it'll get executed every time the app launches.
+        // 7 days is enough; this runs on every app launch.
         date.setDate(date.getDate() + 7);
         LeanbackRecurringActions.data.data["startup-screen-account-selector-with-guest"] && 
             (LeanbackRecurringActions.data.data["startup-screen-account-selector-with-guest"].lastFired = date.getTime());

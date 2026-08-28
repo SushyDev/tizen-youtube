@@ -1,11 +1,7 @@
 'use strict';
 
-// Correctness linting only — no style opinions.
-//
-// This exists because `node --check` validates syntax but not references, so a
-// constant that is used and never declared ships happily and fails at runtime,
-// on whichever machine first reaches that line. `no-undef` catches exactly
-// that class of bug in a second.
+// Correctness linting only, no style opinions. `node --check` validates syntax but
+// not references, so an undeclared constant ships happily and fails at runtime.
 
 const NODE_GLOBALS = {
     require: 'readonly',
@@ -66,11 +62,8 @@ const BROWSER_GLOBALS = {
     webapis: 'readonly'
 };
 
-// The two files under tools/ that the Vite build imports directly. They are
-// ES modules because a Vite config is, which makes them the exception to the
-// CommonJS rule everything else in tools/ follows. The .mjs one is loaded by
-// Vite's own config loader, which reads a bare .js under a package.json with
-// no `type` field as CommonJS and warns that it will one day refuse to.
+// Imported directly by the Vite build, so ES modules rather than CommonJS like the
+// rest of tools/. Vite's config loader would otherwise read a bare .js as CommonJS.
 const SHARED_ES_MODULES = ['tools/css-support.js', 'tools/postcss-grid-gap.mjs'];
 
 const CORRECTNESS_RULES = {
@@ -84,8 +77,8 @@ const CORRECTNESS_RULES = {
     'no-func-assign': 'error',
     'no-obj-calls': 'error',
     'no-sparse-arrays': 'error',
-    // Missing a `break` is the exact bug the reference implementation shipped,
-    // where a file install fell through and wiped the signing certificates.
+    // Missing a `break` is the exact bug the reference shipped, where a file install
+    // fell through and wiped the signing certificates.
     'no-fallthrough': 'error',
     'use-isnan': 'error',
     'valid-typeof': 'error',
@@ -150,20 +143,14 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        // The build-time half of the UI workspace: the Vite config, the build
-        // script and the development stand-in for the on-TV service. These sit
-        // inside the UI folder but run in Node, so they get Node's globals —
-        // `Buffer` above all, which the dev service frames WebSockets with.
-        //
-        // Listed after the pages block so it wins for the files it names.
+        // Sits in the UI folder but runs in Node, so it gets Node's globals — `Buffer`
+        // above all. After the pages block, so it wins for the files it names.
         files: [
             'ui/dev/**/*.js',
             'ui/vite.config.js',
             'ui/build.js'
         ],
-        // Except the one file under dev/ that is not build tooling: the dev
-        // remote is browser code, injected into the proxied page, and keeps
-        // the browser globals the block above gives it.
+        // The dev remote is browser code, so it keeps the globals from the block above.
         ignores: ['ui/dev/remote.js'],
         languageOptions: {
             ecmaVersion: 2022,

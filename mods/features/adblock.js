@@ -4,9 +4,8 @@ import { onResponse, onRequest } from '../youtube/json.js';
 import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/customYTSettings.js';
 
-// What each SponsorBlock category is called on the button offering to skip it.
-// The ids come from the API, so an unknown one falls back to the id itself
-// rather than to an empty label.
+// What each SponsorBlock category is called on the skip button. The ids come from
+// the API, so an unknown one falls back to the id itself.
 const SEGMENT_NAMES = {
   sponsor: 'sponsored segment',
   intro: 'intro',
@@ -19,19 +18,10 @@ const SEGMENT_NAMES = {
   poi_highlight: 'highlight'
 };
 
-/**
- * This is a minimal reimplementation of the following uBlock Origin rule:
- * https://github.com/uBlockOrigin/uAssets/blob/3497eebd440f4871830b9b45af0afc406c6eb593/filters/filters.txt#L116
- *
- * This in turn calls the following snippet:
- * https://github.com/gorhill/uBlock/blob/bfdc81e9e400f7b78b2abc97576c3d7bf3a11a0b/assets/resources/scriptlets.js#L365-L470
- *
- * Seems like for now dropping just the adPlacements is enough for YouTube TV
- */
-// The top-level keys that mean "this is a response worth reading". Everything
-// else JSON.parse ever sees is rejected on a single keyed lookup before any of
-// the work below is considered — see youtube/responses.js, which owns the one
-// patch this and every other reader hangs off.
+// A minimal reimplementation of the uBlock Origin rule at
+// https://github.com/uBlockOrigin/uAssets/blob/3497eeb/filters/filters.txt#L116 —
+// dropping adPlacements is enough for YouTube TV. RESPONSE_KEYS are the top-level keys
+// that mean "worth reading"; everything else is rejected on one lookup.
 const RESPONSE_KEYS = [
   'adPlacements', 'adSlots', 'contents', 'continuationContents', 'endscreen',
   'entries', 'frameworkUpdates', 'messages', 'paidContentOverlay',
@@ -48,12 +38,12 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       r.adPlacements = [];
     }
 
-    // Also set playerAds to false, just incase.
+    // playerAds too, just in case.
     if (r.playerAds && adBlockEnabled) {
       r.playerAds = false;
     }
 
-    // Also set adSlots to an empty array, emptying only the adPlacements won't work.
+    // Emptying adPlacements alone is not enough.
     if (r.adSlots && adBlockEnabled) {
       r.adSlots = [];
     }
@@ -134,7 +124,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       PatchSettings(r);
     }
 
-    // DeArrow Implementation. I think this is the best way to do it. (DOM manipulation would be a pain)
+    // DeArrow, done here rather than by DOM manipulation.
 
     if (r?.contents?.sectionListRenderer?.contents) {
       processShelves(r.contents.sectionListRenderer.contents);
@@ -275,11 +265,8 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
   }
 });
 
-// Telling the server this playback is ad-free before it decides what to send.
-//
-// A copy rather than an edit in place: this object is YouTube's, it is reused
-// across requests, and setting the flag on the original changes what a later
-// request means.
+// Telling the server this playback is ad-free before it decides what to send. A copy
+// rather than an edit in place: the object is YouTube's and is reused across requests.
 onRequest('playback context', ['playbackContext'], (value) => {
   const context = value.playbackContext && value.playbackContext.contentPlaybackContext;
   if (!context || context.isInlinePlaybackNoAd) return value;
@@ -290,7 +277,6 @@ onRequest('playback context', ['playbackContext'], (value) => {
     })
   });
 });
-
 
 function processShelves(shelves, shouldAddPreviews = true) {
   for (const shelve of shelves) {
@@ -372,7 +358,6 @@ function deArrowify(items) {
     }
   }
 }
-
 
 function hqify(items) {
   for (const item of items) {

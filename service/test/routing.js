@@ -1,9 +1,8 @@
 'use strict';
 
-// The proxy's catch-all matches every path, so route registration order is
-// load bearing. If it is attached before the service's own endpoints, the app
-// shell polls /__tube/state, gets YouTube's HTML back instead of JSON, and
-// never launches. This pins the order.
+// The proxy's catch-all matches every path, so route registration order is load
+// bearing: attached too early, /__tube/state returns YouTube's HTML instead of JSON
+// and the app never launches. This pins the order.
 
 const http = require('http');
 const express = require('express');

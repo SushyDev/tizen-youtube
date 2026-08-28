@@ -1,10 +1,8 @@
 'use strict';
 
-// End-to-end update check against a real HTTP origin.
-//
-// Covers the guarantee that matters: a bundle whose digest does not match the
-// manifest is never written and never executed, and the previously working
-// script keeps being used.
+// End-to-end update check against a real HTTP origin. Covers the guarantee that
+// matters: a bundle whose digest does not match the manifest is never written and
+// never executed, and the previously working script keeps being used.
 
 const http = require('http');
 const { createHash } = require('crypto');
@@ -41,8 +39,8 @@ const origin = http.createServer((req, res) => {
     res.end('no');
 });
 
-// The loader reads both of these at module load, so a fresh require with
-// the environment set is all a test needs — no source rewriting.
+// The loader reads both of these at module load, so a fresh require with the
+// environment set is all a test needs.
 function loadLoader(cacheDir, originUrl) {
     process.env.TUBE_CACHE_DIR = cacheDir;
     process.env.TUBE_ORIGIN = originUrl;
@@ -53,7 +51,7 @@ function loadLoader(cacheDir, originUrl) {
 origin.listen(0, '127.0.0.1', () => {
     const url = `http://127.0.0.1:${origin.address().port}`;
 
-    // --- happy path -----------------------------------------------------
+    // Happy path.
     const cacheA = mkdtempSync(join(tmpdir(), 'tube-up-'));
     const loaderA = loadLoader(cacheA, url);
 
@@ -69,7 +67,7 @@ origin.listen(0, '127.0.0.1', () => {
         .then((again) => {
             check('re-checking does not re-download an unchanged bundle', again === false, String(again));
 
-            // --- bad digest -------------------------------------------------
+            // Bad digest.
             mode = 'badDigest';
             const cacheB = mkdtempSync(join(tmpdir(), 'tube-bad-'));
             const loaderB = loadLoader(cacheB, url);
@@ -83,7 +81,7 @@ origin.listen(0, '127.0.0.1', () => {
             });
         })
         .then(() => {
-            // --- truncated download ----------------------------------------
+            // Truncated download.
             mode = 'truncated';
             const cacheC = mkdtempSync(join(tmpdir(), 'tube-trunc-'));
             const loaderC = loadLoader(cacheC, url);
@@ -94,7 +92,7 @@ origin.listen(0, '127.0.0.1', () => {
             });
         })
         .then(() => {
-            // --- origin unreachable ----------------------------------------
+            // Origin unreachable.
             const cacheD = mkdtempSync(join(tmpdir(), 'tube-down-'));
             const loaderD = loadLoader(cacheD, 'http://127.0.0.1:1');
             return loaderD.checkForUpdate('7.0').then((updated) => {

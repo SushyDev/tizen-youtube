@@ -1,26 +1,15 @@
-// A television remote, for a desk.
+// A television remote, for a desk. Development only: the service injects this into the
+// proxied page alongside the userscript when `npm run dev` started it (TUBE_DEV_INJECT
+// in service/lib/proxy.js). Nothing under mods/ or service/ imports it.
 //
-// Development only. The service injects this into the proxied page alongside
-// the userscript when `npm run dev` started it — see TUBE_DEV_INJECT in
-// service/lib/proxy.js. Nothing reaches a TV: it is not imported by anything
-// under mods/ or service/, and the service only serves it when the launcher
-// hands it a path.
-//
-// It exists because the interesting keys are not on a keyboard. The settings
-// panel opens on the green button, which is keyCode 404, and no key on a
-// laptop produces that — so without this the panel this app is largely about
-// cannot be opened in a browser at all. The same goes for the coloured keys,
-// the transport keys, and Return, which is how you leave anything.
-//
-// The mapping is one letter per remote button rather than a chord, because
-// the point is to be able to drive the interface with one hand while reading
-// the screen. Letters typed into a real field are left alone.
+// The settings panel opens on keyCode 404, which no laptop key produces. One letter per
+// remote button; letters typed into a real field are left alone.
 
 (function () {
     'use strict';
 
-    // Samsung's TV key codes, as the app sees them. mods/ui/ui.js reads 404
-    // for the panel and mods/ui/speedUI.js reads 406 for the speed control.
+    // Samsung's TV key codes, as the app sees them. mods/ui/ui.js reads 404 for the
+    // panel and mods/ui/speedUI.js reads 406 for the speed control.
     var KEYS = {
         g: { code: 404, what: 'green — additional options' },
         r: { code: 403, what: 'red' },
@@ -36,9 +25,8 @@
         Backspace: { code: 10009, what: 'return' }
     };
 
-    // The app listens for `keydown`, `keypress` and `keyup` on the document,
-    // in the capture phase, and reads `keyCode` — which a constructed event
-    // will not carry, so it is defined on the way past.
+    // The app listens on the document in the capture phase and reads `keyCode`, which
+    // a constructed event does not carry — so it is defined on the way past.
     function press(code) {
         ['keydown', 'keypress', 'keyup'].forEach(function (type) {
             var event;
@@ -57,8 +45,7 @@
         });
     }
 
-    // Anything the user could be typing into is left alone, so the on-screen
-    // keyboard and any real field keep working.
+    // Anything the user could be typing into is left alone.
     function isTyping(target) {
         if (!target) return false;
         var name = (target.tagName || '').toLowerCase();
@@ -77,8 +64,7 @@
         press(mapped.code);
     }, true);
 
-    // So a script — or the devtools console — can press anything at all,
-    // including the keys with no letter above.
+    // So a script or the devtools console can press the keys with no letter above.
     window.tubeRemote = press;
     window.tubeRemote.keys = KEYS;
 

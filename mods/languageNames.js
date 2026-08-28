@@ -1,9 +1,7 @@
-// Human-readable language and region names.
-//
-// Modern Tizen webviews (Chrome 81+, so Tizen 7 and up) ship Intl.DisplayNames
-// and need no data at all. Older ones fall back to a static map fetched from
-// the origin and cached, rather than the 33KB the reference compiled into
-// every bundle for every TV.
+// Human-readable language and region names. Chrome 81+ (Tizen 7 and up) ships
+// Intl.DisplayNames and needs no data. Older webviews fall back to a static map fetched
+// from the origin and cached, rather than the 33KB the reference compiled into every
+// bundle for every TV.
 
 import { assetUrl } from './origin.js';
 
@@ -52,8 +50,8 @@ function primeFallback() {
 
 primeFallback();
 
-// Both accessors stay synchronous and degrade to the code itself, which is
-// what every call site already treats as the miss case.
+// Both accessors stay synchronous and degrade to the code itself, which every call
+// site already treats as the miss case.
 export function displayLanguage(code) {
     if (!code) return code;
 

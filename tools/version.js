@@ -1,12 +1,11 @@
 'use strict';
 
-// Keeps the version in sync across every file that carries one.
+// Keeps the version in sync across every file that carries one. tizen.config.json is
+// the source of truth.
 //
 //   npm run version              show current state, and sync anything adrift
 //   npm run version:check        fail if anything has drifted (used by CI)
 //   npm run version:set 1.2.3    set it everywhere at once
-//
-// tizen.config.json is the source of truth; everything else follows it.
 
 const { readFileSync, writeFileSync } = require('fs');
 const { join } = require('path');
@@ -21,23 +20,19 @@ const PACKAGE_FILES = [
     'ui/package.json'
 ];
 
-// package-lock.json carries the version five times over: once at the top
-// level, and once each for the root package and the three workspaces under
-// "packages". Every other version in it belongs to a dependency, so this one
-// is edited structurally rather than by pattern — a textual replace would
-// rewrite half of npm's registry along with it.
+// package-lock.json carries the version five times: once at the top level and once
+// each for the root package and three workspaces. Edited structurally, because a
+// textual replace would rewrite half of npm's registry along with it.
 const LOCK_FILES = ['package-lock.json'];
 
-// config.xml carries three unrelated version attributes: the XML declaration,
-// the widget version, and required_version. Only the widget's may be touched,
-// so the match is anchored to the <widget> element's own line.
+// config.xml carries three unrelated version attributes, so the match is anchored to
+// the <widget> element's own line.
 const VERSION = /^\d+\.\d+\.\d+$/;
 
 const WIDGET_FILES = ['config.xml'];
 const WIDGET_LINE = /^(\s*<widget\b[^>]*?\bversion=")([^"]*)(")/m;
 
-// A workspace is keyed inside the lockfile by its directory, and the root
-// package by the empty string.
+// A workspace is keyed in the lockfile by its directory, the root package by ''.
 function lockKeys() {
     return PACKAGE_FILES.map((f) => (f === 'package.json' ? '' : f.replace(/\/package\.json$/, '')));
 }
@@ -55,8 +50,7 @@ function readLockVersion(relative) {
     const found = [];
     eachLockVersion(lock, (holder, field) => found.push(holder[field]));
     if (!found.length) return null;
-    // One line reports the whole file, so a disagreement inside it has to read
-    // as one rather than hide behind whichever version happened to come first.
+    // One line reports the whole file, so a disagreement inside it has to read as one.
     return found.filter((v, i) => found.indexOf(v) === i).join(' / ');
 }
 
@@ -64,8 +58,8 @@ function writeLockVersion(relative, version) {
     const path = join(ROOT, relative);
     const lock = JSON.parse(readFileSync(path, 'utf8'));
     eachLockVersion(lock, (holder, field) => { holder[field] = version; });
-    // npm writes this file as two-space JSON with a trailing newline, so
-    // writing it back that way leaves no diff beyond the versions themselves.
+    // npm writes two-space JSON with a trailing newline; matching that leaves no diff
+    // beyond the versions themselves.
     writeFileSync(path, `${JSON.stringify(lock, null, 2)}\n`);
 }
 
@@ -76,7 +70,7 @@ function readPackageVersion(relative) {
 function writePackageVersion(relative, version) {
     const path = join(ROOT, relative);
     const raw = readFileSync(path, 'utf8');
-    // Rewrite the field textually to preserve formatting and key order.
+    // Textual, to preserve formatting and key order.
     const updated = raw.replace(/("version"\s*:\s*")([^"]*)(")/, `$1${version}$3`);
     writeFileSync(path, updated);
 }
@@ -119,8 +113,8 @@ function main() {
     const given = args.filter((a) => a.charAt(0) !== '-');
     const requested = given.filter((a) => VERSION.test(a))[0];
 
-    // `version:set` with nothing usable to set is a typo, and syncing the tree
-    // instead would be a different job done quietly under its name.
+    // `version:set` with nothing usable is a typo, and syncing instead would be a
+    // different job done quietly under its name.
     if (set && !requested) {
         const error = new Error(given.length
             ? `${given[0]} is not a MAJOR.MINOR.PATCH version.\n  Try:  npm run version:set 1.2.3`

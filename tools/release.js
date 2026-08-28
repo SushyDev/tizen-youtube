@@ -1,11 +1,8 @@
 'use strict';
 
-// Stages everything the origin needs to serve, and writes the latest.json
-// manifest the TV checks.
-//
-// Versioned paths are immutable, so they can be cached at the edge forever.
-// Only latest.json is mutable, and it carries the digest that lets a TV refuse
-// a bundle that does not match.
+// Stages everything the origin serves and writes the latest.json manifest the TV
+// checks. Versioned paths are immutable and cacheable forever; only latest.json is
+// mutable, and it carries the digest that lets a TV refuse a mismatched bundle.
 
 const { createHash } = require('crypto');
 const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, rmSync } = require('fs');
@@ -14,8 +11,8 @@ const { join } = require('path');
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
 
-// A release that still points at a placeholder host produces an app that
-// silently never updates, so this refuses to stage one.
+// A release still pointing at a placeholder host produces an app that silently never
+// updates.
 let config;
 try {
     config = load({ requireReal: true });
@@ -26,9 +23,8 @@ try {
 const distDir = join(ROOT, 'dist');
 const assetsDir = join(ROOT, 'assets');
 
-// Beside the .wgt rather than over it: `package` writes release/tube.wgt, and
-// staging used to be the whole of release/, so running the two in the wrong
-// order deleted the package that had just been signed.
+// Beside the .wgt rather than over it: `package` writes release/tube.wgt, and staging
+// used to be the whole of release/, so the wrong order deleted the signed package.
 const outDir = join(ROOT, 'release', 'origin');
 
 const version = config.version;
@@ -50,11 +46,10 @@ function bundlePath(variant) {
     return join(distDir, `userScript.${variant}.js`);
 }
 
-// Versioned asset paths are served immutable, so a given version can only ever
-// be published once. Republishing the same version with different content is a
-// silent, permanent update failure: latest.json (short cache) advertises the
-// new digest, but the edge keeps serving the old bundle at that path, so every
-// TV downloads it, fails the digest check, and gives up — forever.
+// Versioned asset paths are immutable, so a version can only be published once.
+// Republishing one with different content is a silent, permanent update failure:
+// latest.json advertises the new digest while the edge keeps serving the old bundle,
+// so every TV downloads it, fails the digest check, and gives up forever.
 async function preflight() {
     let published;
 
@@ -100,7 +95,7 @@ function stage() {
     const versionDir = join(outDir, version);
     ensure(versionDir);
 
-    // --- userscript bundles ---------------------------------------------
+    // Userscript bundles.
     const bundles = {};
     VARIANTS.forEach((variant) => {
         const file = bundlePath(variant);
@@ -120,14 +115,14 @@ function stage() {
         ui.ok(variant, `${ui.bytes(buffer.length)} · ${bundles[variant].sha256.slice(0, 16)}`);
     });
 
-    // --- display-name fallback for webviews without Intl.DisplayNames ----
+    // Display-name fallback for webviews without Intl.DisplayNames.
     const namesFile = join(assetsDir, 'language-names.json');
     if (existsSync(namesFile)) {
         copyFileSync(namesFile, join(versionDir, 'language-names.json'));
         ui.ok('language names', ui.bytes(readFileSync(namesFile).length));
     }
 
-    // --- the one mutable file --------------------------------------------
+    // The one mutable file.
     const manifest = {
         version,
         origin: config.origin,

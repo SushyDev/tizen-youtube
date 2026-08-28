@@ -1,37 +1,28 @@
 'use strict';
 
-// Resolves the userscript to inject.
-//
-// The reference fetched it from jsDelivr on every launch and, when that
-// failed, injected `alert("Failed to request to JSDelivr CDN.")` — so a CDN
-// blip meant a broken app. Here a copy ships inside the .wgt, so the first
-// launch never touches the network at all. Updates are checked in the
-// background, verified by digest before they are ever trusted, and only then
-// do they take precedence. The network is never on the critical path.
+// Resolves the userscript to inject. A copy ships inside the .wgt, so the first
+// launch never touches the network. Updates are checked in the background, verified
+// by digest, and only then take precedence — the network is never on the critical path.
 
 const { createHash } = require('crypto');
 const { readFileSync, writeFileSync, existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 const fetch = require('node-fetch');
 
-// Baked in at build time from tizen.config.json so the TV never depends on an
-// environment variable. TUBE_ORIGIN still overrides, which is how the tests
-// and off-TV development point this at a local server.
+// Baked in at build time from tizen.config.json so the TV never depends on an env
+// var. TUBE_ORIGIN still overrides, for tests and off-TV development.
 const ORIGIN = process.env.TUBE_ORIGIN || '__TUBE_ORIGIN__';
-// On a TV this is the app's own data directory. Overridable so tests and
-// off-TV runs never touch real state.
+// On a TV this is the app's own data directory. Overridable so tests never touch it.
 const CACHE_DIR = process.env.TUBE_CACHE_DIR || '/home/owner/share/tube';
 const META_PATH = join(CACHE_DIR, 'update.json');
 const FETCH_TIMEOUT = 8000;
 const MAX_SCRIPT_BYTES = 4 * 1024 * 1024;
 
-// Bundled alongside the service by the build. In the packaged app the ncc
-// bundle and its assets sit together in dist/; running from source, assets/
-// is one level up. Checked in that order so the packaged layout wins.
+// In the packaged app the ncc bundle and its assets sit together in dist/; running
+// from source, assets/ is one level up. Checked in that order so packaged wins.
 const BUNDLED_DIRS = [
-    // Development only: where `npm run dev` has rollup writing the bundles, so
-    // an edit under mods/ is picked up by the next page load without a service
-    // build in between. Unset everywhere else, including on a TV.
+    // Development only: where `npm run dev` has rollup writing the bundles, so an edit
+    // under mods/ is picked up by the next page load. Unset everywhere else.
     process.env.TUBE_BUNDLE_DIR,
     join(__dirname, 'assets'),          // packaged: dist/index.js + dist/assets
     join(__dirname, '..', 'dist', 'assets'), // running from source, after a build
@@ -87,9 +78,8 @@ function writeMeta(meta) {
     }
 }
 
-// Returns the script source to inject, preferring a verified cached update
-// over the bundled copy. Never throws: a broken cache falls back to what
-// shipped in the package.
+// Prefers a verified cached update over the bundled copy. Never throws: a broken
+// cache falls back to what shipped in the package.
 function resolve(platformVersion) {
     const variant = variantFor(platformVersion);
     const meta = readMeta();
@@ -98,8 +88,8 @@ function resolve(platformVersion) {
     if (meta[variant] && meta[variant].sha256 && existsSync(cached)) {
         try {
             const source = readFileSync(cached);
-            // Re-verify on every read: a cached file could have been truncated
-            // by a power cut between write and use.
+            // Re-verify on every read: a cached file could have been truncated by a
+            // power cut between write and use.
             if (sha256(source) === meta[variant].sha256) {
                 return { source: source.toString('utf8'), variant, version: meta[variant].version, origin: 'cache' };
             }
@@ -116,9 +106,8 @@ function resolve(platformVersion) {
     return { source: readFileSync(bundled, 'utf8'), variant, version: 'bundled', origin: 'bundled' };
 }
 
-// Background update check. Resolves to true only when a new, digest-verified
-// script was written; every failure path resolves false and leaves the
-// currently working script in place.
+// Background update check. Resolves true only when a new digest-verified script was
+// written; every failure path resolves false and leaves the working script in place.
 function checkForUpdate(platformVersion) {
     const variant = variantFor(platformVersion);
 

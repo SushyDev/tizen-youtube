@@ -1,11 +1,8 @@
 import { SettingActionRenderer, SettingsCategory } from './ytUI.js';
 
-// The way into this app's settings, planted in YouTube's own settings page.
-//
-// It sits at the top as its own category, worded the way a television's own
-// menu would word it. Someone who has never heard of a modification finds a
-// row called "Additional options" and it behaves like every other row on
-// that page — which is the whole idea.
+// The way into this app's settings, planted at the top of YouTube's own settings page
+// as its own category. Someone who has never heard of a modification finds a row
+// called "Additional options" that behaves like every other row on the page.
 
 function PatchSettings(settingsObject) {
     const openSettings = SettingActionRenderer(

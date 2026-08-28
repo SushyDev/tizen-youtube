@@ -1,12 +1,9 @@
 'use strict';
 
-// Verifies the built bundle only uses syntax Tizen 3's Node v4.4.3 can parse.
-//
-// Node 4 is not ES5: it already has arrow functions, classes, template
-// literals, generators and let/const. What it lacks is destructuring, default
-// and rest parameters, spread in calls and literals, async/await, and the
-// exponent operator. Grepping cannot tell those apart from string contents, so
-// this walks the AST instead.
+// Verifies the built bundle only uses syntax Tizen 3's Node v4.4.3 can parse. Node 4 is
+// not ES5 — it has arrow functions, classes, template literals and let/const — but it
+// lacks destructuring, default and rest parameters, spread, async/await and `**`.
+// Grepping cannot tell those from string contents, so this walks the AST.
 
 const acorn = require('acorn');
 const { readFileSync } = require('fs');

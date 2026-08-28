@@ -1,14 +1,8 @@
 'use strict';
 
-// One command to build the app.
-//
-//   npm run build
-//
-// Three parts: the boot screen the television shows while it starts, the two
-// userscript bundles injected into YouTube, and the service that serves and
-// injects them. Sub-build output is captured and shown only when something
-// fails, so a successful build is a short, readable summary rather than a wall
-// of log.
+// One command to build the app: the boot screen, the two userscript bundles, and the
+// service that serves and injects them. Sub-build output is captured and shown only on
+// failure, so a successful build is a short summary rather than a wall of log.
 
 const { execFileSync } = require('child_process');
 const { existsSync, statSync } = require('fs');
@@ -39,9 +33,8 @@ const STEPS = [
     }
 ];
 
-// npm wraps every failure in its own lifecycle boilerplate, which says
-// nothing the underlying tool has not already said. Strip it so the actual
-// compiler error is what a person reads first.
+// npm wraps every failure in lifecycle boilerplate that says nothing the underlying
+// tool has not. Strip it so the compiler error is what a person reads first.
 function cleanOutput(raw) {
     const lines = String(raw).split('\n');
     const kept = [];

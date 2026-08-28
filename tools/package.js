@@ -1,25 +1,12 @@
 'use strict';
 
-// Packages the .wgt, signed or not.
+// Packages the .wgt, signed or not. Always builds first.
 //
 //   npm run package                signed for this machine's television
 //   npm run package -- --unsigned  signed by nobody, for Tizen Homebrew
 //
-// Both are useful, and which one is right depends entirely on where the
-// package is going. A signature names the television it may be installed on —
-// Tizen puts the device id inside the distributor certificate and enforces it
-// from Tizen 7 — so a signed build installs on its builder's set and nowhere
-// else. That is what you want for `sdb install` on your own TV, and exactly
-// what you do not want to attach to a release: it would be a package nobody
-// else can install.
-//
-// Tizen Homebrew re-signs whatever it installs with the pair the television
-// holds, and an unsigned package is one of the shapes it accepts, so an
-// unsigned .wgt is the one that installs anywhere. A TV will not take it
-// directly.
-//
-// Always builds first: packaging stale output is the kind of mistake that
-// costs an hour of confused debugging on the TV.
+// A signature names the television it may be installed on, and Tizen Homebrew re-signs
+// what it installs — so the unsigned .wgt installs anywhere, and a TV refuses it over sdb.
 
 const { execFileSync } = require('child_process');
 const { existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSync, writeFileSync } = require('fs');
@@ -31,12 +18,8 @@ const { load, ROOT } = require('./config.js');
 const { which } = require('./which.js');
 const certificates = require('./certificates.js');
 
-// What actually goes into the .wgt, named explicitly.
-//
 // tizenjs's --ignore matches basenames only, so it cannot express "keep
-// service/dist/index.js but drop service/index.js". Staging an allowlist
-// instead makes the package contents exact and auditable: nothing ships
-// unless it is listed here.
+// service/dist/index.js but drop service/index.js". Nothing ships unless listed here.
 const APP = {
     output: 'release/tube.wgt',
     include: [
@@ -44,8 +27,8 @@ const APP = {
         'icon.png',
         // The boot screen. config.xml points at ui/dist/index.html.
         'ui/dist',
-        // The service, with both userscript bundles under dist/assets — which
-        // is what makes a first launch work with no network at all.
+        // Both userscript bundles sit under dist/assets, which is what makes a first
+        // launch work with no network at all.
         'service/dist'
     ]
 };
@@ -74,19 +57,11 @@ function checkPrerequisites() {
         );
     }
 
-    // The distributor half matters as much as the author half, and it is the
-    // one that is easy to get wrong. Left to itself tizenjs falls back to the
-    // stock Tizen public distributor signer: a Tizen Test CA certificate that
-    // expired in October 2022, and that a retail Samsung TV never trusted in
-    // the first place. Packages signed with it build fine and are refused at
-    // install with
-    //
-    //   install failed[118, -12] Invalid certificate chain with certificate
-    //   in signature
-    //
-    // which says nothing about which of the two signatures is at fault.
-    // Samsung mints both halves together, bound to the TV's DUID, so the
-    // distributor p12 normally sits beside the author one.
+    // Left to itself tizenjs signs with the stock Tizen public distributor certificate,
+    // which expired in October 2022 and no retail Samsung TV ever trusted. Packages
+    // signed with it are refused at install with `install failed[118, -12] Invalid
+    // certificate chain`, which says nothing about which signature is at fault. Samsung
+    // mints both halves together, so the distributor p12 sits beside the author one.
     return {
         p12: found.author,
         password: found.password,
@@ -96,8 +71,7 @@ function checkPrerequisites() {
     };
 }
 
-// Copies the allowlist into an empty directory, which is the package as it
-// will be read — by tizenjs, or by the zip below.
+// Copies the allowlist into an empty directory: the package as it will be read.
 function stageContents(staging) {
     APP.include.forEach((entry) => {
         const from = join(ROOT, entry);
@@ -130,11 +104,8 @@ function signWith(certificate, staging, outPath) {
     }
 }
 
-// A .wgt is a zip, and the only thing tizenjs adds beyond one is the pair of
-// signature files. So this is that same zip without them: the same library
-// tizenjs uses, the same options, the same walk over the staged directory —
-// which leaves an unsigned package differing from a signed one in exactly two
-// entries, rather than in ways nobody has looked at.
+// A .wgt is a zip and the only thing tizenjs adds is the pair of signature files. Same
+// library, same options, same walk, so the two packages differ in exactly two entries.
 async function zipUnsigned(staging, outPath) {
     const zip = new JSZip();
 
@@ -142,8 +113,7 @@ async function zipUnsigned(staging, outPath) {
         readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
             const path = join(directory, entry.name);
             if (entry.isDirectory()) return add(path);
-            // config.xml has to sit at the package root, so paths are stored
-            // relative to it, and with the separator a zip is specified in.
+            // config.xml has to sit at the package root, and a zip specifies '/'.
             zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
         });
     })(staging);
@@ -151,8 +121,7 @@ async function zipUnsigned(staging, outPath) {
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-// The certificate is null for an unsigned package, which is the only
-// difference between the two paths after staging.
+// The certificate is null for an unsigned package, the only difference after staging.
 async function packageApp(certificate) {
     const staging = join(ROOT, '.package');
     const outPath = join(ROOT, APP.output);
@@ -180,18 +149,15 @@ async function packageApp(certificate) {
 async function main() {
     const unsigned = process.argv.indexOf('--unsigned') !== -1;
 
-    // A release build refuses a placeholder origin. The origin is baked into
-    // the package and every TV that installs it, so shipping the example host
-    // produces an app that can never be updated over the air.
+    // A release build refuses a placeholder origin: it is baked into every TV that
+    // installs the package, so the example host means no OTA updates ever.
     const release = process.argv.indexOf('--release') !== -1;
 
     const config = load({ requireReal: release });
 
-    // Asked for before the build, so a missing certificate costs a second
-    // rather than the whole of it.
+    // Before the build, so a missing certificate costs a second rather than the whole build.
     const certificate = unsigned ? null : checkPrerequisites();
 
-    // Build first so the package can never contain stale bundles.
     ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);
     ui.note(ui.style.dim('  building first...'));
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });

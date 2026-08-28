@@ -26,8 +26,8 @@
 
     <tizen:profile name="tv-samsung"/>
 
-    <!-- The id suffix must match what index.html launches and what
-         injector.js/dial.js derive from the package id. -->
+    <!-- The id suffix must match what index.html launches and what injector.js and
+         dial.js derive from the package id. -->
     <tizen:service id="tUb3Xq7Lm9.TubeService">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>

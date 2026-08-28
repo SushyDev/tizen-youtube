@@ -1,11 +1,8 @@
 'use strict';
 
-// Locates an executable, checking the repository's own node_modules/.bin
-// before PATH.
-//
-// tizenjs ships as a dependency (the `tizen` package), so packaging needs no
-// global install. Anything run through `npm run` already has that directory on
-// PATH, but the tools are also runnable directly with node, where it is not.
+// Locates an executable, checking node_modules/.bin before PATH. tizenjs ships as a
+// dependency, so packaging needs no global install — but `npm run` puts that directory
+// on PATH and running the tools directly with node does not.
 
 const { accessSync, constants } = require('fs');
 const { join, delimiter } = require('path');

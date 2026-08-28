@@ -11,12 +11,9 @@ import { load } from '../tools/config.js';
 const config = load();
 const version = config.version;
 
-// Two bundles from one source.
-//
-// Legacy support in a browser bundle is not free the way it is in a Node
-// service: core-js, the fetch polyfill and ES5 downlevelling are parsed and
-// executed on every single launch. Shipping them only to the TVs that need
-// them is what keeps broad support from costing modern TVs anything.
+// Two bundles from one source. Legacy support in a browser bundle is not free the way
+// it is in a Node service: core-js, the fetch polyfill and ES5 downlevelling are parsed
+// and executed on every launch, so only the TVs that need them get them.
 function bundle({ name, input, target, ecma }) {
     return {
         input,
@@ -47,8 +44,7 @@ function bundle({ name, input, target, ecma }) {
                 presets: [['@babel/preset-env', { targets: target }]]
             }),
             terser({ ecma, mangle: true }),
-            // Restores the NUL byte that has to be carried as a sentinel
-            // through the string plugin.
+            // Restores the NUL byte carried as a sentinel through the string plugin.
             replace({
                 preventAssignment: false,
                 delimiters: ['', ''],

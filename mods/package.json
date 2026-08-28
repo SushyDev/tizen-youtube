@@ -1,6 +1,6 @@
 {
   "name": "@tube/mods",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "The userscript injected into YouTube on the TV.",
   "main": "index.js",
   "type": "module",

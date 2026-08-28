@@ -1,6 +1,6 @@
 {
   "name": "tizen-youtube",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": true,
   "description": "Standalone ad-free YouTube for Samsung Tizen TVs.",
   "license": "GPL-3.0-only",
@@ -28,7 +28,8 @@
     "dev:service": "node service/index.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
-    "version:check": "node tools/version.js --check"
+    "version:check": "node tools/version.js --check",
+    "version:set": "node tools/version.js --set"
   },
   "devDependencies": {
     "eslint": "^10.9.1",

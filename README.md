@@ -60,7 +60,7 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run dev` | The whole app in a browser, no hardware needed |
 | `npm run dev:boot` | Just the boot screen, held on screen so it can be looked at |
 | `npm run dev:service` | The service off-TV, on `:8099` |
-| `npm run version -- 1.2.0` | Set the version everywhere it is written |
+| `npm run version:set 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
 
 ---
@@ -181,10 +181,10 @@ refuses assets from then on, and it fires no workflow event when a draft is
 saved, so this has to be the thing that opens the draft rather than something
 that joins one made by hand. Exactly one `.wgt` per release, which matters:
 Homebrew's catalogue takes the first package asset it finds. Tag and version
-have to agree — `npm run version -- 1.2.0` sets it everywhere. Set
-`TUBE_ORIGIN` as a repository **variable** to stage the origin bundles too;
-without it the release still builds, and the app simply never updates itself
-between releases.
+have to agree — `npm run version:set 1.2.0` sets it everywhere at once, the
+lockfile included. Set `TUBE_ORIGIN` as a repository **variable** to stage the
+origin bundles too; without it the release still builds, and the app simply
+never updates itself between releases.
 
 ---
 

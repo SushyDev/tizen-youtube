@@ -21,7 +21,7 @@
 #
 # So a release is made by pushing its tag:
 #
-#   npm run version -- 1.2.0     # and commit
+#   npm run version:set 1.2.0    # and commit
 #   git tag v1.2.0 && git push origin v1.2.0
 #
 # which lands a draft carrying the .wgt. Write the notes, press Publish.
@@ -76,11 +76,14 @@ jobs:
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
+          # A prerelease suffix is the tag's business alone: tizen.config.json
+          # holds a bare MAJOR.MINOR.PATCH, so v1.2.0-rc1 is compared as 1.2.0.
           tagged="${GITHUB_REF_NAME#v}"
+          tagged="${tagged%%-*}"
           declared="$(node -p "require('./tizen.config.json').version")"
           if [ "$tagged" != "$declared" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match tizen.config.json, which says $declared."
-            echo "Run 'npm run version -- $tagged', commit, and re-tag."
+            echo "Run 'npm run version:set $tagged', commit, and re-tag."
             exit 1
           fi
 

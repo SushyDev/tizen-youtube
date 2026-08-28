@@ -87,7 +87,7 @@ async function preflight() {
             `(${changed.join(', ')}).\n\n` +
             `  Versioned paths are cached as immutable, so republishing ${version}\n` +
             '  would leave every TV permanently stuck on the old bundle.\n\n' +
-            '  Bump the version first:  npm run version -- <next>'
+            '  Bump the version first:  npm run version:set <next>'
         );
     }
 

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.js",
-    "dev": "vite"
+    "dev": "vite",
+    "dev:boot": "TUBE_BOOT=scenarios vite"
   },
   "devDependencies": {
     "postcss": "^8.5.26",

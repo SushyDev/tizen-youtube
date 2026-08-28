@@ -17,12 +17,16 @@ const dial = require('./lib/dial.js');
 
 // Off-TV the proxy, loader and rewrite rules all still work; only DIAL and
 // debugger injection need the platform. Running headless like this is what
-// `npm run dev:tube` uses.
+// `npm run dev` and `npm run dev:service` use.
 const isTV = typeof tizen !== 'undefined';
 
+// Off-TV there is no platform to ask, so the variant would always come out
+// `legacy` — the one a desktop browser is least like. TUBE_PLATFORM_VERSION
+// says which television to pretend to be, which is how both bundles get
+// exercised off hardware. Unset on a TV, where the real answer is available.
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
-    : null;
+    : (process.env.TUBE_PLATFORM_VERSION || null);
 
 const app = proxy.create(platformVersion);
 
@@ -108,7 +112,12 @@ app.get('/__tube/state', (_, res) => {
             platformVersion,
             variant: loader.variantFor(platformVersion),
             script,
-            proxyUrl: `http://localhost:${ports.PROXY}/tv?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
+
+            // DIAL only runs on a TV, so off one the client is pointed at a
+            // cast endpoint that would never answer. Better to have none.
+            proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
+                ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
+                : '')
         });
     });
 });

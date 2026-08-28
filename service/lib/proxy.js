@@ -12,12 +12,31 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const URL = require('url');
+const { readFileSync } = require('fs');
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
 
 const PROXY_PREFIX = `http://localhost:${ports.PROXY}/cors-bypass/`;
 const LOCAL_ORIGIN = `http://localhost:${ports.PROXY}`;
+
+// Development only, and empty on a television.
+//
+// youtube.com/tv decides from the user agent whether the caller is a TV. A
+// desktop browser gets a "you are being redirected to youtube.com" page
+// instead of the client, so off-TV there is nothing to develop against. With
+// TUBE_DEV_UA set, the proxy presents itself upstream as the television and
+// tells the page to say the same thing about itself — the app reads
+// navigator.userAgent too, and a page served as a TV but reporting a desktop
+// browser is a shape neither side expects. Nothing sets this on a TV, where
+// the webview's own user agent is already the right one.
+const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
+
+// Development only, and empty on a television. A path to one more script to
+// put into the page after the userscript — `npm run dev` points it at
+// ui/dev/remote.js, which puts the remote's keys on a keyboard. Served from
+// disk on every request so editing it needs no restart.
+const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
 // Responses of these types are rewritten as text; everything else is streamed
 // straight through so video bytes are never buffered.
@@ -30,10 +49,27 @@ const STRIPPED_HEADERS = [
     'content-security-policy', 'alt-svc'
 ];
 
+// Makes the page agree with the request that fetched it. Development only:
+// see DEV_USER_AGENT. First thing in the head, because the client reads the
+// user agent while deciding what kind of device it is running on, and that
+// happens in its very first script.
+function spoofUserAgent(text) {
+    const shim = '<script>try{Object.defineProperty(navigator,"userAgent",' +
+        `{get:function(){return ${JSON.stringify(DEV_USER_AGENT)};},configurable:true});` +
+        '}catch(e){}</script>';
+
+    // No <head> to open means an unexpected shape; leaving it alone is safer
+    // than guessing where the first script is.
+    return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
+}
+
 function rewriteBody(text, url) {
     // Inject the userscript into the TV app shell only, not into every page.
     if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1) {
+        if (DEV_USER_AGENT) text = spoofUserAgent(text);
         text += `<script src="${LOCAL_ORIGIN}/__tube/userScript.js?v=${Date.now()}"></script>`;
+        // After the userscript, so it can drive what the userscript installed.
+        if (DEV_INJECT_PATH) text += `<script src="${LOCAL_ORIGIN}/__tube/dev.js?v=${Date.now()}"></script>`;
     }
 
     // Media and static hosts: routed through the bypass so the page's own
@@ -132,6 +168,19 @@ function create(platformVersion) {
         }
     });
 
+    // Development only: see DEV_INJECT_PATH. Not registered at all without it,
+    // so a packaged service has no such route.
+    if (DEV_INJECT_PATH) {
+        app.get('/__tube/dev.js', (_, res) => {
+            try {
+                res.type('application/javascript').send(readFileSync(DEV_INJECT_PATH, 'utf8'));
+            } catch (e) {
+                res.status(500).type('application/javascript')
+                    .send(`console.error(${JSON.stringify(`tube: could not read ${DEV_INJECT_PATH} - ${e.message}`)});`);
+            }
+        });
+    }
+
     return app;
 }
 
@@ -162,6 +211,7 @@ function attachFallback(app) {
 
         headers.origin = 'https://www.youtube.com';
         if (headers.referer) headers.referer = 'https://www.youtube.com/tv';
+        if (DEV_USER_AGENT) headers['user-agent'] = DEV_USER_AGENT;
         // Brotli is not decoded downstream, so ask for encodings we can rewrite.
         headers['accept-encoding'] = 'gzip, deflate';
 

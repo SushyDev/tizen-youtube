@@ -57,7 +57,8 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run package` | Build and sign a `.wgt` for your own television |
 | `npm run package -- --unsigned` | The same package, signed by nobody — what a release carries |
 | `npm run release` | Stage `release/origin/` — the bundles and `latest.json` |
-| `npm run dev` | The boot screen in a browser, no hardware needed |
+| `npm run dev` | The whole app in a browser, no hardware needed |
+| `npm run dev:boot` | Just the boot screen, held on screen so it can be looked at |
 | `npm run dev:service` | The service off-TV, on `:8099` |
 | `npm run version -- 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
@@ -118,14 +119,38 @@ to develop and package against.
 ## Working on it
 
 ```sh
-npm run dev          # the boot screen in a browser
+npm run dev          # the whole app in a browser
+npm run dev:boot     # just the boot screen, held on screen
 npm run dev:service  # the proxy, rewrite table and loader, headless on :8099
 npm test
 ```
 
+`npm run dev` runs the real service beside Vite, and the boot screen hands over
+to it exactly as it would on a television — so what opens is youtube.com's own
+TV client, through the real proxy, with the real userscript in it. Every
+feature is reachable, video included. Editing anything under `mods/` rebuilds
+the bundle in about half a second; reload the page and it is running.
+
+Three things are arranged for that to work off hardware, all of them
+environment variables that nothing in a build sets:
+
+| | |
+| --- | --- |
+| `TUBE_DEV_UA` | youtube.com/tv serves a redirect notice to anything that is not a television, so the proxy presents itself as one — upstream, and to the page |
+| `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
+| `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. The settings panel opens on the green button, which is keyCode 404 and on no keyboard — this puts the remote's keys on one. `g` opens Additional options, `Escape` is Return, and `tubeRemote(code)` presses anything else |
+
 Only DIAL discovery and debugger injection need real hardware, and those report
 clearly instead of crashing. Point the dev server at a set with
 `TUBE_TV=192.168.2.9 npm run dev`.
+
+`npm run dev:boot` is the other half: the boot screen exists to disappear, so
+looking at it needs a stand-in that answers and never hands over. That is
+`ui/dev/service.js`, and each state `boot.js` can meet is a query string —
+`?boot=debugger`, `?boot=failed`, `?boot=slow`, `?boot=script`.
+
+The service binds `:8099` either way, so `npm test` and `npm run dev` cannot
+run at the same time; the test suite says so rather than failing obscurely.
 
 | Path | |
 | --- | --- |
@@ -138,6 +163,7 @@ clearly instead of crashing. Point the dev server at a set with
 | `service/lib/loader.js` | Which bundle a TV gets, and from where |
 | `service/lib/ports.js` | 8099 proxy, 8095 DIAL, 26101 sdb, 8001 Smart View |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
+| `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 
 Two platform floors are easy to trip and the build enforces both: the boot
 screen against Chromium 63, which drops CSS it cannot parse *silently*, and the

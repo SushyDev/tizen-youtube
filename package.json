@@ -24,6 +24,7 @@
     "package": "node tools/package.js",
     "release": "node tools/release.js",
     "dev": "npm run dev --workspace ui",
+    "dev:boot": "npm run dev:boot --workspace ui",
     "dev:service": "node service/index.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",

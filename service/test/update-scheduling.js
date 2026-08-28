@@ -6,6 +6,7 @@
 // the debounce window do not hammer the origin.
 
 const http = require('http');
+const net = require('net');
 const { mkdtempSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
@@ -47,8 +48,29 @@ function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-origin.listen(0, '127.0.0.1', () => {
+// This spawns the real service, which binds the real port, so it cannot share
+// a machine with a running `npm run dev`. Without this the service would fail
+// to bind, every request here would be answered by the *other* service, and
+// the failure would read as "a launch triggers no update check" — which is
+// true and says nothing about the code.
+function proxyPortIsFree() {
+    return new Promise((resolve) => {
+        const probe = net.createServer();
+        probe.once('error', () => resolve(false));
+        probe.once('listening', () => probe.close(() => resolve(true)));
+        probe.listen(8099, '127.0.0.1');
+    });
+}
+
+origin.listen(0, '127.0.0.1', async () => {
     const originUrl = `http://127.0.0.1:${origin.address().port}`;
+
+    if (!await proxyPortIsFree()) {
+        console.error('Something is already listening on 127.0.0.1:8099.');
+        console.error('This suite starts the service on that port; stop `npm run dev` and run it again.');
+        origin.close();
+        process.exit(1);
+    }
 
     const service = spawn(process.execPath, [join(__dirname, '..', 'index.js')], {
         env: Object.assign({}, process.env, {

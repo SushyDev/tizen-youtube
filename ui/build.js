@@ -1,8 +1,6 @@
-// Building the boot screen, then proving the television can render it.
-//
-// The check is not optional here. This page is the app's start page: if its
-// stylesheet is dropped, what someone sees when they open YouTube is a wall
-// of unstyled black-on-white log lines.
+// Builds the boot screen, then proves the television can render it. This page is the
+// app's start page: if its stylesheet is dropped, opening YouTube shows a wall of
+// unstyled black-on-white log lines.
 
 import { readFileSync } from 'fs';
 import { build } from 'vite';

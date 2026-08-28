@@ -1,9 +1,7 @@
 'use strict';
 
-// Consistent terminal output for the build tools.
-//
-// Colour is disabled when NO_COLOR is set, when stdout is not a TTY (so CI
-// logs and piped output stay clean), or when TERM says dumb.
+// Consistent terminal output for the build tools. Colour is disabled when NO_COLOR is
+// set, when stdout is not a TTY, or when TERM says dumb.
 
 const ESC = String.fromCharCode(27);
 

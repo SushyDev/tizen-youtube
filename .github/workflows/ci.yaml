@@ -1,10 +1,7 @@
 # Everything that can be checked without a television.
 #
-# The build is here for one reason above the others: `ui/build.js` reads its own
-# output back and refuses CSS a Tizen webview would silently drop, and
-# `service/build/check-node4.js` refuses syntax Tizen 3's Node cannot parse.
-# Both checks are worth nothing if they only run on the machine of whoever
-# remembers.
+# The build matters here: ui/build.js refuses CSS a Tizen webview would silently
+# drop, and service/build/check-node4.js refuses syntax Tizen 3's Node cannot parse.
 
 name: CI
 
@@ -35,8 +32,7 @@ jobs:
       - name: Versions agree
         run: npm run version:check
 
-      # The placeholder origin in tizen.config.json is fine here: both bundles
-      # ship inside the .wgt, so a development build needs no origin at all.
+      # The placeholder origin is fine here: both bundles ship inside the .wgt.
       # Only `release` and `package --release` refuse it.
       - name: Build
         run: npm run build

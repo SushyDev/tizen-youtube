@@ -1,42 +1,19 @@
 # Builds the widget and opens a draft release for the tag that triggered it.
 #
-# The widget is deliberately **unsigned**, and that is what makes it worth
-# publishing. A Tizen signature names the television it may be installed on —
-# the device id sits inside the distributor certificate, and sets enforce it
-# from Tizen 7 — so a signed build installs on its builder's TV and nowhere
-# else. Attaching one here would be attaching a file only one person can use.
-#
-# Tizen Homebrew re-signs whatever it installs with the pair the television
-# holds, and a package that was never signed is one of the shapes it accepts.
-# So this needs no certificates, no secrets, and produces the one artefact
-# anybody can install.
-#
-# A tag push is the trigger, and what it opens is a *draft*, because GitHub
-# freezes a release the moment it is published: assets may only be added while
-# it is still a draft, and an upload afterwards is refused outright. Nor can
-# this wait for a draft somebody else saved and join it — no workflow event
-# fires when one is saved, `created`, `edited` and `deleted` all being
-# documented as silent for drafts. Being the one that opens the draft is the
-# only arrangement in which there is a moment to attach anything at all.
-#
-# So a release is made by pushing its tag:
-#
 #   npm run version:set 1.2.0    # and commit
 #   git tag v1.2.0 && git push origin v1.2.0
 #
-# which lands a draft carrying the .wgt. Write the notes, press Publish.
-# Creating the release by hand in the web interface instead publishes it on
-# the spot, and there is then no point at which the widget can be added.
+# The widget is unsigned on purpose: a Tizen signature names the television it may be
+# installed on, and Tizen Homebrew re-signs whatever it installs.
 #
-# Exactly one .wgt is attached, and that is load bearing: Tizen Homebrew's
-# catalogue resolves a GitHub entry to the first package asset it finds, so a
-# release carrying two would install whichever GitHub happens to list first.
+# It must be a *draft* — GitHub refuses asset uploads once a release is published, and
+# no workflow event fires when someone saves a draft by hand.
 #
-# One optional variable, under Settings → Secrets and variables → Actions:
+# Exactly one .wgt is attached: Tizen Homebrew resolves a GitHub entry to the first
+# package asset it finds.
 #
-#   TUBE_ORIGIN   where the TV checks for a newer userscript. Without it the
-#                 app still works — both bundles ship inside the package — it
-#                 simply never updates itself between releases.
+# Optional repo variable TUBE_ORIGIN sets where the TV checks for a newer userscript.
+# Without it the app works but never updates itself between releases.
 
 name: Release
 
@@ -57,8 +34,6 @@ jobs:
       TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
 
     steps:
-      # A tag push checks out the tagged commit, which is the source of the
-      # release being drafted.
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -69,15 +44,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      # The tag names a version and tizen.config.json names one too, and it is
-      # the second that ends up inside the package and in latest.json. A release
-      # tagged v1.2.0 whose widget reports 1.1.0 is a support question nobody
-      # can answer from the outside.
+      # tizen.config.json's version is the one that ends up inside the package.
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          # A prerelease suffix is the tag's business alone: tizen.config.json
-          # holds a bare MAJOR.MINOR.PATCH, so v1.2.0-rc1 is compared as 1.2.0.
+          # tizen.config.json holds a bare MAJOR.MINOR.PATCH, so v1.2.0-rc1 compares as 1.2.0.
           tagged="${GITHUB_REF_NAME#v}"
           tagged="${tagged%%-*}"
           declared="$(node -p "require('./tizen.config.json').version")"
@@ -87,25 +58,15 @@ jobs:
             exit 1
           fi
 
-      # Before the tests, because they are not all off-disk checks: the routing
-      # suite starts the service and asks it for /__tube/userScript.js, which is
-      # served from the bundles the build writes. On a fresh checkout there are
-      # none, so that check fails for want of a build rather than for anything
-      # wrong with the code. `package` builds too, but it runs after this, which
-      # is too late to be the build the tests need.
+      # Before the tests: the routing suite asks the service for a bundle the build writes.
       - name: Build
         run: npm run build
 
       - name: Test
         run: npm test
 
-      # `--release` refuses the placeholder origin, and is passed only when a
-      # real one is configured. Without TUBE_ORIGIN the placeholder is the
-      # honest state of things rather than a mistake to block a release over:
-      # the app carries both bundles and works without ever reaching an origin.
-      #
-      # A hyphen makes a semver prerelease of a tag — v1.2.0-rc1 — and one of
-      # those is held to the same standard as a hand-run build, not a release.
+      # `--release` refuses the placeholder origin. A prerelease tag is held to the same
+      # standard as a hand-run build.
       - name: Package
         env:
           STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && vars.TUBE_ORIGIN != '') && '--release' || '' }}
@@ -116,9 +77,7 @@ jobs:
         run: |
           echo "::warning::No TUBE_ORIGIN variable is set, so this build carries the placeholder origin and will never update itself over the air. The bundles inside the package still work."
 
-      # The other half of a release: the userscript bundles the TV downloads
-      # after it is installed, with the digests latest.json advertises. Staged
-      # only when there is a real origin to serve them from.
+      # The userscript bundles the TV downloads after install.
       - name: Stage the origin release
         if: vars.TUBE_ORIGIN != ''
         run: npm run release
@@ -131,8 +90,7 @@ jobs:
           path: release/origin/
           if-no-files-found: error
 
-      # Named for a person downloading it from the releases page, where
-      # "tube.wgt" on its own says nothing about which build it is.
+      # "tube.wgt" on the releases page says nothing about which build it is.
       - name: Name the widget after the version
         id: widget
         run: |
@@ -141,9 +99,7 @@ jobs:
           mv release/tube.wgt "release/${name}"
           echo "path=release/${name}" >> "$GITHUB_OUTPUT"
 
-      # Creates the draft, or finds the one an earlier run of this tag left and
-      # replaces its asset. It stays a draft until a person publishes it, which
-      # is the point: that is the whole window in which an asset may be added.
+      # Creates the draft, or replaces the asset on the one an earlier run of this tag left.
       - name: Open a draft release with it
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -154,9 +110,7 @@ jobs:
           files: ${{ steps.widget.outputs.path }}
           fail_on_unmatched_files: true
 
-      # A hand-run build off a branch has no tag to draft a release for, so it
-      # lands as an artifact instead — which is the point of being able to run
-      # it by hand.
+      # A hand-run build off a branch has no tag to draft a release for.
       - name: Upload it as an artifact
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4

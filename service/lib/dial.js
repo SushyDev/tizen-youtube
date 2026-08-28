@@ -1,9 +1,8 @@
 'use strict';
 
-// DIAL server: what the phone's YouTube app discovers when you press cast.
-//
-// The launch payload arrives here and is handed to the app shell as an
-// app-control argument, which the injector then appends to the watch URL.
+// DIAL server: what the phone's YouTube app discovers when you press cast. The launch
+// payload is handed to the app shell as an app-control argument, which the injector
+// appends to the watch URL.
 
 const dial = require('@patrickkfkan/peer-dial');
 const express = require('express');
@@ -70,8 +69,8 @@ function start() {
 
                 const parsed = parseLaunchData(launchData);
 
-                // A `yumi` payload is a state handoff from an already-running
-                // session, not a request to launch anything.
+                // A `yumi` payload is a state handoff from a running session, not a
+                // request to launch anything.
                 if (parsed.yumi) {
                     entry.additionalData = parsed;
                     entry.state = 'running';

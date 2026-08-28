@@ -1,29 +1,18 @@
-// Reaching into YouTube.
-//
-// The app exposes one thing to the page: `window._yttv`, an object holding
-// every class and singleton its bundle defines, under names a minifier chose.
-// There is no documentation and no stability — the names change on every
-// release — so everything is found by what it *does* rather than what it is
-// called: a class whose source mentions a marker string, a singleton with a
-// method that mentions one.
-//
-// That search is the ugliest thing in this codebase, and the reason it lives
-// here alone is that it used to live in three files at once, each with its own
-// slightly different loop, each dereferencing what it found without checking.
-// One copy, one set of names, and every finder returns null rather than
-// throwing when a YouTube release moves the ground.
+// `window._yttv` holds every class and singleton YouTube's bundle defines, under names
+// a minifier chose that change every release. So everything is found by what it does:
+// a class whose source mentions a marker, a singleton with a method that mentions one.
+// Every finder returns null rather than throwing when a release moves the ground.
 
 const registry = () => window._yttv || {};
 
-// Every value in the registry, as [name, value] pairs. Used by the finders
-// below rather than by anything outside this file.
+// Every value in the registry, as [name, value] pairs.
 const entries = () => {
     const all = registry();
     return Object.keys(all).map((key) => [key, all[key]]);
 };
 
-// The source text of a value, when it has one. Minified classes and functions
-// carry their markers in their own source, which is the only handle there is.
+// Minified classes and functions carry their markers in their own source, which is
+// the only handle there is.
 const sourceOf = (value) => {
     try {
         return typeof value === 'function' ? value.toString() : '';
@@ -55,11 +44,8 @@ const replace = (target, replacement) => {
     return !!name;
 };
 
-// ── The command resolver ──────────────────────────────────────────────
-
-// One singleton in the registry resolves every command the interface issues —
-// opening a modal, navigating, changing a setting. Finding it is how this app
-// both issues commands and intercepts them.
+// One singleton resolves every command the interface issues. Finding it is how this
+// app both issues commands and intercepts them.
 const findResolver = () => {
     const match = entries().find(([, value]) =>
         value && value.instance && typeof value.instance.resolveCommand === 'function');
@@ -73,16 +59,14 @@ const resolve = (command, context) => {
     return resolver ? resolver.resolveCommand(command, context) : undefined;
 };
 
-// ── The action router ─────────────────────────────────────────────────
-
-// A second singleton runs named actions — `reloadGuideAction` and friends.
-// It is found by the one marker its dispatch method always carries.
+// A second singleton runs named actions — `reloadGuideAction` and friends — found by
+// the one marker its dispatch method always carries.
 const ROUTER_MARKER = 'ytlrActionRouter';
 const ACTION_MARKER = 'this.actionName';
 
 const findActionRunner = () => {
-    // A method on the prototype whose source mentions the router is the
-    // dispatcher, whichever singleton happens to own it this release.
+    // A prototype method whose source mentions the router is the dispatcher, whichever
+    // singleton happens to own it this release.
     const methodMentioning = (instance, marker) => {
         const prototype = Object.getPrototypeOf(instance);
         if (!prototype) return null;

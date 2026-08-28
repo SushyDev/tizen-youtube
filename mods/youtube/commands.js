@@ -5,31 +5,19 @@ import { openSpeedOptions } from '../ui/speedUI.js';
 import { showToast, buttonItem } from '../ui/ytUI.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
 
-// Every command the interface issues, and the ones this app answers itself.
+// YouTube routes everything through a single `resolveCommand` on one singleton, so
+// wrapping it is how this app's settings end up behaving exactly like YouTube's.
 //
-// YouTube routes all of it — opening a panel, changing a setting, navigating,
-// playing a video — through a single `resolveCommand` on one singleton. That
-// makes it both the way to drive the app from here and the one place to sit
-// and listen. Wrapping it is how this app's own settings end up looking and
-// behaving exactly like YouTube's: they are not a separate interface bolted on
-// top, they are commands, resolved by the same function as everything else.
-//
-// The wrapper reads as a list of interpreters, each asked in turn whether a
-// command is theirs. An interpreter either answers with the result, or hands
-// the command on untouched. That shape replaces a single ninety-line
-// `if/else if` chain in which several branches were already unreachable.
+// The wrapper is a list of interpreters, each asked in turn whether a command is
+// theirs. An interpreter answers with a result, or hands the command on untouched.
 
 // What an interpreter returns when the command is not its business.
 const PASS = { pass: true };
 
-// The name every notification raised from here appears under. There is one app
-// on the television as far as anyone using it is concerned, and it is YouTube.
 const APP_NAME = 'YouTube';
 
-// ── The actions this app defines ──────────────────────────────────────
-
-// Commands YouTube has never heard of, carried inside its own command objects
-// under `customAction` so they travel the same rails as everything else.
+// Commands YouTube has never heard of, carried under `customAction` so they travel
+// the same rails as everything else.
 const ACTIONS = {
     OPEN_ADDITIONAL_OPTIONS: () => openAdditionalOptions(),
 
@@ -39,8 +27,7 @@ const ACTIONS = {
 
     OPTIONS_SHOW: (parameters) => openOptionsSubmenu(parameters, parameters.update),
 
-    // Dismisses the overlay, then seeks. The keypress is what closes it: the
-    // panel has no command of its own that means "go away".
+    // The keypress is what dismisses the overlay: the panel has no command for it.
     SKIP: (parameters) => {
         const escape = document.createEvent('Event');
         escape.initEvent('keydown', true, true);
@@ -72,9 +59,8 @@ const ACTIONS = {
     }
 };
 
-// A custom action can be nested under any of several endpoints, because
-// YouTube's renderers each expect their own shape. This is the only place
-// that has to know all of them.
+// A custom action can be nested under any of these, because YouTube's renderers each
+// expect their own shape.
 const CARRIERS = ['customAction', 'signalAction', 'showEngagementPanelEndpoint', 'playlistEditEndpoint'];
 
 const customActionIn = (command) => {
@@ -91,10 +77,8 @@ const perform = (action) => {
     return !!run;
 };
 
-// ── The interpreters ──────────────────────────────────────────────────
-
-// A setting YouTube does not recognise is one of ours. Its own settings all
-// have underscored enum names; ours are the config keys themselves.
+// A setting YouTube does not recognise is one of ours: its own all have underscored
+// enum names, ours are the config keys themselves.
 const applyOurSettings = (command) => {
     const endpoint = command.setClientSettingEndpoint;
     if (!endpoint || !endpoint.settingDatas) return PASS;
@@ -103,8 +87,7 @@ const applyOurSettings = (command) => {
         setting.clientSettingEnum && setting.clientSettingEnum.item === 'I18N_LANGUAGE');
 
     if (language) {
-        // YouTube reads the interface language from a cookie, so changing it
-        // means writing the cookie and reloading rather than setting a field.
+        // YouTube reads the interface language from a cookie, not a field.
         const expires = new Date();
         expires.setFullYear(expires.getFullYear() + 10);
         document.cookie = `PREF=hl=${language.stringValue}; expires=${expires.toUTCString()};`;
@@ -125,9 +108,8 @@ const applyOurSettings = (command) => {
 
         if (field !== 'arrayValue') return configWrite(key, value);
 
-        // An array setting is a set of checkboxes, and the command carries the
-        // one that was pressed. A new array rather than a splice in place, so
-        // the value handed to configWrite is never the one already stored.
+        // An array setting is a set of checkboxes and the command carries the one
+        // pressed. A new array, so configWrite never gets the stored one back.
         const current = configRead(key) || [];
         configWrite(key, current.indexOf(value) === -1
             ? current.concat(value)
@@ -142,8 +124,7 @@ const runCustomActions = (command) => {
     return action && perform(action) ? true : PASS;
 };
 
-// YouTube's playback settings panel gets two edits: its speed row is pointed
-// at this app's finer-grained speed menu, and a mini player button is added.
+// The speed row points at this app's finer-grained menu, and a mini player button is added.
 const dressPlaybackSettings = (command) => {
     const popup = command.openPopupAction;
     if (!popup || popup.uniqueId !== 'playback-settings') return PASS;
@@ -195,8 +176,7 @@ const forgetMiniPlayer = (command) => {
     return PASS;
 };
 
-// A batch is a list of commands. Ours are performed here; the rest go back
-// through the resolver one at a time.
+// Ours are performed here; the rest go back through the resolver one at a time.
 const runCommandBatch = (command) => {
     const batch = command.commandExecutorCommand && command.commandExecutorCommand.commands;
     if (!batch) return PASS;
@@ -210,8 +190,8 @@ const runCommandBatch = (command) => {
     return true;
 };
 
-// YouTube asks "who's watching?" on the way out of the app. Answering it is a
-// screen nobody wants between them and the home button.
+// YouTube asks "who's watching?" on the way out. Nobody wants that between them and
+// the home button.
 const skipWhosWatchingOnExit = (command, original, self, context) => {
     const request = command.requestAccountSelectorCommand;
 
@@ -225,8 +205,6 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
-// ── Installing ────────────────────────────────────────────────────────
-
 const INTERPRETERS = [
     applyOurSettings,
     runCustomActions,
@@ -236,11 +214,7 @@ const INTERPRETERS = [
     skipWhosWatchingOnExit
 ];
 
-/**
- * Wraps YouTube's resolver. Returns false when the resolver cannot be found,
- * which happens if this runs before YouTube's bundle has registered — the
- * caller retries rather than this failing silently.
- */
+/** Wraps YouTube's resolver. False when it is not registered yet; the caller retries. */
 const interceptCommands = () => {
     const resolver = findResolver();
     if (!resolver || resolver.__tubePatched) return false;

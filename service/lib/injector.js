@@ -1,11 +1,8 @@
 'use strict';
 
-// CDP injection: the preferred path when Developer Mode is on.
-//
-// `shell:0 debug <appId>` over SDB relaunches this app with the Chrome
-// DevTools Protocol enabled and prints the port it picked. Attaching to that
-// lets the userscript be evaluated into youtube.com directly, with CSP
-// bypassed — no proxy, no URL rewriting, no cookie surgery.
+// CDP injection: the preferred path when Developer Mode is on. `shell:0 debug <appId>`
+// over SDB relaunches this app with the DevTools Protocol enabled and prints its port.
+// Attaching lets the userscript be evaluated into youtube.com with CSP bypassed.
 
 const adbhost = require('adbhost');
 const CDP = require('chrome-remote-interface');
@@ -24,11 +21,9 @@ const platformVersion = (function () {
 
 const isTizen3 = String(platformVersion || '').indexOf('3.0') === 0;
 
-// A launch that is mid-injection blocks other launches from starting a second
-// one, which is right — but only while it is genuinely still trying. The flag
-// used to be a plain boolean with no way back if an attempt died between
-// setting it and clearing it, and every later launch then sat on the boot
-// screen forever waiting for a connection nobody was making.
+// A launch that is mid-injection blocks others from starting a second one, but only
+// while it is genuinely still trying. A plain boolean had no way back if an attempt
+// died between setting and clearing it, leaving every later launch waiting forever.
 const CONNECT_TIMEOUT = 30000;
 
 let connecting = false;
@@ -67,8 +62,8 @@ function canConnectToDaemon() {
         .catch(() => ({ canConnectToDaemon: false, ip: null, platformVersion, isConnecting: isConnecting() }));
 }
 
-// The DIAL server carries the payload from a phone's cast button. Pointing at
-// the wrong port here is what silently broke casting in the reference.
+// The DIAL server carries the payload from a phone's cast button. The wrong port here
+// is what silently broke casting in the reference.
 function watchUrl(args) {
     const additional = encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`);
     return `https://www.youtube.com/tv?additionalDataUrl=${additional}${args ? `&${args}` : ''}`;
@@ -87,8 +82,7 @@ function attach(host, port, args, attempt) {
                     script = loader.resolve(platformVersion);
                     console.log(`Injecting ${script.variant} userscript (${script.origin}, ${script.version}).`);
                 } catch (e) {
-                    // Nothing to inject at all is a packaging failure, not a
-                    // network one; surface it rather than failing silently.
+                    // Nothing to inject is a packaging failure, not a network one.
                     console.error(`No userscript available: ${e.message}`);
                     return reject(e);
                 }
@@ -96,8 +90,8 @@ function attach(host, port, args, attempt) {
                 client.Runtime.enable();
                 client.Page.enable();
 
-                // Evaluating on every new execution context covers the initial
-                // load and any same-page navigation YouTube performs.
+                // Every new execution context: covers the initial load and any
+                // same-page navigation YouTube performs.
                 client.on('Runtime.executionContextCreated', (msg) => {
                     client.Runtime.evaluate({ expression: script.source, contextId: msg.context.id })
                         .catch((e) => console.error(`Injection failed: ${e.message}`));

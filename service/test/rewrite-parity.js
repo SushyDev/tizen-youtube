@@ -1,11 +1,8 @@
 'use strict';
 
 // Differential test: our rewrite table must transform text identically to the
-// reference implementation. The table is empirically derived against YouTube's
-// TV client, so "ported verbatim" needs to be verified, not asserted.
-//
-// The one intended difference is the injected script tag, which now points at
-// this service instead of a CDN; that line is compared separately.
+// reference implementation. The one intended difference is the injected script tag,
+// which points at this service instead of a CDN, and is compared separately.
 
 const { rewriteBody, rewriteSetCookie } = require('../lib/proxy.js');
 
@@ -63,7 +60,7 @@ SAMPLES.forEach(function (pair) {
     const label = pair[0];
     const input = pair[1];
 
-    // Compare on a URL that does NOT get a script tag, isolating the table.
+    // A URL that does NOT get a script tag, isolating the table.
     const ours = rewriteBody(input, '/watch');
     const theirs = referenceRewrite(input, '/watch');
 
@@ -88,9 +85,9 @@ const noTag = rewriteBody('<html></html>', '/tv_config');
 console.log(`${noTag.indexOf('__tube') === -1 ? 'PASS' : 'FAIL'}  /tv_config is not injected into`);
 if (noTag.indexOf('__tube') !== -1) failures++;
 
-// Cookie prefix handling.
 const cookies = rewriteSetCookie(['__Secure-3PSID=abc; Domain=.youtube.com; Secure; SameSite=None; Path=/']);
-// Check for the `Secure` *attribute*, not the substring — the renamed
+
+// Cookie prefixes: check for the `Secure` *attribute*, not the substring — the renamed
 // prefix __LocalSecure- legitimately contains it.
 const attributes = cookies[0].split(/;\s*/).slice(1);
 const ok = cookies[0].indexOf('__LocalSecure-3PSID') === 0 &&

@@ -266,9 +266,8 @@ class SponsorBlockHandler {
       return;
     }
 
-    // Sometimes timeupdate event (that calls scheduleSkip) gets fired right before
-    // already scheduled skip routine below. Let's just look back a little bit
-    // and, in worst case, perform a skip at negative interval (immediately)...
+    // A timeupdate can fire right before an already-scheduled skip, so look back a
+    // little and, at worst, skip at a negative interval (immediately).
     const nextSegments = this.segments.filter(
       (seg) =>
         seg.segment[0] > this.video.currentTime - 0.3 &&
@@ -388,19 +387,15 @@ class SponsorBlockHandler {
   }
 }
 
-// When this global variable was declared using let and two consecutive hashchange
-// events were fired (due to bubbling? not sure...) the second call handled below
-// would not see the value change from first call, and that would cause multiple
-// SponsorBlockHandler initializations... This has been noticed on Chromium 38.
-// This either reveals some bug in chromium/webpack/babel scope handling, or
-// shows my lack of understanding of javascript. (or both)
+// Declared with var, not let: two consecutive hashchange events would leave the second
+// call seeing the pre-update value and initialising SponsorBlockHandler twice. Noticed
+// on Chromium 38.
 window.sponsorblock = null;
 
 window.addEventListener(
   'hashchange',
   () => {
     const newURL = new URL(location.hash.substring(1), location.href);
-    // A hack, but it works, so...
     const videoID = newURL.search.replace('?v=', '').split('&')[0];
     const needsReload =
       videoID &&

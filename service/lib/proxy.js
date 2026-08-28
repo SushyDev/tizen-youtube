@@ -1,13 +1,9 @@
 "use strict";
 
-// MITM proxy: the fallback path when Developer Mode is off.
-//
-// Everything of youtube.com is proxied through localhost so the userscript can
-// be injected with a plain script tag and CSP never applies. The rewrite table
-// below is ported unchanged from the reference implementation on purpose: it
-// is empirically derived against YouTube's TV client and every rule is load
-// bearing. What has changed is that each rule now says what it fixes, and the
-// injected script comes from this service rather than from a CDN.
+// MITM proxy: the fallback when Developer Mode is off. youtube.com is proxied through
+// localhost so the userscript can be injected with a plain script tag and CSP never
+// applies. The rewrite table is ported unchanged from the reference — it is empirically
+// derived and every rule is load bearing.
 
 const express = require('express');
 const fetch = require('node-fetch');
@@ -20,51 +16,34 @@ const loader = require('./loader.js');
 const PROXY_PREFIX = `http://localhost:${ports.PROXY}/cors-bypass/`;
 const LOCAL_ORIGIN = `http://localhost:${ports.PROXY}`;
 
-// Development only, and empty on a television.
-//
-// youtube.com/tv decides from the user agent whether the caller is a TV. A
-// desktop browser gets a "you are being redirected to youtube.com" page
-// instead of the client, so off-TV there is nothing to develop against. With
-// TUBE_DEV_UA set, the proxy presents itself upstream as the television and
-// tells the page to say the same thing about itself — the app reads
-// navigator.userAgent too, and a page served as a TV but reporting a desktop
-// browser is a shape neither side expects. Nothing sets this on a TV, where
-// the webview's own user agent is already the right one.
+// Development only. youtube.com/tv decides from the user agent whether the caller is a
+// TV, so the proxy presents as one upstream and tells the page to report the same.
 const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 
-// Development only, and empty on a television. A path to one more script to
-// put into the page after the userscript — `npm run dev` points it at
-// ui/dev/remote.js, which puts the remote's keys on a keyboard. Served from
-// disk on every request so editing it needs no restart.
+// Development only. One more script after the userscript, read from disk per request.
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
-// Responses of these types are rewritten as text; everything else is streamed
-// straight through so video bytes are never buffered.
+// Rewritten as text; everything else is streamed through so video is never buffered.
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 
-// Hop-by-hop and security headers that must not be forwarded. Dropping the CSP
-// is what lets the injected script run at all.
+// Hop-by-hop and security headers. Dropping the CSP is what lets the script run.
 const STRIPPED_HEADERS = [
     'content-encoding', 'content-length', 'transfer-encoding',
     'content-security-policy', 'alt-svc'
 ];
 
-// Makes the page agree with the request that fetched it. Development only:
-// see DEV_USER_AGENT. First thing in the head, because the client reads the
-// user agent while deciding what kind of device it is running on, and that
-// happens in its very first script.
+// First thing in the head: the client reads the user agent in its very first script.
 function spoofUserAgent(text) {
     const shim = '<script>try{Object.defineProperty(navigator,"userAgent",' +
         `{get:function(){return ${JSON.stringify(DEV_USER_AGENT)};},configurable:true});` +
         '}catch(e){}</script>';
 
-    // No <head> to open means an unexpected shape; leaving it alone is safer
-    // than guessing where the first script is.
+    // No <head> means an unexpected shape; leaving it alone beats guessing.
     return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
 }
 
 function rewriteBody(text, url) {
-    // Inject the userscript into the TV app shell only, not into every page.
+    // The TV app shell only, not every page.
     if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1) {
         if (DEV_USER_AGENT) text = spoofUserAgent(text);
         text += `<script src="${LOCAL_ORIGIN}/__tube/userScript.js?v=${Date.now()}"></script>`;
@@ -72,9 +51,8 @@ function rewriteBody(text, url) {
         if (DEV_INJECT_PATH) text += `<script src="${LOCAL_ORIGIN}/__tube/dev.js?v=${Date.now()}"></script>`;
     }
 
-    // Media and static hosts: routed through the bypass so the page's own
-    // origin checks and CORS both stay happy. Three spellings each, because
-    // YouTube emits absolute, escaped and protocol-relative forms.
+    // Routed through the bypass. Three spellings each, because YouTube emits absolute,
+    // escaped and protocol-relative forms.
     text = text.replace(/https:\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `${PROXY_PREFIX}https://$1.googlevideo.com`);
     text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/localhost:${ports.PROXY}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
     text = text.replace(/"\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `"${PROXY_PREFIX}https://$1.googlevideo.com`);
@@ -90,37 +68,32 @@ function rewriteBody(text, url) {
     text = text.replace(/http:\/\/clients1\.google\.com/g, `${PROXY_PREFIX}https://clients1.google.com`);
     text = text.replace(/"\/\/clients1\.google\.com/g, `"${PROXY_PREFIX}https://clients1.google.com`);
 
-    // YouTube keeps an allowlist of origins it will post messages to; without
-    // localhost in it, sign-in and several player messages are dropped.
+    // Without localhost in YouTube's postMessage allowlist, sign-in is dropped.
     text = text.replace('Set(["www.youtube.com","accounts.google.com"]);', 'Set(["www.youtube.com", "accounts.google.com", "localhost"]);');
 
-    // Telemetry and player code embed the page URL and compare it against the
-    // real origin. Reporting the canonical origin keeps those checks passing.
+    // Telemetry and player code compare the embedded page URL against the real origin.
     text = text.replace(/:document\.location\.toString\(\)/g, `:document.location.toString().replace("${LOCAL_ORIGIN}", "https://www.youtube.com")`);
     text = text.replace(/euri:[^,]+,/g, `euri:document.location.toString().replace("${LOCAL_ORIGIN}", "https://www.youtube.com"),`);
 
     text = text.replace(/https:\/\/s\.youtube\.com/g, `${PROXY_PREFIX}https://s.youtube.com`);
     text = text.replace(/redirector.googlevideo.com/g, `${PROXY_PREFIX}https://redirector.googlevideo.com`);
 
-    // The player builds media URLs from this scheme; over plain HTTP it has to
-    // match or every media request is blocked as mixed content.
+    // Over plain HTTP the scheme must match or every media request is mixed content.
     text = text.replace(/this.scheme="https"/, 'this.scheme="http"');
 
     text = text.replace(/https\:\/\/jnn-pa.googleapis.com/g, `${PROXY_PREFIX}https://jnn-pa.googleapis.com`);
     text = text.replace(/https:\/\/yt3\.googleusercontent\.com/g, `${PROXY_PREFIX}https://yt3.googleusercontent.com`);
     text = text.replace(/"\/\/yt3\.googleusercontent\.com/g, `"${PROXY_PREFIX}https://yt3.googleusercontent.com`);
 
-    // Without these, history entries carry the localhost origin and back
-    // navigation lands on a dead URL.
+    // Otherwise history entries carry the localhost origin and back navigation dies.
     text = text.replace(/=window\.location\.href;/, `=window.location.href.replace("${LOCAL_ORIGIN}", "https://www.youtube.com");`);
     text = text.replace(/=document\.location\.href/, `=document.location.href.replace("${LOCAL_ORIGIN}", "https://www.youtube.com")`);
 
     return text;
 }
 
-// Cookies with the __Secure- / __Host- prefixes are rejected by the browser
-// over plain HTTP, so they are renamed in both directions and the attributes
-// that require HTTPS are dropped.
+// __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are
+// renamed in both directions and the HTTPS-only attributes dropped.
 function rewriteSetCookie(values) {
     return values.map((cookie) =>
         cookie
@@ -140,12 +113,9 @@ function restoreCookiePrefixes(cookieHeader) {
         .replace(/__LocalHost-/g, '__Host-');
 }
 
-// Express matches routes in registration order, and the proxy's catch-all
-// matches everything. So creation is split in two: this sets up middleware and
-// the routes the proxy itself owns, and attachFallback() adds the catch-all
-// once the caller has registered its own endpoints. Registering the catch-all
-// here would shadow them, and the app shell polling /__tube/state would get
-// YouTube's HTML instead of JSON and never launch.
+// Express matches routes in registration order and this catch-all matches everything,
+// so it must be attached after the caller's own routes — otherwise /__tube/state gets
+// YouTube's HTML instead of JSON and the app never launches.
 function create(platformVersion) {
     const app = express();
 
@@ -168,8 +138,7 @@ function create(platformVersion) {
         }
     });
 
-    // Development only: see DEV_INJECT_PATH. Not registered at all without it,
-    // so a packaged service has no such route.
+    // Development only, so a packaged service has no such route.
     if (DEV_INJECT_PATH) {
         app.get('/__tube/dev.js', (_, res) => {
             try {

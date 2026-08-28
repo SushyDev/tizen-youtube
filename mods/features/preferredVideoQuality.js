@@ -85,21 +85,17 @@ class PreferredQualityHandler {
         }
     }
 
-    // YouTube names qualities with constants ('hd1080', 'hd2160', 'highres')
-    // and labels them with numbers ('1080p'). Asking for a constant the video
-    // does not have is not an error the player reports — it simply keeps
-    // whatever it had — so every answer here comes out of the list the player
-    // says it can actually serve.
+    // YouTube names qualities with constants ('hd1080', 'hd2160') and labels them with
+    // numbers ('1080p'). Asking for one the video does not have is not reported — the
+    // player just keeps what it had — so every answer comes from the list it offers.
     #determineQuality(preference) {
         const available = this.#player.getAvailableQualityData();
         if (!available?.length) return null;
 
         const pixels = (entry) => parseInt(entry.qualityLabel, 10) || 0;
 
-        // 'highest' is not a resolution to match, it is an instruction: take
-        // the top of whatever this video offers. On a television that is
-        // almost always what someone wants, and unlike naming a resolution it
-        // cannot silently do nothing on a video that has never had one.
+        // 'highest' is an instruction, not a resolution: take the top of whatever this
+        // video offers. Unlike naming a resolution, it cannot silently do nothing.
         if (preference === 'highest') {
             return available.reduce((best, entry) => (pixels(entry) > pixels(best) ? entry : best)).quality;
         }
@@ -107,9 +103,8 @@ class PreferredQualityHandler {
         const target = parseInt(preference, 10) || 0;
         const match = available.find((entry) => pixels(entry) === target);
 
-        // Asked for something this video does not have: the nearest below it
-        // beats falling back to the maximum, which would be the opposite of
-        // what a resolution cap is for.
+        // The nearest below beats falling back to the maximum, which would be the
+        // opposite of what a resolution cap is for.
         if (match) return match.quality;
 
         const below = available

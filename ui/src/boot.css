@@ -1,23 +1,10 @@
-/* The boot log.
-   
-   Everything before YouTube is a kernel log and nothing else: black ground,
-   monospace, monotonic timestamps in the left column, one line per thing that
-   happened. No wordmark, no spinner, no product name — this screen exists to
-   say what the machine is doing while it does it, and then to vanish.
-   
-   Black is not a style choice here. The page it hands over to is black, so
-   anything else would flash. */
+/* The boot log: black ground, monospace, monotonic timestamps, one line per thing
+   that happened. Black is not a style choice — the page it hands over to is black,
+   so anything else would flash. */
 
-/* The Linux console's own sixteen colours, as the kernel defines them —
-   `default_red[]`, `default_grn[]` and `default_blu[]` in
-   drivers/tty/vt/vt.c, which is the VGA palette every terminal inherited.
-
-   Written out in full rather than picked from: this screen is pretending to
-   be a kernel log, and a palette that is nearly the console's is worse than
-   one that is exactly it. The dull half is 0xaa, the bright half is 0xff over
-   0x55, and colour 3 is brown rather than dark yellow because the VGA card
-   put 0x55 in its green channel — a hardware quirk from 1987 that every
-   terminal emulator has faithfully reproduced ever since. */
+/* The Linux console's sixteen colours as the kernel defines them (`default_red[]`
+   and friends in drivers/tty/vt/vt.c). Colour 3 is brown rather than dark yellow
+   because the VGA card put 0x55 in its green channel. */
 :root {
   --ansi-0:  #000000;   /* black          */
   --ansi-1:  #aa0000;   /* red            */
@@ -36,27 +23,13 @@
   --ansi-14: #55ffff;   /* light cyan     */
   --ansi-15: #ffffff;   /* white          */
 
-  /* And the roles, each one an index rather than a colour.
+  /* Roles, each an index rather than a colour. A console with no escape codes is
+     colour 7 on colour 0, and the timestamp and facility columns are the two roles
+     util-linux names in dmesg.c: time green, subsys brown.
 
-     The first three are not choices. A console with no escape codes in it is
-     colour 7 on colour 0, which is why the body of this log is grey and not
-     white; and the timestamp and facility columns are the two roles
-     util-linux gives its own names in dmesg.c —
-
-         [DMESG_COLOR_TIME]   = { "time",   UL_COLOR_GREEN },
-         [DMESG_COLOR_SUBSYS] = { "subsys", UL_COLOR_BROWN },
-
-     — so they are green and brown here for the same reason they are green
-     and brown when you run `dmesg --color` on anything else. Brown is
-     colour 3, which is dark yellow everywhere except a VGA card.
-
-     The severities are the bright half rather than the dull, because 0xaa is
-     what those colours look like on a CRT and not what they look like on an
-     OLED across a room. The one deliberate departure is warn: dmesg renders
-     it as bold rather than as a hue, which on a console means bright white —
-     indistinguishable here from an ordinary line at a glance, and this log is
-     glanced at from a sofa. Yellow is what every other terminal tool would
-     have used. */
+     Severities use the bright half, because 0xaa is what those colours look like on a
+     CRT rather than on an OLED across a room. warn is yellow rather than dmesg's bold,
+     which on a console means bright white and is unreadable at a glance. */
   --ground: var(--ansi-0);
   --text:   var(--ansi-7);    /* the default foreground, and nothing else  */
   --stamp:  var(--ansi-2);    /* dmesg's `time`                            */
@@ -64,9 +37,7 @@
   --ok:     var(--ansi-10);
   --warn:   var(--ansi-11);
   --bad:    var(--ansi-9);
-  --note:   var(--ansi-14);   /* cyan, not blue — 0000aa on 000000 is unreadable,
-                                 and cyan is what Unix has always used for a
-                                 remark rather than a result */
+  --note:   var(--ansi-14);   /* cyan — 0000aa on 000000 is unreadable */
 }
 
 html, body {
@@ -79,14 +50,14 @@ html, body {
 body {
   color: var(--text);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* A fraction of the screen, not a pixel count: the same page has to be
-     legible on a television across a room and in a 960-wide webview. */
+  /* A fraction of the screen, not a pixel count: the same page has to be legible on
+     a television across a room and in a 960-wide webview. */
   font-size: 1vw;
   line-height: 1.55;
 }
 
-/* `pre` so the padded timestamps line up as a column without a table, a grid
-   or anything else that could be dropped by an old engine. */
+/* `pre` so the padded timestamps line up without a table or grid, either of which an
+   old engine could drop. */
 #log {
   white-space: pre;
 }
@@ -99,6 +70,6 @@ body {
 .bad  { color: var(--bad); }
 .note { color: var(--note); }
 
-/* Handing over. The log does not fade or slide; it is simply not there any
-   more, on the frame before YouTube paints. */
+/* Handing over: the log is simply not there any more, on the frame before YouTube
+   paints. */
 body.done > * { display: none; }

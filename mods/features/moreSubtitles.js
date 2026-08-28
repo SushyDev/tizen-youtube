@@ -1,5 +1,5 @@
-// Offering the subtitle languages YouTube leaves out of the TV menu.
-// Automatically adds user's local language to subtitle auto-translate menu if not present
+// Adds the subtitle languages YouTube leaves out of the TV auto-translate menu,
+// including the user's own.
 
 import { configRead } from "../config.js";
 import { displayLanguage, displayRegion } from "../languageNames.js";
@@ -14,7 +14,6 @@ const LANGUAGE_CODES = [
     "th", "tr", "uk", "ur", "uz", "vi", "cy", "yi", "yo", "zu"
 ];
 
-// Return an object mapping language code -> localized language name.
 export function getComprehensiveLanguageList() {
     try {
         const map = {};
@@ -37,8 +36,7 @@ export function getComprehensiveLanguageList() {
     }
 }
 
-// Infer the most likely language for a given ISO 3166-1 alpha-2 country code using Intl.Locale.
-// Returns { code, name } or null if unknown.
+// Infers the likely language for an ISO 3166-1 alpha-2 country code, or null.
 export function getCountryLanguage(countryCode) {
     if (!countryCode) return null;
     try {
@@ -66,10 +64,8 @@ export function getCountryLanguage(countryCode) {
 
 let isPatched = false;
 
-// Function to get user's country code
 function getUserCountryCode() {
     try {
-        // Always use window.yt.config_.GL as primary source
         if (window.yt && window.yt.config_ && window.yt.config_.GL) {
             return window.yt.config_.GL;
         }
@@ -87,7 +83,6 @@ function getUserCountryCode() {
     }
 }
 
-// Function to check if language already exists in the menu
 function languageExistsInMenu(items, languageCode, languageName) {
     return items.some((item) => {
         if (
@@ -115,7 +110,6 @@ function languageExistsInMenu(items, languageCode, languageName) {
     });
 }
 
-// Function to create a language option
 function createLanguageOption(languageCode, languageName) {
     return {
         compactLinkRenderer: {
@@ -148,7 +142,6 @@ function createLanguageOption(languageCode, languageName) {
     };
 }
 
-// Function to get languages already present in menu
 function getExistingLanguages(items) {
     const existingLanguages = new Set();
 
@@ -178,7 +171,6 @@ function getExistingLanguages(items) {
     return existingLanguages;
 }
 
-// Function to create section title
 function createSectionTitle(title) {
     return {
         overlayMessageRenderer: {
@@ -189,14 +181,13 @@ function createSectionTitle(title) {
     };
 }
 
-// Main function to patch the subtitle menu
 function patchSubtitleMenu() {
     if (isPatched) return;
 
     const player = document.querySelector('.html5-video-player');
     if (!player) return setTimeout(patchSubtitleMenu, 250);
 
-    // Always patch if possible - settings will be checked dynamically
+    // Settings are read when the menu opens, not here.
     if (!window._yttv) return setTimeout(patchSubtitleMenu, 250);
     const yttvInstance = Object.values(window._yttv).find(
         (obj) =>
@@ -222,16 +213,13 @@ function patchSubtitleMenu() {
     const originalResolveCommand = yttvInstance.instance.resolveCommand;
 
     yttvInstance.instance.resolveCommand = function (cmd, _) {
-        // Identify the correct command using its uniqueId
         if (
             cmd?.openPopupAction?.uniqueId ===
             "CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE"
         ) {
-            // Check current settings dynamically each time menu opens
             const showUserLanguage = configRead("enableShowUserLanguage");
             const showOtherLanguages = configRead("enableShowOtherLanguages");
 
-            // If neither feature is enabled, don't modify the menu
             if (!showUserLanguage && !showOtherLanguages) {
                 return originalResolveCommand.apply(this, arguments);
             }
@@ -241,16 +229,13 @@ function patchSubtitleMenu() {
                     .overlayTwoPanelRenderer.actionPanel.overlayPanelRenderer
                     .content.overlayPanelItemListRenderer.items;
 
-            // Get existing languages
             const existingLanguages = getExistingLanguages(items);
 
-            // Add user's local language if enabled
             if (showUserLanguage) {
                 const userCountryCode = getUserCountryCode();
                 const userLanguage = getCountryLanguage(userCountryCode);
 
                 if (userLanguage) {
-                    // Check if the user's language already exists
                     if (
                         !languageExistsInMenu(items, userLanguage.code, userLanguage.name)
                     ) {
@@ -272,13 +257,11 @@ function patchSubtitleMenu() {
                         );
 
                         if (recommendedIndex > -1) {
-                            // Insert user's language as the first recommendation
                             items.splice(
                                 recommendedIndex + 1,
                                 0,
                                 userLanguageOption
                             );
-                            // Update existing languages set
                             existingLanguages.add(userLanguage.code);
                             existingLanguages.add(userLanguage.name);
                         } else {
@@ -299,7 +282,6 @@ function patchSubtitleMenu() {
                                 // As a fallback, add it at the beginning
                                 items.unshift(userLanguageOption);
                             }
-                            // Update existing languages set
                             existingLanguages.add(userLanguage.code);
                             existingLanguages.add(userLanguage.name);
                         }
@@ -316,7 +298,7 @@ function patchSubtitleMenu() {
                 }
             }
 
-            // Create "More languages" section with all missing languages if enabled
+            // "More languages": everything the menu is missing.
             if (showOtherLanguages) {
                 const missingLanguages = Object.entries(getComprehensiveLanguageList())
                     .filter(([code, name]) => !existingLanguages.has(code) && !existingLanguages.has(name))
@@ -328,10 +310,8 @@ function patchSubtitleMenu() {
                         "background: #FF9800; color: #ffffff; font-size: 12px;"
                     );
 
-                    // Add section title
                     items.push(createSectionTitle("Other Languages"));
 
-                    // Add all missing languages
                     missingLanguages.forEach(([code, name]) => {
                         items.push(createLanguageOption(code, name));
                     });
@@ -349,7 +329,6 @@ function patchSubtitleMenu() {
             }
         }
 
-        // Let the original function run with our modified 'cmd' object
         return originalResolveCommand.apply(this, arguments);
     };
 
@@ -358,7 +337,7 @@ function patchSubtitleMenu() {
     isPatched = true;
 }
 
-// Wait for the YouTube TV app to be ready
+// Wait for the YouTube TV app to be ready.
 const interval = setInterval(() => {
     if (window._yttv && Object.keys(window._yttv).length > 0) {
         patchSubtitleMenu();
@@ -366,7 +345,6 @@ const interval = setInterval(() => {
     }
 }, 1000);
 
-// Also try to patch when DOM is loaded
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", patchSubtitleMenu);
 } else {

@@ -291,10 +291,8 @@ export function openAdditionalOptions(update, parameters) {
                         title: 'Preferred Video Quality',
                         subtitle: 'Choose the preferred or next best video quality applied when playback starts'
                     },
-                    // "Highest" leads, because on a television it is the
-                    // answer almost every time and it is the only option that
-                    // cannot silently do nothing: naming a resolution a video
-                    // does not have leaves the player wherever it already was.
+                    // "Highest" leads: it is the answer almost every time on a TV, and
+                    // the only option that cannot silently do nothing.
                     options:
                         ['Highest', 'Auto', '2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'].map((quality) => {
                             return {
@@ -333,10 +331,8 @@ export function openAdditionalOptions(update, parameters) {
                         title: 'Preferred Video Codec',
                         subtitle: 'Choose the preferred video codec for playback'
                     },
-                    // `videoPreferredCodec`, not `preferredVideoCodec`. The
-                    // filter in adblock.js reads the former and this menu
-                    // wrote the latter, so choosing a codec here has never
-                    // done anything at all.
+                    // `videoPreferredCodec`, not `preferredVideoCodec` — adblock.js's
+                    // filter reads the former and this menu wrote the latter.
                     options: ['any', 'vp9', 'av01', 'avc1'].map((codec) => {
                         return {
                             name: codec === 'any' ? 'Any' : codec.toUpperCase(),
@@ -699,11 +695,10 @@ export function openOptionsSubmenu(parameters, update) {
     }
     const buttons = [];
 
-    // Check if this is the legacy sponsorBlockManualSkips (array-based) or new boolean-based options
+    // Legacy array-based sponsorBlockManualSkips, or the newer boolean options.
     const isArrayBasedOptions = parameters.arrayToEdit !== undefined;
 
     if (isArrayBasedOptions) {
-        // Legacy handling for sponsorBlockManualSkips
         const value = configRead(parameters.arrayToEdit);
         for (const option of parameters.options) {
             buttons.push(
@@ -744,7 +739,6 @@ export function openOptionsSubmenu(parameters, update) {
             );
         }
     } else {
-        // New handling for boolean-based options (like subtitle localization)
         let index = 0;
         for (const option of parameters.options) {
             if (!option) continue;

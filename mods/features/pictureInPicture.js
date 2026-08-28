@@ -12,7 +12,6 @@ function pipLoad() {
     const PlaybackPreviewServiceStart = PlaybackPreviewService.start;
     const PlaybackPreviewServiceStop = PlaybackPreviewService.stop;
 
-
     PlaybackPreviewService.start = function (...args) {
         if (window.isPipPlaying) return;
         return PlaybackPreviewServiceStart.apply(this, args);

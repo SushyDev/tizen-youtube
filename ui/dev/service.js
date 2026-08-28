@@ -1,25 +1,12 @@
-// A television, for styling the boot log against.
-//
-// The boot screen is the hardest thing in this repo to look at. It exists to
-// be gone: it paints for a second or two while the service comes up and then
-// deletes itself the frame before YouTube arrives. On a desk it does not run
-// at all — `boot.js` reaches for `tizen` on its first line — and on a TV it is
-// over before you can read it.
-//
-// So with no TV to talk to, this answers instead, and `boot.js` holds on the
-// last line rather than handing over. The log stays on screen, at the size a
-// television would render it, and can be worked on.
-//
-// Each scenario is a real path through `boot.js`, selected by the page's own
-// query string:
+// A television, for styling the boot log against. With no TV to talk to this answers
+// instead, and `boot.js` holds on the last line rather than handing over. Each
+// scenario is a real path through `boot.js`, selected by the query string:
 //
 //   /                    developer mode off, the proxy path
 //   /?boot=debugger      developer mode on, injection
 //   /?boot=failed        injection already failed once
 //   /?boot=slow          the service never answers, and it gives up
 //   /?boot=script        the userscript could not be resolved
-//
-// It is a Vite plugin and it is `apply: 'serve'`. None of it can reach a build.
 
 const PROXY_URL = 'http://localhost:8098/tv?additionalDataUrl=' +
     encodeURIComponent('http://localhost:8097/dial/apps/YouTube');
@@ -33,22 +20,19 @@ const BASE = {
 };
 
 const SCENARIOS = {
-    // Developer mode off. The ordinary path for a TV nobody has unlocked, and
-    // the one most people will ever see.
+    // Developer mode off: the ordinary path for a TV nobody has unlocked.
     proxy: { ...BASE, canInject: false, isConnecting: false, injectionFailed: false },
 
     // Developer mode on: the shell hands over to the debugger and exits.
     debugger: { ...BASE, canInject: true, isConnecting: false, injectionFailed: false },
 
-    // The debugger was tried on the last launch and did not take, so this one
-    // goes straight to the proxy rather than becoming a relaunch loop.
+    // Tried last launch and did not take, so this one goes straight to the proxy.
     failed: { ...BASE, canInject: true, isConnecting: false, injectionFailed: true },
 
     // Another launch of the app is already mid-injection.
     connecting: { ...BASE, canInject: true, isConnecting: true, injectionFailed: false },
 
-    // The userscript could not be resolved — the one state that logs in the
-    // error tone without anything else being wrong.
+    // The one state that logs in the error tone without anything else being wrong.
     script: {
         ...BASE,
         canInject: false,
@@ -57,16 +41,10 @@ const SCENARIOS = {
         script: { error: 'no cached bundle and the origin is unreachable' }
     }
 
-    // `slow` is deliberately absent: it is the absence of an answer, handled
-    // below by never replying.
+    // `slow` is deliberately absent: it is the absence of an answer, handled below.
 };
 
-/**
- * Serves a stand-in for the on-TV service.
- *
- * `enabled` is false whenever there is a real device to talk to, in which
- * case Vite proxies to it and none of this is installed.
- */
+/** Stands in for the on-TV service. `enabled` is false when there is a real device. */
 const devService = ({ enabled }) => ({
     name: 'tube-dev-service',
     apply: 'serve',
@@ -82,8 +60,7 @@ const devService = ({ enabled }) => ({
 
             const wanted = new URLSearchParams(query || '').get('boot') || 'proxy';
 
-            // Never answering is itself a scenario — it is what `boot.js`'s
-            // deadline exists for, and the only way to see it give up.
+            // Never answering is itself a scenario: the only way to see boot.js give up.
             if (wanted === 'slow') {
                 say('holding /__tube/state open so the shell gives up');
                 return;

@@ -6,12 +6,9 @@ import { resolve } from '../youtube/internals.js';
 import { pipToFullscreen } from '../features/pictureInPicture.js';
 import { reloadGuide } from '../youtube/internals.js';
 
-// Wiring the modification into YouTube once YouTube exists.
-//
-// There is no load event to wait for that means anything here: the script is
-// evaluated into a page that builds itself afterwards. A <video> element is
-// the cheapest reliable signal that the player has been constructed and the
-// internals the rest of this code patches are in place.
+// Wiring the modification into YouTube once YouTube exists. There is no meaningful
+// load event — the script is evaluated into a page that builds itself afterwards — so
+// a <video> element is the cheapest reliable signal that the player is constructed.
 
 const GREEN_BUTTON = 404;
 const RIGHT = 39;
@@ -29,15 +26,14 @@ function start() {
   takeOverKeys();
   goToStartPage();
 
-  // The guide is built before this script runs, so the trimmed sidebar only
-  // appears once YouTube is asked to build it again.
+  // The guide is built before this script runs, so the trimmed sidebar only appears
+  // once YouTube is asked to build it again.
   reloadGuide();
 }
 
-// The resolver singleton is registered by YouTube's bundle, not by the page,
-// so it can arrive after the player element this whole file waits on. Keep
-// asking rather than assuming — and stop asking, because an interval that
-// never ends is a frame cost for the life of the session.
+// The resolver singleton is registered by YouTube's bundle, so it can arrive after the
+// player element this file waits on. Keep asking, but stop eventually: an endless
+// interval is a frame cost for the life of the session.
 function claimCommands(attempt = 0) {
   if (interceptCommands()) return;
 
@@ -49,8 +45,8 @@ function claimCommands(attempt = 0) {
   setTimeout(() => claimCommands(attempt + 1), 250);
 }
 
-// YouTube's own stylesheet carries a nonce; appending to it rather than adding
-// a second <style> keeps everything under one CSP-approved element.
+// YouTube's own stylesheet carries a nonce, so appending to it keeps everything under
+// one CSP-approved element.
 function addStyles() {
   const existing = document.querySelector('style[nonce]');
   if (existing) {
@@ -63,10 +59,9 @@ function addStyles() {
   document.head.appendChild(style);
 }
 
-// YouTube profiles a television as a low-end device and turns off animations,
-// long-press and scroll behaviour to suit. A modern Samsung set is not that
-// device, and the difference between the two profiles is most of what makes
-// this app feel slower than the one Samsung ships.
+// YouTube profiles a television as a low-end device and disables animations, long-press
+// and scroll behaviour. That difference is most of what makes this feel slower than the
+// app Samsung ships.
 function liftLowEndRestrictions() {
   if (!configRead('enableFixedUI')) return;
 
@@ -79,8 +74,8 @@ function liftLowEndRestrictions() {
     window.tectonicConfig.featureSwitches.supportsLongPress = true;
   } catch (e) { /* a YouTube build without these switches */ }
 
-  // YouTube puts the class back whenever it re-renders, so it has to be
-  // removed on every attribute change rather than once at startup.
+  // YouTube puts the class back whenever it re-renders, so it has to be removed on
+  // every attribute change rather than once at startup.
   try {
     const observer = new MutationObserver(() => {
       if (document.body.classList.contains('app-quality-root')) {
@@ -100,8 +95,8 @@ function takeOverKeys() {
       return;
     }
 
-    // Right on the search box while a mini player is running promotes it back
-    // to fullscreen, which is otherwise a dead end.
+    // Right on the search box while a mini player is running promotes it back to
+    // fullscreen, which is otherwise a dead end.
     if (event.keyCode === RIGHT
         && window.isPipPlaying
         && document.querySelector('ytlr-search-text-box > .zylon-focus')) {
@@ -115,8 +110,8 @@ function takeOverKeys() {
     document.addEventListener(type, onKey, true));
 }
 
-// YouTube restores whatever was last on screen, which after a video is that
-// video's page. Landing on the home feed is what every other TV app does.
+// YouTube restores whatever was last on screen, which after a video is that video's
+// page. Landing on the home feed is what every other TV app does.
 function goToStartPage() {
   if (!configRead('reloadHomeOnStartup')) return;
 

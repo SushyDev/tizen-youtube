@@ -156,7 +156,6 @@ function buttonItem(title, icon, commands) {
     return button;
 }
 
-
 function timelyAction(text, icon, command, triggerTimeMs, timeoutMs) {
     return {
         timelyActionRenderer: {

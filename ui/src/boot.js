@@ -20,13 +20,13 @@ const PORT = 8099;
 
 // Off a television there is no `tizen` object at all. That single fact
 // decides where the service lives — the loopback port on a TV, this page's
-// own origin in a browser, where `dev/service.js` is answering — and whether
-// this file is allowed to do the two irreversible things it does: exit the
-// application, and navigate away from itself.
+// own origin in a browser, where Vite proxies to whatever is answering — and
+// whether this file may exit the application, which off a TV does nothing and
+// is therefore reported rather than performed.
 //
-// Neither is survivable in a browser. Exiting does nothing and navigating
-// replaces the log with a page that is not there, so off-TV both are reported
-// instead of performed and the log stays up to be read. See `hold` below.
+// Navigating away is the other irreversible thing, and it is not decided
+// here: off a TV it depends on whether anything is actually serving the page
+// at the far end. See `canHandOver` below.
 const platform = typeof tizen === 'undefined' ? null : tizen;
 const application = platform ? platform.application.getCurrentApplication() : null;
 const onTv = !!application;
@@ -117,17 +117,23 @@ const say = (facility, message, tone) => {
 
 // The log exists to be gone. Whatever happens next paints over a black page,
 // not over a list of log lines.
-//
-// Except in a browser, where there is nothing to hand over to and the log is
-// the only thing worth looking at. There it holds: the last line stays, one
-// more says what would have happened next, and the screen keeps whatever it
-// was showing.
 const handOver = () => {
-    if (!onTv) return;
-
     handedOver = true;
     document.body.className = 'done';
 };
+
+// Whether there is anywhere to go.
+//
+// On a TV, always: the service is on loopback and the proxy URL it reports is
+// its own. Off one, only the development server knows — the proxy URL points
+// at localhost either way, and whether anything is there depends on how
+// `npm run dev` was started. So it says, by adding `handOver` to the state as
+// it passes through. See ui/dev/tube.js, which sets it when it is running the
+// service itself, and does not when the state is coming from a television
+// across the room or from the stand-in in ui/dev/service.js.
+//
+// Nothing on a TV ever sends this field, and nothing needs to.
+const canHandOver = (state) => onTv || !!(state && state.handOver);
 
 /** Reports what the TV would have done next, and stops. */
 const hold = (facility, what) => {
@@ -486,7 +492,7 @@ const useProxy = (state, args) => {
 
     summarise();
 
-    if (!onTv) return hold('proxy', 'would navigate there now');
+    if (!canHandOver(state)) return hold('proxy', 'would navigate there now');
 
     say('tube', 'handing over to youtube');
 

@@ -29,10 +29,14 @@ const MAX_SCRIPT_BYTES = 4 * 1024 * 1024;
 // bundle and its assets sit together in dist/; running from source, assets/
 // is one level up. Checked in that order so the packaged layout wins.
 const BUNDLED_DIRS = [
+    // Development only: where `npm run dev` has rollup writing the bundles, so
+    // an edit under mods/ is picked up by the next page load without a service
+    // build in between. Unset everywhere else, including on a TV.
+    process.env.TUBE_BUNDLE_DIR,
     join(__dirname, 'assets'),          // packaged: dist/index.js + dist/assets
     join(__dirname, '..', 'dist', 'assets'), // running from source, after a build
     join(__dirname, '..', 'assets')     // running from source, assets alongside
-];
+].filter(Boolean);
 
 function sha256(buffer) {
     return createHash('sha256').update(buffer).digest('hex');

@@ -53,6 +53,7 @@ const BROWSER_GLOBALS = {
     CustomEvent: 'readonly',
     MutationObserver: 'readonly',
     IntersectionObserver: 'readonly',
+    KeyboardEvent: 'readonly',
     DOMRect: 'readonly',
     getComputedStyle: 'readonly',
     requestAnimationFrame: 'readonly',
@@ -160,6 +161,10 @@ module.exports = [
             'ui/vite.config.js',
             'ui/build.js'
         ],
+        // Except the one file under dev/ that is not build tooling: the dev
+        // remote is browser code, injected into the proxied page, and keeps
+        // the browser globals the block above gives it.
+        ignores: ['ui/dev/remote.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',

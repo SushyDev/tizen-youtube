@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# `npm run dev` keeps the service's update cache here.
+.dev/
 release/
 .ncc/
 .package/

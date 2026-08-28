@@ -4,11 +4,27 @@ import presetEnv from 'postcss-preset-env';
 
 import { gridGap } from '../tools/postcss-grid-gap.mjs';
 import { devService } from './dev/service.js';
+import { tubeService, PROXY_PORT } from './dev/tube.js';
 
-// The TV to develop against. Without one, dev/service.js answers instead and
-// the boot log holds on screen rather than handing over — which is the only
-// way to look at a screen whose whole purpose is to disappear.
+// Three ways to run this, and they differ only in what answers /__tube.
+//
+//   npm run dev            the real service, here. The boot screen hands over
+//                          and youtube.com's TV client comes up through the
+//                          real proxy with the real userscript in it — which
+//                          is how a feature gets worked on without hardware.
+//
+//   TUBE_TV=<ip> npm run dev
+//                          a television. Vite proxies to the service running
+//                          on it, so the boot screen is developed against the
+//                          state a real set reports.
+//
+//   npm run dev:boot       dev/service.js, a stand-in that answers with each
+//                          scenario boot.js can meet and never hands over —
+//                          the only way to look at a screen whose whole
+//                          purpose is to disappear. See ?boot= in that file.
 const TV = process.env.TUBE_TV || '';
+const SCENARIOS = !TV && process.env.TUBE_BOOT === 'scenarios';
+const LOCAL = !TV && !SCENARIOS;
 
 // The boot screen is one page, but it lands in the same webview the Homebrew
 // channel's pages do — Chromium 63 on Tizen 5.5, 76 on 6.5 — and fails the same silent
@@ -41,13 +57,20 @@ export default defineConfig({
     plugins: [
         viteSingleFile(),
 
-        // Development only, and only when there is no TV to talk to.
-        devService({ enabled: !TV })
+        // The real service, off-TV. Development only.
+        tubeService({ enabled: LOCAL }),
+
+        // The stand-in, for looking at the boot screen itself.
+        devService({ enabled: SCENARIOS })
     ],
 
     server: {
         host: true,
-        proxy: TV ? { '/__tube': { target: `http://${TV}:8099`, changeOrigin: true } } : undefined
+        // The stand-in answers from inside Vite; the other two are a service
+        // on a port, here or on the television.
+        proxy: SCENARIOS ? undefined : {
+            '/__tube': { target: `http://${TV || 'localhost'}:${PROXY_PORT}`, changeOrigin: true }
+        }
     },
 
     build: {

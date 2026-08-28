@@ -173,13 +173,18 @@ and fails on syntax Tizen 3 cannot parse. Route order is load bearing too:
 the catch-all shadows them and the app never launches. `service/test/routing.js`
 pins it.
 
-**Releasing.** Publishing a GitHub release builds the unsigned widget and
-attaches it — no secrets at all, on purpose, so it works on a fresh clone.
-Exactly one `.wgt` per release, which matters: Homebrew's catalogue takes the
-first package asset it finds. Tag and version have to agree — `npm run version
--- 1.2.0` sets it everywhere. Set `TUBE_ORIGIN` as a repository **variable** to
-stage the origin bundles too; without it the release still builds, and the app
-simply never updates itself between releases.
+**Releasing.** Pushing a `v*` tag builds the unsigned widget and opens a
+**draft** release carrying it — no secrets at all, on purpose, so it works on a
+fresh clone. Write the notes and press Publish. It has to be a draft, and the
+tag has to be what starts it: GitHub freezes a release once it is published and
+refuses assets from then on, and it fires no workflow event when a draft is
+saved, so this has to be the thing that opens the draft rather than something
+that joins one made by hand. Exactly one `.wgt` per release, which matters:
+Homebrew's catalogue takes the first package asset it finds. Tag and version
+have to agree — `npm run version -- 1.2.0` sets it everywhere. Set
+`TUBE_ORIGIN` as a repository **variable** to stage the origin bundles too;
+without it the release still builds, and the app simply never updates itself
+between releases.
 
 ---
 

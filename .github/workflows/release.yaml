@@ -73,6 +73,9 @@ jobs:
             exit 1
           fi
 
+      - name: Build
+        run: npm run build
+
       - name: Test
         run: npm test
 

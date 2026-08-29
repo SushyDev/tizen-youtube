@@ -122,7 +122,7 @@ const tubeService = ({ enabled }) => {
 
                 say('the boot screen hands over to youtube; the service is the real one');
                 say(`youtube directly: http://localhost:${PROXY_PORT}/tv`);
-                say('keys: g opens additional options, escape is return, tubeRemote(code) presses anything');
+                say('keys: b is the blue button, escape is return, tubeRemote(code) presses anything');
             });
 
             // An orphaned service holds the port and the next run talks to a stale build.

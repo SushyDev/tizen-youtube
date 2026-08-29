@@ -1,6 +1,5 @@
 import css from './ui.css';
 import { configRead } from '../config.js';
-import { openAdditionalOptions } from './settings.js';
 import { interceptCommands } from '../youtube/commands.js';
 import { resolve } from '../youtube/internals.js';
 import { pipToFullscreen } from '../features/pictureInPicture.js';
@@ -10,7 +9,6 @@ import { reloadGuide } from '../youtube/internals.js';
 // load event — the script is evaluated into a page that builds itself afterwards — so
 // a <video> element is the cheapest reliable signal that the player is constructed.
 
-const GREEN_BUTTON = 404;
 const RIGHT = 39;
 
 const ready = setInterval(() => {
@@ -38,7 +36,7 @@ function claimCommands(attempt = 0) {
   if (interceptCommands()) return;
 
   if (attempt > 40) {
-    console.warn('Could not find YouTube\'s command resolver; settings will not open.');
+    console.warn('Could not find YouTube\'s command resolver; settings will not work.');
     return;
   }
 
@@ -89,11 +87,6 @@ function liftLowEndRestrictions() {
 function takeOverKeys() {
   const onKey = (event) => {
     if (event.type !== 'keydown') return;
-
-    if (event.keyCode === GREEN_BUTTON) {
-      openAdditionalOptions();
-      return;
-    }
 
     // Right on the search box while a mini player is running promotes it back to
     // fullscreen, which is otherwise a dead end.

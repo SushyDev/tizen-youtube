@@ -24,7 +24,6 @@ import './features/enableFeatures.js';
 import './features/pictureInPicture.js';
 
 import './ui/ui.js';                   // wiring, keys, start page
-import './ui/settings.js';             // the Additional options panel
 import './ui/speedUI.js';
 import './ui/customUI.js';             // the buttons under the player
 import './ui/disableWhosWatching.js';

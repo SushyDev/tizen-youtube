@@ -2,16 +2,16 @@
 // proxied page alongside the userscript when `npm run dev` started it (TUBE_DEV_INJECT
 // in service/lib/proxy.js). Nothing under mods/ or service/ imports it.
 //
-// The settings panel opens on keyCode 404, which no laptop key produces. One letter per
-// remote button; letters typed into a real field are left alone.
+// The colour buttons are keyCodes no laptop key produces. One letter per remote button;
+// letters typed into a real field are left alone.
 
 (function () {
     'use strict';
 
-    // Samsung's TV key codes, as the app sees them. mods/ui/ui.js reads 404 for the
-    // panel and mods/ui/speedUI.js reads 406 for the speed control.
+    // Samsung's TV key codes, as the app sees them. mods/ui/speedUI.js reads 406 for
+    // the speed control; the rest are here to be pressed.
     var KEYS = {
-        g: { code: 404, what: 'green — additional options' },
+        g: { code: 404, what: 'green' },
         r: { code: 403, what: 'red' },
         y: { code: 405, what: 'yellow' },
         b: { code: 406, what: 'blue — playback speed' },

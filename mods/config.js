@@ -19,8 +19,9 @@ const defaultConfig = {
   // Blocking
   enableAdBlock: true,
 
-  // Toasts off: a notification over the picture every few minutes defeats the point.
   enableSponsorBlock: true,
+  // Off: a message over the picture every few minutes defeats the point of skipping
+  // quietly in the first place.
   enableSponsorBlockToasts: false,
   enableSponsorBlockSponsor: true,
   enableSponsorBlockIntro: true,
@@ -39,8 +40,9 @@ const defaultConfig = {
   enableDeArrowThumbnails: false,
 
   // Playback
-  // 2160p rather than "highest" because it is the ceiling of the panel. Falls back down.
-  preferredVideoQuality: '2160p',
+  // "Highest" is an instruction rather than a resolution: the top of whatever the video
+  // actually offers, which naming one cannot promise.
+  preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
   videoSpeed: 1,
   speedSettingsIncrement: 0.25,
@@ -88,8 +90,9 @@ const defaultConfig = {
   enableShowUserLanguage: true,
   enableShowOtherLanguages: false,
 
-  // Startup
-  launchToOnStartup: null,
+  // Startup. The page is stored as the command that opens it, which is what the
+  // settings row offers; the literal has to match what settingsModel.js builds.
+  launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
   reloadHomeOnStartup: true,
 
   // Theme
@@ -119,8 +122,16 @@ export function configRead(key) {
 export function configWrite(key, value) {
   localConfig[key] = value;
 
+  // Only what differs from the defaults is stored. Writing the whole object would
+  // freeze every default at whatever it was the first time anything was changed, and a
+  // later change to one would never reach anybody who already has the app.
+  const changed = {};
+  Object.keys(localConfig).forEach((name) => {
+    if (localConfig[name] !== defaultConfig[name]) changed[name] = localConfig[name];
+  });
+
   try {
-    window.localStorage[CONFIG_KEY] = JSON.stringify(localConfig);
+    window.localStorage[CONFIG_KEY] = JSON.stringify(changed);
   } catch (e) {
     // Full or disabled storage must not stop the setting taking effect this session.
     console.warn('Could not persist settings.', e);

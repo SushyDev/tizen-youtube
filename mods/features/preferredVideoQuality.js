@@ -89,8 +89,12 @@ class PreferredQualityHandler {
     // numbers ('1080p'). Asking for one the video does not have is not reported — the
     // player just keeps what it had — so every answer comes from the list it offers.
     #determineQuality(preference) {
-        const available = this.#player.getAvailableQualityData();
-        if (!available?.length) return null;
+        // An entry the player has said it cannot play is not an answer, whichever way
+        // the preference points.
+        const available = (this.#player.getAvailableQualityData() || [])
+            .filter((entry) => entry && entry.isPlayable !== false);
+
+        if (!available.length) return null;
 
         const pixels = (entry) => parseInt(entry.qualityLabel, 10) || 0;
 

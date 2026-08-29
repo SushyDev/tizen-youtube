@@ -3,8 +3,6 @@
 // tube service: CDP injection when Developer Mode is on, a local proxy when it is off.
 // The shell asks which is available and goes straight there.
 
-const express = require('express');
-
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const injector = require('./lib/injector.js');

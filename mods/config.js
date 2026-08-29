@@ -20,9 +20,9 @@ const defaultConfig = {
   enableAdBlock: true,
 
   enableSponsorBlock: true,
-  // A short message when a segment goes by, so a jump in the picture is explained
-  // rather than looking like a stutter.
-  enableSponsorBlockToasts: true,
+  // Off: a message over the picture every few minutes defeats the point of skipping
+  // quietly in the first place.
+  enableSponsorBlockToasts: false,
   enableSponsorBlockSponsor: true,
   enableSponsorBlockIntro: true,
   enableSponsorBlockOutro: true,

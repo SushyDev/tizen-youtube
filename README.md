@@ -14,6 +14,8 @@ modern sets.
 - Tizen 3 and up — one bundle for modern sets, one for old ones
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
+**Discord**: https://discord.gg/WjxVnrsV4A
+
 ---
 
 ## Install

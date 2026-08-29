@@ -201,11 +201,19 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
     // Manual SponsorBlock Skips
 
     if (r?.playerOverlays?.playerOverlayRenderer) {
-      if (r.playerOverlays.playerOverlayRenderer.timelyActionRenderers) {
-        r.playerOverlays.playerOverlayRenderer.timelyActionRenderers = 
-        r.playerOverlays.playerOverlayRenderer.timelyActionRenderers.filter(a => a.timelyActionRenderer.type !== 'TIMELY_ACTION_TYPE_SHOPPING' ||
-                                                                                a.timelyActionRenderer.type !== 'TIMELY_ACTION_TYPE_NFL_WATERMARK');
-      } else r.playerOverlays.playerOverlayRenderer.timelyActionRenderers = [];
+      const overlay = r.playerOverlays.playerOverlayRenderer;
+
+      // A timely action is a card YouTube lays over the picture partway through a
+      // video. The shopping one sells merchandise behind a QR code; the watermark is
+      // a broadcaster's logo. Both go, and the array is left in place either way
+      // because the SponsorBlock skip buttons below are pushed onto it.
+      const unwanted = configRead('hideShoppingAction')
+        ? ['TIMELY_ACTION_TYPE_SHOPPING', 'TIMELY_ACTION_TYPE_NFL_WATERMARK']
+        : ['TIMELY_ACTION_TYPE_NFL_WATERMARK'];
+
+      overlay.timelyActionRenderers = (overlay.timelyActionRenderers || [])
+        .filter((action) => unwanted.indexOf(action?.timelyActionRenderer?.type) === -1);
+
       if (configRead('sponsorBlockManualSkips').length > 0) {
         const manualSkippedSegments = configRead('sponsorBlockManualSkips');
         if (window?.sponsorblock?.segments) {
@@ -228,7 +236,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
                 segment.segment[0] * 1000,
                 segment.segment[1] * 1000 - segment.segment[0] * 1000
               );
-              r.playerOverlays.playerOverlayRenderer.timelyActionRenderers.push(timelyActionData);
+              overlay.timelyActionRenderers.push(timelyActionData);
             }
           }
         }

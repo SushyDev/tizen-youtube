@@ -1,6 +1,6 @@
 import { configRead, configWrite } from '../config.js';
 import { findResolver, resolve } from './internals.js';
-import { openAdditionalOptions, openOptionsSubmenu } from '../ui/settings.js';
+import { openOptions, OPTIONS_ACTION } from '../ui/settingsOptions.js';
 import { openSpeedOptions } from '../ui/speedUI.js';
 import { showToast, buttonItem } from '../ui/ytUI.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
@@ -19,13 +19,10 @@ const APP_NAME = 'YouTube';
 // Commands YouTube has never heard of, carried under `customAction` so they travel
 // the same rails as everything else.
 const ACTIONS = {
-    OPEN_ADDITIONAL_OPTIONS: () => openAdditionalOptions(),
+    // A settings row asking for the list of answers it offers.
+    [OPTIONS_ACTION]: (parameters) => openOptions(parameters),
 
     OPEN_SPEED_OPTIONS: () => openSpeedOptions(),
-
-    SETTINGS_UPDATE: (parameters) => openAdditionalOptions(true, parameters),
-
-    OPTIONS_SHOW: (parameters) => openOptionsSubmenu(parameters, parameters.update),
 
     // The keypress is what dismisses the overlay: the panel has no command for it.
     SKIP: (parameters) => {

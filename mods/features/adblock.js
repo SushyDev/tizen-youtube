@@ -2,7 +2,7 @@ import { configRead } from '../config.js';
 import { onResponse, onRequest } from '../youtube/json.js';
 
 import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
-import { PatchSettings } from '../ui/customYTSettings.js';
+import { PatchSettings } from '../ui/nativeSettings.js';
 
 // What each SponsorBlock category is called on the skip button. The ids come from
 // the API, so an unknown one falls back to the id itself.
@@ -24,8 +24,8 @@ const SEGMENT_NAMES = {
 // that mean "worth reading"; everything else is rejected on one lookup.
 const RESPONSE_KEYS = [
   'adPlacements', 'adSlots', 'contents', 'continuationContents', 'endscreen',
-  'entries', 'frameworkUpdates', 'messages', 'paidContentOverlay',
-  'playbackContext', 'playerAds', 'playerOverlays', 'streamingData', 'title',
+  'entries', 'frameworkUpdates', 'items', 'messages', 'paidContentOverlay',
+  'playbackContext', 'playerAds', 'playerOverlays', 'streamingData',
   'transportControls'
 ];
 
@@ -118,11 +118,9 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       );
     }
 
-    // Patch settings
+    // This app's own settings, as rows on YouTube's settings page.
 
-    if (r?.title?.runs) {
-      PatchSettings(r);
-    }
+    PatchSettings(r);
 
     // DeArrow, done here rather than by DOM manipulation.
 

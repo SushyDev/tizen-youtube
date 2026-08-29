@@ -5,7 +5,6 @@
 // and the app never launches. This pins the order.
 
 const http = require('http');
-const express = require('express');
 
 const proxy = require('../lib/proxy.js');
 

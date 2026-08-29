@@ -31,6 +31,21 @@ const findBySource = (...markers) => {
     return match ? match[1] : null;
 };
 
+/** The first registry class whose prototype answers `matches`. */
+const findByPrototype = (matches) => {
+    const match = entries().find(([, value]) => {
+        if (typeof value !== 'function' || !value.prototype) return false;
+
+        try {
+            return !!matches(value.prototype);
+        } catch (e) {
+            return false;
+        }
+    });
+
+    return match ? match[1] : null;
+};
+
 /** The name a registry value is registered under, needed to replace it. */
 const nameOf = (target) => {
     const match = entries().find(([, value]) => value === target);
@@ -118,4 +133,4 @@ const reloadGuide = () => {
     if (run) run('reloadGuideAction');
 };
 
-export { findBySource, nameOf, replace, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };
+export { findBySource, findByPrototype, nameOf, replace, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };

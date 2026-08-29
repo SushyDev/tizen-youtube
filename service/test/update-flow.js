@@ -6,10 +6,9 @@
 
 const http = require('http');
 const { createHash } = require('crypto');
-const { mkdtempSync, readFileSync, existsSync } = require('fs');
+const { mkdtempSync, existsSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
-const Module = require('module');
 
 const results = [];
 function check(name, ok, detail) {

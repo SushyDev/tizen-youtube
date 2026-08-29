@@ -4,10 +4,9 @@
 // used when its digest matches, and a corrupted cache falls back rather than executing
 // unverified code.
 
-const { mkdtempSync, writeFileSync, mkdirSync, existsSync } = require('fs');
+const { mkdtempSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
-const Module = require('module');
 
 const results = [];
 function check(name, ok, detail) {

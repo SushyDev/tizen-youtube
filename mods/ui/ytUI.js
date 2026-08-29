@@ -141,7 +141,7 @@ function buttonItem(title, icon, commands) {
         }
     }
 
-    if (icon) {
+    if (icon && icon.icon) {
         button.compactLinkRenderer.icon = {
             iconType: icon.icon,
         }

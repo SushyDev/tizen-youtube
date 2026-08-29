@@ -138,7 +138,7 @@ environment variables that nothing in a build sets:
 | --- | --- |
 | `TUBE_DEV_UA` | youtube.com/tv serves a redirect notice to anything that is not a television, so the proxy presents itself as one — upstream, and to the page |
 | `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
-| `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. The settings panel opens on the green button, which is keyCode 404 and on no keyboard — this puts the remote's keys on one. `g` opens Additional options, `Escape` is Return, and `tubeRemote(code)` presses anything else |
+| `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
 Only DIAL discovery and debugger injection need real hardware, and those report
 clearly instead of crashing. Point the dev server at a set with

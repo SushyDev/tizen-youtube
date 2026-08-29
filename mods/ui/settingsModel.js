@@ -270,6 +270,9 @@ const GROUPS = [
     id: 'tube_interruptions',
     title: 'Overlays and prompts',
     items: [
+      Switch('hideShoppingAction', 'Hide shopping action',
+        'The merchandise card with a QR code that YouTube lays over the picture partway through a video',
+        MONEY),
       Switch('enableHideEndScreenCards', 'End screen cards',
         'The tiles the uploader lays over the last seconds of a video', SCREEN, false),
       Switch('enablePaidPromotionOverlay', 'Paid promotion notice',

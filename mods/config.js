@@ -63,6 +63,9 @@ const defaultConfig = {
   enableHqThumbnails: true,
 
   // Overlays and interruptions that appear over a video you were watching.
+  // The shopping panel is merchandise sold over the picture, which is the one thing
+  // an app that drops adverts should not be leaving in.
+  hideShoppingAction: true,
   enableHideEndScreenCards: false,
   enablePaidPromotionOverlay: true,
   enableYouThereRenderer: true,

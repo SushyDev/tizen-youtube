@@ -103,10 +103,33 @@ function takeOverKeys() {
     document.addEventListener(type, onKey, true));
 }
 
+// YouTube's own first-run flow — the value proposition, then the sign-in screen with
+// its QR code and pairing code — is drawn inside <ytlr-welcome> and stays there until
+// the set has an account or the viewer has chosen to go without one. A <video> element
+// exists while it is on screen, so the signal `start()` waits on says nothing about
+// whether YouTube is finished with the screen.
+const WELCOME_POLL = 250;
+
+// Present but unrendered is YouTube holding on to the element, not showing it.
+function onWelcomeScreen() {
+  const welcome = document.querySelector('ytlr-welcome');
+  return !!welcome && welcome.getBoundingClientRect().height > 0;
+}
+
 // YouTube restores whatever was last on screen, which after a video is that video's
 // page. Landing on the home feed is what every other TV app does.
 function goToStartPage() {
   if (!configRead('reloadHomeOnStartup')) return;
+
+  // Waiting rather than skipping: navigating over the first-run flow dropped people on
+  // a guest home feed a second after the app opened, halfway through signing in, and
+  // skipping outright would cost them the start page they asked for once they are
+  // through it. There is nothing to restore in the meantime, and the wait ends the
+  // moment YouTube gives the screen back.
+  if (onWelcomeScreen()) {
+    setTimeout(goToStartPage, WELCOME_POLL);
+    return;
+  }
 
   const launchTo = configRead('launchToOnStartup');
 

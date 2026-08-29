@@ -1,6 +1,6 @@
 {
   "name": "tizen-youtube",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Standalone ad-free YouTube for Samsung Tizen TVs.",
   "license": "GPL-3.0-only",

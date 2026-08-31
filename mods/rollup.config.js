@@ -43,7 +43,16 @@ function bundle({ name, input, target, ecma }) {
                 babelHelpers: 'bundled',
                 presets: [['@babel/preset-env', { targets: target }]]
             }),
-            terser({ ecma, mangle: true }),
+            terser({
+                ecma,
+                mangle: true,
+                // console.log/info/debug are development aids, and on the injected path
+                // they are not free: the service attaches with the Runtime domain
+                // enabled, so Blink serialises every call — object previews included —
+                // into a protocol event and ships it over the socket to be discarded.
+                // warn and error stay: they are the only diagnostics a TV ever gives up.
+                compress: { pure_funcs: ['console.log', 'console.info', 'console.debug'] }
+            }),
             // Restores the NUL byte carried as a sentinel through the string plugin.
             replace({
                 preventAssignment: false,

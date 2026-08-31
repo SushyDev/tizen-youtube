@@ -9,30 +9,45 @@
 const readers = [];
 const writers = [];
 
-// A keyed lookup beats a Set on the old webviews this also runs on.
+// A keyed lookup beats a Set on the old webviews this also runs on. The parallel
+// arrays exist because the guard below walks the registered keys rather than the
+// value's own — see `isInteresting`.
 const readable = Object.create(null);
 const writable = Object.create(null);
+const readableKeys = [];
+const writableKeys = [];
 
-const remember = (index, keys) => keys.forEach((key) => { index[key] = true; });
+const remember = (index, list, keys) => keys.forEach((key) => {
+    if (index[key]) return;
+    index[key] = true;
+    list.push(key);
+});
 
 /** Registers a reader. A value naming none of `keys` never reaches `read`. */
 const onResponse = (name, keys, read) => {
-    remember(readable, keys);
+    remember(readable, readableKeys, keys);
     readers.push({ name, handle: read });
 };
 
 /** Registers a writer. `write` returns the value to serialise, or nothing to leave it. */
 const onRequest = (name, keys, write) => {
-    remember(writable, keys);
+    remember(writable, writableKeys, keys);
     writers.push({ name, handle: write });
 };
 
+// This is the hottest code in the userscript: it runs on every JSON.parse and every
+// JSON.stringify the page makes, which during playback is continuous. It used to
+// enumerate the value's own keys with `for...in`, which walks the prototype chain and
+// materialises a key string for every property of every object YouTube parses.
+// Walking the handful of registered keys instead is a fixed, small number of own-property
+// lookups and allocates nothing.
+//
 // `null` is an object, which is the detail that used to crash this.
-const isInteresting = (value, index) => {
+const isInteresting = (value, keys) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
 
-    for (const key in value) {
-        if (index[key]) return true;
+    for (let i = 0; i < keys.length; i++) {
+        if (value[keys[i]] !== undefined) return true;
     }
 
     return false;
@@ -91,7 +106,7 @@ const interceptJson = () => {
     JSON.parse = function () {
         const response = parse.apply(this, arguments);
 
-        if (isInteresting(response, readable)) {
+        if (isInteresting(response, readableKeys)) {
             readers.forEach((reader) => guarded(reader, response));
         }
 
@@ -99,7 +114,7 @@ const interceptJson = () => {
     };
 
     JSON.stringify = function (value, replacer, space) {
-        if (!isInteresting(value, writable)) return stringify.call(this, value, replacer, space);
+        if (!isInteresting(value, writableKeys)) return stringify.call(this, value, replacer, space);
 
         const rewritten = writers.reduce((current, writer) => {
             const result = guarded(writer, current, current);

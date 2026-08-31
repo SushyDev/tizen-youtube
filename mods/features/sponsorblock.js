@@ -62,6 +62,8 @@ class SponsorBlockHandler {
   sliderInterval = null;
 
   observer = null;
+  overlayFrame = null;
+  isOldUI = undefined;
   scheduleSkipHandler = null;
   durationChangeHandler = null;
   segments = null;
@@ -105,15 +107,11 @@ class SponsorBlockHandler {
     this.manualSkippableCategories = configRead('sponsorBlockManualSkips');
     this.skippableCategories = this.getSkippableCategories();
 
-    this.scheduleSkipHandler = () => {
-      const slider = document.querySelector('div[idomkey="slider"]');
-      const sliderRect = slider?.getBoundingClientRect();
-      const isOldUI = !document.querySelector('div[idomkey="Metadata-Section"]');
-      if (isOldUI && sliderRect) {
-        this.segmentsoverlay.style.setProperty('top', `${sliderRect.top}px`, 'important');
-      }
-      this.scheduleSkip();
-    }
+    // Repositioning the overlay used to happen here, which meant two document-wide
+    // queries plus a getBoundingClientRect — a forced synchronous layout — four times a
+    // second on the same thread that feeds the decoder. It belongs on the progress
+    // bar's own observer, which only wakes when the bar actually changes.
+    this.scheduleSkipHandler = () => this.scheduleSkip();
     this.durationChangeHandler = () => this.buildOverlay();
 
     this.attachVideo();
@@ -164,8 +162,18 @@ class SponsorBlockHandler {
 
     this.video.addEventListener('play', this.scheduleSkipHandler);
     this.video.addEventListener('pause', this.scheduleSkipHandler);
-    this.video.addEventListener('timeupdate', this.scheduleSkipHandler);
+    this.video.addEventListener('seeked', this.scheduleSkipHandler);
+    // `playing` covers a resume after buffering and `ratechange` the speed control,
+    // both of which invalidate an armed wall-clock timeout.
+    this.video.addEventListener('playing', this.scheduleSkipHandler);
+    this.video.addEventListener('ratechange', this.scheduleSkipHandler);
     this.video.addEventListener('durationchange', this.durationChangeHandler);
+
+    // Arm the first skip here rather than waiting for an event. `timeupdate` used to do
+    // this by accident — it fires within a few hundred milliseconds of anything — but
+    // the events above are all edges, and segments routinely arrive from the API while
+    // the video is already playing, with no further edge coming until the user acts.
+    this.scheduleSkip();
   }
 
   buildOverlay() {
@@ -215,27 +223,29 @@ class SponsorBlockHandler {
       elm.style.setProperty('width', `${segment.category === 'poi_highlight' ? 1 : widthPercent}%`, 'important');
       elm.style.setProperty('left', `${leftPercent}%`, 'important');
       elm.style.setProperty('position', 'absolute', 'important');
-      console.info('Generated element', elm, 'from', segment);
       this.segmentsoverlay.appendChild(elm);
     });
 
+    // One pass per batch, not one per record. The progress bar mutates continuously
+    // while a video plays, so a batch of several hundred records used to mean several
+    // hundred document-wide queries and as many style writes. The query is hoisted for
+    // the same reason and null-guarded: it used to throw once per record whenever the
+    // progress bar was between renders.
     this.observer = new MutationObserver((mutations) => {
-      mutations.forEach((m) => {
-        if (m.removedNodes) {
-          for (const node of m.removedNodes) {
-            if (node === this.segmentsoverlay) {
-              console.info('bringing back segments overlay');
-              this.slider.appendChild(this.segmentsoverlay);
-            }
-          }
-        }
+      let detached = false;
 
-        if (document.querySelector('ytlr-progress-bar').getAttribute('hybridnavfocusable') === 'false') {
-          this.segmentsoverlay.style.setProperty('display', 'none', 'important');
-        } else {
-          this.segmentsoverlay.style.setProperty('display', 'block', 'important');
+      for (let i = 0; i < mutations.length; i++) {
+        const removed = mutations[i].removedNodes;
+        for (let j = 0; j < removed.length; j++) {
+          if (removed[j] === this.segmentsoverlay) detached = true;
         }
-      });
+      }
+
+      if (detached && this.slider && this.segmentsoverlay) {
+        this.slider.appendChild(this.segmentsoverlay);
+      }
+
+      this.refreshOverlay();
     });
 
     this.sliderInterval = setInterval(() => {
@@ -248,8 +258,43 @@ class SponsorBlockHandler {
           subtree: true
         });
         this.slider.appendChild(this.segmentsoverlay);
+        this.refreshOverlay();
       }
     }, 500);
+  }
+
+  // Both things this does read layout, and the observer driving it fires many times a
+  // second, so it is coalesced to at most one pass per frame and the read happens
+  // inside the frame rather than in the middle of a mutation callback.
+  refreshOverlay() {
+    if (this.overlayFrame !== null || !this.segmentsoverlay) return;
+
+    const schedule = window.requestAnimationFrame
+      ? (fn) => window.requestAnimationFrame(fn)
+      : (fn) => setTimeout(fn, 16);
+
+    this.overlayFrame = schedule(() => {
+      this.overlayFrame = null;
+      if (!this.segmentsoverlay) return;
+
+      const progressBar = document.querySelector('ytlr-progress-bar');
+      const hidden = progressBar
+        && progressBar.getAttribute('hybridnavfocusable') === 'false';
+
+      this.segmentsoverlay.style.setProperty('display', hidden ? 'none' : 'block', 'important');
+
+      // Only the older layout needs the overlay pinned to the slider's own offset, and
+      // which layout this is cannot change within a video.
+      if (this.isOldUI === undefined) {
+        this.isOldUI = !document.querySelector('div[idomkey="Metadata-Section"]');
+      }
+      if (!this.isOldUI) return;
+
+      const slider = document.querySelector('div[idomkey="slider"]');
+      if (slider) {
+        this.segmentsoverlay.style.setProperty('top', `${slider.getBoundingClientRect().top}px`, 'important');
+      }
+    });
   }
 
   scheduleSkip() {
@@ -294,6 +339,17 @@ class SponsorBlockHandler {
       if (this.video.paused) {
         console.info(this.videoID, 'Currently paused, ignoring...');
         return;
+      }
+
+      // A wall-clock timeout is only ever an estimate of when media time will reach
+      // the segment: buffering, a decoder stall or a playback-rate change all pull the
+      // two apart. `timeupdate` used to hide that by re-scheduling four times a second.
+      // Rather than pay for that, check on arrival and re-arm if playback is not there
+      // yet — which also makes the event list below an optimisation rather than a
+      // correctness requirement.
+      if (this.video.currentTime < start - 1) {
+        console.info(this.videoID, 'Segment not reached yet, rescheduling');
+        return this.scheduleSkip();
       }
       if (!this.skippableCategories.includes(segment.category)) {
         console.info(
@@ -368,6 +424,12 @@ class SponsorBlockHandler {
       this.observer = null;
     }
 
+    if (this.overlayFrame !== null) {
+      if (window.cancelAnimationFrame) window.cancelAnimationFrame(this.overlayFrame);
+      else clearTimeout(this.overlayFrame);
+      this.overlayFrame = null;
+    }
+
     if (this.segmentsoverlay) {
       this.segmentsoverlay.remove();
       this.segmentsoverlay = null;
@@ -376,7 +438,9 @@ class SponsorBlockHandler {
     if (this.video) {
       this.video.removeEventListener('play', this.scheduleSkipHandler);
       this.video.removeEventListener('pause', this.scheduleSkipHandler);
-      this.video.removeEventListener('timeupdate', this.scheduleSkipHandler);
+      this.video.removeEventListener('seeked', this.scheduleSkipHandler);
+      this.video.removeEventListener('playing', this.scheduleSkipHandler);
+      this.video.removeEventListener('ratechange', this.scheduleSkipHandler);
       this.video.removeEventListener(
         'durationchange',
         this.durationChangeHandler

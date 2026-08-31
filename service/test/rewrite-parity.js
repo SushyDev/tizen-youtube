@@ -4,7 +4,7 @@
 // reference implementation. The one intended difference is the injected script tag,
 // which points at this service instead of a CDN, and is compared separately.
 
-const { rewriteBody, rewriteSetCookie } = require('../lib/proxy.js');
+const { rewriteBody, rewriteSetCookie } = require('../dev/proxy.js');
 
 const PORT = 8099;
 const proxyPrefix = `http://localhost:${PORT}/cors-bypass/`;

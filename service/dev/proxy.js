@@ -1,20 +1,25 @@
 "use strict";
 
-// MITM proxy: the fallback when Developer Mode is off. youtube.com is proxied through
-// localhost so the userscript can be injected with a plain script tag and CSP never
-// applies. The rewrite table is ported unchanged from the reference — it is empirically
-// derived and every rule is load bearing.
+// MITM proxy: DEVELOPMENT ONLY. It is not reachable from `service/index.js` and ncc
+// never bundles it, so nothing here ships to a television.
+//
+// It exists because `npm run dev` has no debugger to inject with: off a TV there is no
+// sdb daemon, so the only way to get the userscript into youtube.com in a desktop
+// browser is to serve youtube.com from localhost and splice a script tag in. On a TV
+// that job belongs to `lib/injector.js` and this file has no part in it.
+//
+// The rewrite table is ported unchanged from the reference — it is empirically derived
+// and every rule is load bearing.
 
-const express = require('express');
 const fetch = require('node-fetch');
 const URL = require('url');
 const { readFileSync } = require('fs');
 
-const ports = require('./ports.js');
-const loader = require('./loader.js');
+const ports = require('../lib/ports.js');
+const loader = require('../lib/loader.js');
 
-const PROXY_PREFIX = `http://localhost:${ports.PROXY}/cors-bypass/`;
-const LOCAL_ORIGIN = `http://localhost:${ports.PROXY}`;
+const PROXY_PREFIX = `http://localhost:${ports.SERVICE}/cors-bypass/`;
+const LOCAL_ORIGIN = `http://localhost:${ports.SERVICE}`;
 
 // Development only. youtube.com/tv decides from the user agent whether the caller is a
 // TV, so the proxy presents as one upstream and tells the page to report the same.
@@ -54,7 +59,7 @@ function rewriteBody(text, url) {
     // Routed through the bypass. Three spellings each, because YouTube emits absolute,
     // escaped and protocol-relative forms.
     text = text.replace(/https:\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `${PROXY_PREFIX}https://$1.googlevideo.com`);
-    text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/localhost:${ports.PROXY}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
+    text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/localhost:${ports.SERVICE}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
     text = text.replace(/"\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `"${PROXY_PREFIX}https://$1.googlevideo.com`);
 
     text = text.replace(/https:\/\/www\.gstatic\.com/g, `${PROXY_PREFIX}https://www.gstatic.com`);
@@ -113,21 +118,14 @@ function restoreCookiePrefixes(cookieHeader) {
         .replace(/__LocalHost-/g, '__Host-');
 }
 
-// Express matches routes in registration order and this catch-all matches everything,
-// so it must be attached after the caller's own routes — otherwise /__tube/state gets
-// YouTube's HTML instead of JSON and the app never launches.
-function create(platformVersion) {
-    const app = express();
-
-    app.use((req, res, next) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-        res.setHeader('Access-Control-Allow-Headers', '*');
-        if (req.method === 'OPTIONS') return res.status(200).end();
-        next();
-    });
-
-    // Served from the package or the verified cache, never from a CDN.
+// Everything this module adds, in the order Express has to see it. The catch-all below
+// matches every path, so it goes last: attached before the service's own routes,
+// /__tube/state is answered with YouTube's HTML and the app never launches.
+// `service/test/routing.js` pins that ordering.
+function attachDev(app, platformVersion) {
+    // On the injected path the script is evaluated straight into the page and never
+    // fetched. This route exists for the script tag the proxy splices in, which is a
+    // development mechanism only.
     app.get('/__tube/userScript.js', (_, res) => {
         try {
             const script = loader.resolve(platformVersion);
@@ -138,7 +136,6 @@ function create(platformVersion) {
         }
     });
 
-    // Development only, so a packaged service has no such route.
     if (DEV_INJECT_PATH) {
         app.get('/__tube/dev.js', (_, res) => {
             try {
@@ -149,6 +146,8 @@ function create(platformVersion) {
             }
         });
     }
+
+    attachFallback(app);
 
     return app;
 }
@@ -232,4 +231,4 @@ function attachFallback(app) {
     return app;
 }
 
-module.exports = { create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes };
+module.exports = { attachDev, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes };

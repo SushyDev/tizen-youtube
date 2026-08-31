@@ -3,10 +3,6 @@
 // `JSON.parse` during its own evaluation gets whatever was there at that moment. This
 // file is arranged so that is always ours.
 
-// Redirects YouTube's own network calls at the local proxy. Does nothing on the
-// injected path, where the page is already youtube.com.
-import './features/standaloneUserscript.js';
-
 // Features: each registers what it wants and does nothing else at import time.
 // Nothing is intercepted until the last line of this file.
 

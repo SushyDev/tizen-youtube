@@ -4,7 +4,7 @@ import presetEnv from 'postcss-preset-env';
 
 import { gridGap } from '../tools/postcss-grid-gap.mjs';
 import { devService } from './dev/service.js';
-import { tubeService, PROXY_PORT } from './dev/tube.js';
+import { tubeService, SERVICE_PORT } from './dev/tube.js';
 
 // Three ways to run this, differing only in what answers /__tube:
 //
@@ -54,7 +54,7 @@ export default defineConfig({
         host: true,
         // The stand-in answers from inside Vite; the other two are a service on a port.
         proxy: SCENARIOS ? undefined : {
-            '/__tube': { target: `http://${TV || 'localhost'}:${PROXY_PORT}`, changeOrigin: true }
+            '/__tube': { target: `http://${TV || 'localhost'}:${SERVICE_PORT}`, changeOrigin: true }
         }
     },
 

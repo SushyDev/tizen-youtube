@@ -48,18 +48,45 @@ function isConnecting() {
     return false;
 }
 
-function canConnectToDaemon() {
+// The boot screen polls /__tube/state every 200ms until it gets an answer, and every
+// one of those used to be a fresh HTTP round-trip to the Smart View API. Developer Mode
+// does not change during a launch, so the probe is cached for long enough to collapse a
+// burst of polls into one call — and briefly enough that turning Developer Mode on and
+// relaunching still works without waiting.
+const PROBE_CACHE_MS = 2000;
+
+let probeCache = null;
+let probedAt = 0;
+
+function probeDaemon() {
+    if (probeCache && Date.now() - probedAt < PROBE_CACHE_MS) {
+        return Promise.resolve(probeCache);
+    }
+
     return fetch(`http://127.0.0.1:${ports.DMP}/api/v2/`)
         .then((res) => res.json())
         .then((json) => ({
             canConnectToDaemon:
                 (json.device.developerIP === '127.0.0.1' || json.device.developerIP === '1.0.0.127') &&
                 json.device.developerMode === '1',
-            ip: json.device.ip,
-            platformVersion,
-            isConnecting: isConnecting()
+            ip: json.device.ip
         }))
-        .catch(() => ({ canConnectToDaemon: false, ip: null, platformVersion, isConnecting: isConnecting() }));
+        .catch(() => ({ canConnectToDaemon: false, ip: null }))
+        .then((result) => {
+            probeCache = result;
+            probedAt = Date.now();
+            return result;
+        });
+}
+
+function canConnectToDaemon() {
+    // `isConnecting` is read live: it is the one field that changes within a launch.
+    return probeDaemon().then((probe) => ({
+        canConnectToDaemon: probe.canConnectToDaemon,
+        ip: probe.ip,
+        platformVersion,
+        isConnecting: isConnecting()
+    }));
 }
 
 // The DIAL server carries the payload from a phone's cast button. The wrong port here
@@ -69,8 +96,15 @@ function watchUrl(args) {
     return `https://www.youtube.com/tv?additionalDataUrl=${additional}${args ? `&${args}` : ''}`;
 }
 
-function attach(host, port, args, attempt) {
-    const attempts = attempt || 1;
+// The debug port takes a moment to open after the relaunch. This used to be 40 tries
+// at a flat 100ms; a deadline says what is actually meant, and backing off stops a slow
+// television being hammered forty times while it is still starting up.
+const ATTACH_DEADLINE = 12000;
+const ATTACH_MIN_DELAY = 100;
+const ATTACH_MAX_DELAY = 750;
+
+function attach(host, port, args, startedAt) {
+    const began = startedAt || Date.now();
 
     return fetch(`http://${host}:${port}`)
         .then(() => new Promise((resolve, reject) => {
@@ -105,13 +139,38 @@ function attach(host, port, args, attempt) {
             }).on('error', reject);
         }))
         .catch((err) => {
-            if (attempts >= 40) {
+            const waited = Date.now() - began;
+
+            if (waited >= ATTACH_DEADLINE) {
                 stopConnecting();
-                throw new Error(`Could not attach to the debugger on ${host}:${port}: ${err.message}`);
+                throw new Error(
+                    `Could not attach to the debugger on ${host}:${port} after ${Math.round(waited / 1000)}s: ${err.message}`
+                );
             }
-            return new Promise((resolve) => setTimeout(resolve, 100))
-                .then(() => attach(host, port, args, attempts + 1));
+
+            // Doubling from 100ms, capped: quick while the port is about to open, quiet
+            // once it is clear it is taking a while.
+            const delay = Math.min(ATTACH_MIN_DELAY * Math.pow(2, Math.floor(waited / 1000)), ATTACH_MAX_DELAY);
+
+            return new Promise((resolve) => setTimeout(resolve, delay))
+                .then(() => attach(host, port, args, began));
         });
+}
+
+// The daemon reports the set's LAN address, which is what the reference attached to.
+// It is not the only address the debug port answers on, and a TV whose LAN address has
+// just changed — or which is reporting it wrongly — leaves injection dead with no way
+// to tell why. Loopback is tried second, on the same port.
+function attachToEither(ip, port, args) {
+    const first = ip || '127.0.0.1';
+
+    return attach(first, port, args).catch((err) => {
+        if (first === '127.0.0.1') throw err;
+
+        console.warn(`${err.message}; retrying on loopback.`);
+        beginConnecting();
+        return attach('127.0.0.1', port, args);
+    });
 }
 
 // Relaunches this app under the debugger and attaches to it.
@@ -150,7 +209,13 @@ function startDebugger(args) {
                     clearTimeout(timer);
 
                     const port = Number(text.substr(text.indexOf(':') + 1, 6).replace(' ', ''));
-                    attach(state.ip, port, args).then(
+
+                    if (!port) {
+                        stopConnecting();
+                        return reject(new Error(`SDB reported no usable debug port (said: ${text.trim().slice(0, 80)})`));
+                    }
+
+                    attachToEither(state.ip, port, args).then(
                         () => resolve(true),
                         (err) => { stopConnecting(); reject(err); }
                     );

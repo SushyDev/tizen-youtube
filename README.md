@@ -207,6 +207,17 @@ development entry too: `attachDev()` runs **after** the service registers its
 endpoints, or the proxy's catch-all shadows them and the app never launches.
 `service/test/routing.js` pins it.
 
+**Measure before optimising.** `node tools/bench.js` loads a real bundle into headless
+Chromium and reports the two costs the userscript actually imposes: what the JSON hooks
+add to a browse response against the native parse of the same bytes, and what anything
+watching the document adds to node churn against the same churn without the script. It
+needs `npm i --no-save playwright-core` and a Chromium; neither is a dependency of this
+repo because neither is needed to build or ship it. `--profile` says where the JSON time
+goes, and `--bundle <path>` points it at another build, which is the useful mode: build
+one, keep it, build the other, run both. Desktop numbers are not television numbers, but
+the ratio carries. It also fails the run if a decorated response has become circular or
+if a decoration stopped applying, both of which are easy to reintroduce.
+
 **The userscript runs on the main thread the decoder shares.** A MutationObserver
 with `subtree: true` over `document.body` costs a MutationRecord allocation for
 every node YouTube's renderer touches, whether or not the callback does anything

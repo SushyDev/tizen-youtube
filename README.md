@@ -231,29 +231,33 @@ one, keep it, build the other, run both. Desktop numbers are not television numb
 the ratio carries. It also fails the run if a decorated response has become circular or
 if a decoration stopped applying, both of which are easy to reintroduce.
 
-**Tell the set's truth about what it can decode.** Chromium carries a software AV1
-decoder, so `MediaSource.isTypeSupported` answers yes to `av01` on every television ever
-built. YouTube believes it and the server sends AV1 4K60 HDR to a chip that has to decode
-it on the CPU — about one frame in ten dropped on a real set, with an eleven-second
-buffer and 70Mbit spare, so nothing to do with the network. The official app does not have
-this problem because it asks the hardware rather than the browser.
-`mods/features/codecCapability.js` withdraws the claim to 4K AV1 when there is no
-hardware path, and it answers **all three** ways a browser can be asked — `decodingInfo`,
-`MediaSource.isTypeSupported` and `canPlayType`. Patching only `isTypeSupported` does
-nothing on a client that asks `decodingInfo`, which is the modern one and the one that
-reports `powerEfficient`. It runs before every other module because the server chooses a
-format once, from what the client said at the start.
+**Tell the set's truth about what it can decode.** A television dropping frames on 4K60
+is not usually being starved of data — the buffer is full and the connection idle. It is
+being sent something its webview has no hardware path for, and Chromium will decode that
+on the CPU rather than admit it cannot.
 
-A set can also claim a hardware path it does not really have, or have one for 8-bit and
-not for the 10-bit HDR profile YouTube actually sends. So the claim is checked against
-reality: if frames are being dropped while AV1 plays, that is the set answering the
-question properly, and the answer is remembered in `localStorage` for next time. The
-verdict is logged — `[tube] AV1 4K verdict: …` — because when this is wrong, that line is
-the only thing that says why.
+The tempting conclusion is that a codec is at fault. On the set this was chased on, AV1
+4K60 HDR dropped 10% of frames and forcing VP9 dropped 24% — worse. What the two had in
+common was not the codec but the part nobody quotes: `av01.0.13M.**10**` and
+`vp09.**02**.51.**10**` are both **ten-bit**, both `smpte2084 (PQ) / bt2020`. A panel has a
+hardware path for HDR; a webview need not be wired to it.
 
-That is also why the format filter in `adblock.js` is not enough on its own: playback is
-server-driven now (SABR), so trimming `streamingData.adaptiveFormats` edits a list the
-server is not choosing from. Capability is what it reads.
+So `mods/features/codecCapability.js` takes no position on codecs. It describes a format
+by the three things that decide whether a decoder keeps up — family, resolution class, bit
+depth — reading the level out of the codec string, because neither the resolution nor the
+frame rate appears anywhere else. It asks the platform about each combination through all
+**three** channels a browser can be asked (`decodingInfo`, `MediaSource.isTypeSupported`,
+`canPlayType`; patching only the second does nothing to a client that asks the first), and
+then it checks the answer against the frames the set actually manages. When they disagree
+the frames win, and it gives up one rung at a time — ten-bit at 4K first, because SDR 4K60
+still looks like 4K60, then 4K60 itself. What it learns is kept in `localStorage`, so a
+set works this out once rather than every launch, and every step is logged, because when
+this is wrong that log is the only thing on a television that says why.
+
+If the resolution settles at 1440p, that is usually the player protecting itself from the
+same dropped frames rather than the quality setting failing: re-pinning 2160p over a
+decoder that cannot hold it buys stutter, not sharpness. Fix the drops and the resolution
+comes back on its own.
 
 **Decorate on interaction, not on render.** A browse response carries a couple of
 hundred tiles and a person touches perhaps three of them, so anything a tile only needs

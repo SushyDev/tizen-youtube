@@ -45,7 +45,7 @@ const tallies = new WeakMap();
 function tallyFor(video) {
     let tally = tallies.get(video);
     if (!tally) {
-        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, size: '', previous: null, watching: false, timer: null };
+        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null };
         tallies.set(video, tally);
     }
     return tally;
@@ -53,10 +53,10 @@ function tallyFor(video) {
 
 /** The reported frame rate, re-read only on a size change: it moves with the rung. */
 function frameRate(video, tally) {
-    const size = video.videoWidth + 'x' + video.videoHeight;
-    if (size === tally.size) return tally.fps;
+    if (video.videoWidth === tally.width && video.videoHeight === tally.height) return tally.fps;
 
-    tally.size = size;
+    tally.width = video.videoWidth;
+    tally.height = video.videoHeight;
 
     const player = document.querySelector('#movie_player, .html5-video-player');
     try {
@@ -69,6 +69,14 @@ function frameRate(video, tally) {
 
 export function sample(video) {
     const tally = tallyFor(video);
+
+    // The player swaps its element without always ending playback on the old one, and a
+    // timer holding a detached video keeps both alive for the rest of the session.
+    if (video.isConnected === false) {
+        clearInterval(tally.timer);
+        tally.timer = null;
+        return;
+    }
 
     const current = {
         wall: Date.now(),
@@ -132,7 +140,7 @@ export function install() {
     const original = proto.getVideoPlaybackQuality;
 
     function getVideoPlaybackQuality() {
-        const real = original.apply(this, arguments);
+        const real = original.call(this);
 
         // The renderer is counting: its numbers are the true ones.
         if (!real || real.totalVideoFrames > 0) return real;

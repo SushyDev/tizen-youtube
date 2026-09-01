@@ -118,15 +118,18 @@ async function run() {
             .tvSurfaceContentRenderer.content.sectionListRenderer.contents[0]
             .shelfRenderer.content.horizontalListRenderer.items[0].tileRenderer;
 
-        const queued = decorated.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items
-            ?.find((m) => m?.menuServiceItemRenderer?.serviceEndpoint?.playlistEditEndpoint
-                ?.customAction?.action === 'ADD_TO_QUEUE')
-            ?.menuServiceItemRenderer?.serviceEndpoint?.playlistEditEndpoint?.customAction?.parameters;
+        // The queue entry is added when a menu is opened, not built into every tile, so
+        // what is asserted here is the absence of an embedded payload: finding one means
+        // a tile is being deep-cloned on the render path again.
+        const embedded = decorated.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items
+            ?.some((m) => m?.menuServiceItemRenderer?.serviceEndpoint?.playlistEditEndpoint
+                ?.customAction?.action === 'ADD_TO_QUEUE');
 
         return {
             patched,
             acyclic,
-            addToQueue: !!queued && !!queued.tileRenderer?.contentId,
+            longPressable: !!decorated.onLongPressCommand,
+            noEmbeddedQueuePayload: !embedded,
             hqThumbnail: /sddefault\.jpg/.test(decorated.header?.tileHeaderRenderer?.thumbnail?.thumbnails?.[0]?.url || ''),
             evalMs,
             native: time(() => nativeParse(text), 30),
@@ -160,7 +163,8 @@ async function run() {
     const bad = [];
     if (!json.patched) bad.push('the bundle never installed its JSON hooks');
     if (!json.acyclic) bad.push('the decorated response is circular');
-    if (!json.addToQueue) bad.push('the Add to Queue payload is missing or malformed');
+    if (!json.longPressable) bad.push('tiles lost their long-press command');
+    if (!json.noEmbeddedQueuePayload) bad.push('a tile is being cloned into its own menu on the render path');
     if (!json.hqThumbnail) bad.push('the HQ thumbnail rewrite did not apply');
 
     if (bad.length) {

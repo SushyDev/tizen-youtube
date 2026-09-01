@@ -1,9 +1,10 @@
 import { configRead } from '../config.js';
 import { onResponse, onRequest } from '../youtube/json.js';
 
-import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
+import { timelyAction, longPressData, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/nativeSettings.js';
 import { cloneJson } from '../utils/clone.js';
+import { rememberTile } from '../youtube/tileRegistry.js';
 
 // What each SponsorBlock category is called on the skip button. The ids come from
 // the API, so an unknown one falls back to the id itself.
@@ -439,47 +440,14 @@ function hqTile(tile) {
   ];
 }
 
-// What the queue keeps when a tile is added to it. The queue renders its entries as a
-// shelf of real tiles, so this has to be a tile — but never this tile's own long-press
-// menu, for two reasons. It is the thing being mutated immediately below, so a snapshot
-// taken after the push would contain a menu item whose `parameters` is the snapshot
-// itself: a cycle, which throws the first time anything serialises the response and
-// recurses forever in any deep copy. And a queued entry has no use for it. Dropping it
-// is also most of what made the old whole-tile clone expensive.
-function tileSnapshot(item) {
-    const snapshot = {};
-
-    for (const key in item) {
-        if (!Object.prototype.hasOwnProperty.call(item, key)) continue;
-        if (key !== 'tileRenderer') {
-            snapshot[key] = cloneJson(item[key]);
-            continue;
-        }
-
-        const tile = {};
-        for (const field in item.tileRenderer) {
-            if (!Object.prototype.hasOwnProperty.call(item.tileRenderer, field)) continue;
-            if (field === 'onLongPressCommand') continue;
-            tile[field] = cloneJson(item.tileRenderer[field]);
-        }
-        snapshot.tileRenderer = tile;
-    }
-
-    return snapshot;
-}
-
 function longPressTile(item, tile, options) {
-  // A tile YouTube already gives a menu to only needs the queue entry adding to it.
+  // A tile YouTube already gives a menu to needs nothing done to it now. The queue
+  // entry is added when the menu is opened — see `offerQueueEntry` in youtube/commands.js
+  // — so all that happens here is a hash insert saying which tile this menu belongs to.
+  // This used to push a menu item and deep-clone the whole tile into it, for every tile
+  // of every shelf, against the chance that one would be queued later.
   if (tile.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
-    tile.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer('Add to Queue', {
-      clickTrackingParams: null,
-      playlistEditEndpoint: {
-        customAction: {
-          action: 'ADD_TO_QUEUE',
-          parameters: tileSnapshot(item)
-        }
-      }
-    }));
+    rememberTile(tile.onLongPressCommand, item);
     return;
   }
 
@@ -493,15 +461,17 @@ function longPressTile(item, tile, options) {
 
   // Read straight off the tile. This used to deep-clone the whole thing first and then
   // read every field off the copy, including the one that decides whether any of it was
-  // needed. `item` goes in live for the same reason as above.
+  // needed. The menu it builds carries no queue entry either: that is added on open,
+  // from the registry, like every other tile's.
   tile.onLongPressCommand = longPressData({
     videoId: tile.contentId,
     thumbnails: tile.header.tileHeaderRenderer.thumbnail.thumbnails,
     title: tile.metadata.tileMetadataRenderer.title.simpleText,
     subtitle: subtitle.runs ? subtitle.runs[0].text : subtitle.simpleText,
-    watchEndpointData: tile.onSelectCommand.watchEndpoint,
-    item: tileSnapshot(item)
+    watchEndpointData: tile.onSelectCommand.watchEndpoint
   });
+
+  rememberTile(tile.onLongPressCommand, item);
 }
 
 // The grid surfaces want the long-press entry and nothing else.

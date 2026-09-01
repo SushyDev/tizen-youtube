@@ -231,6 +231,23 @@ one, keep it, build the other, run both. Desktop numbers are not television numb
 the ratio carries. It also fails the run if a decorated response has become circular or
 if a decoration stopped applying, both of which are easy to reintroduce.
 
+**Decorate on interaction, not on render.** A browse response carries a couple of
+hundred tiles and a person touches perhaps three of them, so anything a tile only needs
+once someone acts on it does not belong in the parse path. The queue entry on a
+long-press menu is the worked example: it used to be built into every tile of every
+shelf, with a deep clone of the tile embedded in its own menu, against the chance that
+one would be queued later. Now `youtube/tileRegistry.js` notes which tile a menu belongs
+to and `offerQueueEntry` in `youtube/commands.js` adds the entry when the menu is
+actually opened — one clone, at human speed. What stays eager is only what changes what
+is rendered: advert removal, shorts removal, watched-video filtering, thumbnails.
+
+That registry is also a lesson in measuring. The obvious implementation is a WeakMap,
+and it was *slower than the clone it replaced*: two hundred inserts per response put 6.6%
+of the profile in the insert and took the garbage collector from 5% to 21%, because
+ephemeron tables are expensive to mark. A symbol-keyed property on the command is a plain
+assignment, invisible to `JSON.stringify`, `for...in` and `Object.keys` — so it cannot
+form a cycle, `cloneJson` will not follow it, and nothing in YouTube's code sees it.
+
 **The userscript runs on the main thread the decoder shares.** A MutationObserver
 with `subtree: true` over `document.body` costs a MutationRecord allocation for
 every node YouTube's renderer touches, whether or not the callback does anything

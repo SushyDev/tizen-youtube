@@ -1,6 +1,6 @@
 // Which rung the preferred-quality setting resolves to, for a given list of offers.
 
-import { chooseQuality } from '../features/quality.js';
+import { chooseQuality, shouldAsk } from '../features/quality.js';
 
 const results = [];
 function check(name, ok, detail) {
@@ -80,6 +80,47 @@ const LADDER = [
     check('a longer ladder answers higher than a shorter one',
         early.pixels < later.pixels && later.pixels < latest.pixels,
         `${early.pixels} ${later.pixels} ${latest.pixels}`);
+}
+
+// When to ask the player for a rung. Asking restarts the stream, so this is what keeps
+// a video that loops from being left on whatever rung the loop reset it to, without
+// pestering a player that will not take the answer.
+{
+    const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
+    const at = (over) => Object.assign(
+        { current: 'hd1080', wanted: 'hd2160', target: null, attempts: 0, askedAt: 0 }, over || {}
+    );
+
+    check('already on the wanted rung asks nothing',
+        shouldAsk(at({ current: 'hd2160' }), 10000, LIMITS) === false, 'expected false');
+
+    check('a rung we are not on is asked for',
+        shouldAsk(at(), 10000, LIMITS) === true, 'expected true');
+
+    check('nothing to want asks nothing',
+        shouldAsk(at({ wanted: null }), 10000, LIMITS) === false, 'expected false');
+
+    // The loop case: same video, player reset itself to a lower rung, and the previous
+    // target is still remembered from before the loop.
+    check('a video that looped back below its rung is asked again',
+        shouldAsk(at({ current: 'hd1440', target: 'hd2160', attempts: 1, askedAt: 0 }), 10000, LIMITS) === true,
+        'expected true');
+
+    check('the same rung is not asked for twice in a row too quickly',
+        shouldAsk(at({ target: 'hd2160', attempts: 1, askedAt: 9000 }), 10000, LIMITS) === false,
+        'expected false');
+
+    check('the same rung is asked again once the delay has passed',
+        shouldAsk(at({ target: 'hd2160', attempts: 1, askedAt: 1000 }), 10000, LIMITS) === true,
+        'expected true');
+
+    check('a rung the player will not take is given up on',
+        shouldAsk(at({ target: 'hd2160', attempts: 3, askedAt: 1000 }), 10000, LIMITS) === false,
+        'expected false');
+
+    check('a different rung is asked for even after giving up on the last',
+        shouldAsk(at({ wanted: 'hd1440', target: 'hd2160', attempts: 3, askedAt: 1000 }), 10000, LIMITS) === true,
+        'expected true');
 }
 
 const failed = results.filter((r) => !r).length;

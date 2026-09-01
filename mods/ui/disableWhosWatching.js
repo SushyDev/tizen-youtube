@@ -51,7 +51,10 @@ function disableWhosWatching(value) {
 
     function setActions() {
         PROMPTS.forEach((prompt) => {
-            if (actions[prompt]) actions[prompt].lastFired = date.getTime();
+            // A prompt that has never fired has no entry to push into the future, which
+            // is every prompt on a first launch — the one launch it is most needed on.
+            if (!actions[prompt]) actions[prompt] = {};
+            actions[prompt].lastFired = date.getTime();
         });
         localStorage[RECURRING_ACTIONS] = JSON.stringify(LeanbackRecurringActions);
     }

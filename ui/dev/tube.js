@@ -113,10 +113,7 @@ const tubeService = ({ enabled }) => {
                             // The bundles rollup is writing, not the last `npm run build`.
                             TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
                             TUBE_CACHE_DIR: join(ROOT, '.dev', 'cache'),
-                            TUBE_DEV_INJECT: join(HERE, 'remote.js'),
-                            // Opt-in: lets a browser reach the 60fps formats a TV gets,
-                            // which is the only way to exercise the quality logic here.
-                            TUBE_DEV_UNLOCK_HFR: process.env.TUBE_DEV_UNLOCK_HFR || ''
+                            TUBE_DEV_INJECT: join(HERE, 'remote.js')
                         }
                     });
                 } else {

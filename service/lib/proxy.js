@@ -7,8 +7,19 @@
 
 const express = require('express');
 const fetch = require('node-fetch');
+const http = require('http');
+const https = require('https');
 const URL = require('url');
 const { readFileSync } = require('fs');
+
+// node-fetch takes no agent unless it is given one, so every segment of a 4K stream was a
+// fresh TLS handshake — a new key exchange and certificate check every few seconds, on the
+// set's own processor, while it was decoding. Reusing the connection is the difference
+// between paying that once and paying it all playback long.
+const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: 8, timeout: 60000 };
+const httpsAgent = new https.Agent(AGENT_OPTIONS);
+const httpAgent = new http.Agent(AGENT_OPTIONS);
+const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
@@ -23,10 +34,6 @@ const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 // Development only. One more script after the userscript, read from disk per request.
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
-// Development only. Off a television the client advertises 30fps itags alone, so a video
-// whose higher rungs are 60fps-only tops out at 720p in a browser. This relabels them;
-// only the labels change, so what plays is still the real 60fps stream.
-const DEV_UNLOCK_HFR = process.env.TUBE_DEV_UNLOCK_HFR === '1';
 
 // Whether the media is piped through this service or fetched from googlevideo directly.
 // `direct` undoes the googlevideo half of the rewrite and leaves the rest of the table
@@ -125,14 +132,6 @@ function unproxyMedia(text) {
     return text
         .replace(PROXIED_MEDIA, 'https://$1.googlevideo.com')
         .split(ESCAPED_PREFIX).join('');
-}
-
-// Development only, and deliberately not part of rewriteBody: that table is pinned
-// against the reference by service/test/rewrite-parity.js and must not grow.
-function unlockHighFrameRate(text) {
-    return text
-        .replace(/"fps":\s*(?:48|50|60)\b/g, '"fps":30')
-        .replace(/"qualityLabel":"(\d+p)(?:48|50|60)([^"]*)"/g, '"qualityLabel":"$1$2"');
 }
 
 // __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are
@@ -244,7 +243,8 @@ function attachFallback(app) {
             method: req.method,
             headers,
             body: hasBody ? req : undefined,
-            redirect: 'manual'
+            redirect: 'manual',
+            agent: agentFor(targetUrl)
         })
             .then((response) => {
                 res.status(req.method === 'OPTIONS' ? 200 : response.status);
@@ -276,14 +276,8 @@ function attachFallback(app) {
                 }
 
                 return response.text().then((text) => {
-                    let body = rewriteBody(text, req.url);
-                    if (mediaMode === MEDIA_DIRECT) body = unproxyMedia(body);
-                    // Keyed off the payload, not the path: the format list rides on the
-                    // player response, and the shell can carry one inline as well.
-                    if (DEV_UNLOCK_HFR && body.indexOf('adaptiveFormats') !== -1) {
-                        body = unlockHighFrameRate(body);
-                    }
-                    res.send(body);
+                    const body = rewriteBody(text, req.url);
+                    res.send(mediaMode === MEDIA_DIRECT ? unproxyMedia(body) : body);
                 });
             })
             .catch((error) => {

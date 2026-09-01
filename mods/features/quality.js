@@ -29,3 +29,15 @@ export function chooseQuality(preference, offered) {
 
     return below ? { quality: below.quality, pixels: pixels(below) } : null;
 }
+
+// Whether to ask the player for a rung now. Asking restarts the stream, so a rung it
+// will not take is asked for a few times and then left alone until the next video.
+export function shouldAsk({ current, wanted, target, attempts, askedAt }, now, limits) {
+    if (!wanted || current === wanted) return false;
+
+    const again = wanted === target;
+    if (again && attempts >= limits.maxAttempts) return false;
+    if (again && now - askedAt < limits.retryDelay) return false;
+
+    return true;
+}

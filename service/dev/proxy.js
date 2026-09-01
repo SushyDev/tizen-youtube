@@ -189,7 +189,12 @@ function attachFallback(app) {
             method: req.method,
             headers,
             body: hasBody ? req : undefined,
-            redirect: 'manual'
+            // Followed here, not handed back. A 3xx passed through carries an absolute
+            // https Location that this table never rewrote, so the page would leave the
+            // proxy mid-stream — which for a media segment means the player simply stops
+            // being fed. googlevideo redirects constantly, so this is the difference
+            // between video playing and a MediaSource that attaches and never fills.
+            redirect: 'follow'
         })
             .then((response) => {
                 res.status(req.method === 'OPTIONS' ? 200 : response.status);

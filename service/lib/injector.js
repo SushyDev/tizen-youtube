@@ -96,6 +96,25 @@ function watchUrl(args) {
     return `https://www.youtube.com/tv?additionalDataUrl=${additional}${args ? `&${args}` : ''}`;
 }
 
+// Chrome grew `addScriptToEvaluateOnNewDocument` around M59. Tizen 3 is Chrome 47 and
+// has only the older `addScriptToEvaluateOnLoad`, which does the same thing under a name
+// that predates the rename. The last resort is the way this used to work, which costs the
+// Runtime domain — better than not injecting at all on a webview that has neither.
+function registerScript(client, source) {
+    return client.Page.addScriptToEvaluateOnNewDocument({ source })
+        .then(() => 'addScriptToEvaluateOnNewDocument')
+        .catch(() => client.Page.addScriptToEvaluateOnLoad({ scriptSource: source })
+            .then(() => 'addScriptToEvaluateOnLoad')
+            .catch(() => {
+                client.Runtime.enable();
+                client.on('Runtime.executionContextCreated', (msg) => {
+                    client.Runtime.evaluate({ expression: source, contextId: msg.context.id })
+                        .catch((e) => console.error(`Injection failed: ${e.message}`));
+                });
+                return 'Runtime.executionContextCreated (fallback)';
+            }));
+}
+
 // The debug port takes a moment to open after the relaunch. This used to be 40 tries
 // at a flat 100ms; a deadline says what is actually meant, and backing off stops a slow
 // television being hammered forty times while it is still starting up.
@@ -121,21 +140,31 @@ function attach(host, port, args, startedAt) {
                     return reject(e);
                 }
 
-                client.Runtime.enable();
-                client.Page.enable();
-
-                // Every new execution context: covers the initial load and any
-                // same-page navigation YouTube performs.
-                client.on('Runtime.executionContextCreated', (msg) => {
-                    client.Runtime.evaluate({ expression: script.source, contextId: msg.context.id })
-                        .catch((e) => console.error(`Injection failed: ${e.message}`));
-                });
-
-                // Without this, youtube.com's CSP blocks the injected script.
-                client.Page.setBypassCSP({ enabled: true });
-                client.Page.navigate({ url: watchUrl(args) });
-
-                resolve(client);
+                // The Runtime domain is deliberately NOT enabled.
+                //
+                // It used to be, so that `Runtime.executionContextCreated` could be
+                // listened for and the userscript evaluated into each new context. The
+                // cost of that is not the injection, it is the domain: with Runtime
+                // enabled, Blink serialises *every* console call the page makes — object
+                // previews and all — into a protocol event and pushes it over this socket
+                // for as long as the app is open. YouTube's own client logs continuously
+                // while a video plays, and this connection is loopback sdb on the
+                // television's own CPU. Nothing reads those events; they were produced,
+                // serialised, transmitted and dropped, next to a 4K60 decode.
+                //
+                // Registering the script against the document instead does the same job
+                // with no domain enabled and no per-context evaluate, and it runs the
+                // script *before* the page's own scripts rather than alongside them —
+                // so YouTube's bundle cannot capture JSON.parse before this app owns it.
+                client.Page.enable()
+                    .then(() => registerScript(client, script.source))
+                    .then((how) => {
+                        console.log(`Userscript registered via ${how}.`);
+                        // Without this, youtube.com's CSP blocks the injected script.
+                        return client.Page.setBypassCSP({ enabled: true });
+                    })
+                    .then(() => client.Page.navigate({ url: watchUrl(args) }))
+                    .then(() => resolve(client), reject);
             }).on('error', reject);
         }))
         .catch((err) => {

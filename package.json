@@ -26,6 +26,8 @@
     "dev": "npm run dev --workspace ui",
     "dev:boot": "npm run dev:boot --workspace ui",
     "dev:service": "node service/index.js",
+    "tv": "node tools/tv.js",
+    "tv:relay": "node tools/tv-relay.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
     "version:check": "node tools/version.js --check",

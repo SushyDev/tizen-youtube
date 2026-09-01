@@ -9,6 +9,7 @@ const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 
 const SUITES = [
+    { name: 'mods', workspace: 'mods' },
     { name: 'service', workspace: 'service' }
 ];
 

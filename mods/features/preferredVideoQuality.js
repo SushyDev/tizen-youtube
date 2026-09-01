@@ -1,4 +1,5 @@
 import { configRead, configChangeEmitter } from "../config.js";
+import { chooseQuality } from './quality.js';
 
 const SELECTORS = {
     PLAYER: '.html5-video-player',
@@ -13,11 +14,19 @@ const CONFIG_KEYS = {
     QUALITY: 'preferredVideoQuality',
 };
 
+// How long after a video starts its rungs are still worth re-checking, and how often.
+// Long enough for SABR to have offered everything it is going to; short enough that a
+// television is not asking a question forever.
+const IMPROVE_WINDOW = 120000;
+const IMPROVE_INTERVAL = 2000;
+
 class PreferredQualityHandler {
     #player = null;
     #attachTimeout = null;
     #lastVideoId = null;
-    #hasAppliedQuality = false;
+    // The height actually pinned, so a better rung appearing later can be recognised.
+    #appliedPixels = 0;
+    #watchUntil = 0;
 
     constructor() {
         this.init();
@@ -26,6 +35,7 @@ class PreferredQualityHandler {
     init() {
         this.#pollForPlayer();
         this.#setupConfigListener();
+        this.#watch();
     }
 
     #pollForPlayer() {
@@ -48,6 +58,9 @@ class PreferredQualityHandler {
     #setupConfigListener() {
         configChangeEmitter.addEventListener(EVENTS.CONFIG_CHANGE, (ev) => {
             if (ev.detail?.key === CONFIG_KEYS.QUALITY) {
+                // An explicit choice overrides what is pinned, in either direction.
+                this.#appliedPixels = 0;
+                this.#watchUntil = Date.now() + IMPROVE_WINDOW;
                 this.#applyQuality();
             }
         });
@@ -60,63 +73,49 @@ class PreferredQualityHandler {
 
         if (videoId !== this.#lastVideoId) {
             this.#lastVideoId = videoId;
-            this.#hasAppliedQuality = false;
+            this.#appliedPixels = 0;
+            // A new video re-opens the window: its rungs are discovered from scratch.
+            this.#watchUntil = Date.now() + IMPROVE_WINDOW;
         }
 
         const isShorts = Object.values(this.#player.getVideoStats()).find(a => a && a === 'shortspage');
-        if (state?.isPlaying && !this.#hasAppliedQuality && !isShorts) {
-            this.#applyQuality();
-            this.#hasAppliedQuality = true;
-        }
+        if (state?.isPlaying && !isShorts) this.#applyQuality();
     };
+
+    // The rungs a video offers are not all known when it starts playing: under SABR they
+    // appear as the stream is explored, and the list a second in is routinely shorter
+    // than the list ten seconds in. Applying once and pinning both ends therefore locks
+    // playback to whatever happened to be known at that instant — on a 4K stream that is
+    // often a rung or two below the best, on a buffer with nothing wrong with it, with no
+    // way back up. So the choice is revisited while it can still improve.
+    #watch() {
+        setInterval(() => {
+            if (!this.#player || Date.now() > this.#watchUntil) return;
+
+            const state = this.#player.getPlayerStateObject?.();
+            if (state?.isPlaying) this.#applyQuality();
+        }, IMPROVE_INTERVAL);
+    }
 
     #applyQuality() {
         const preferredQuality = configRead(CONFIG_KEYS.QUALITY);
         if (!preferredQuality || preferredQuality === 'auto' || !this.#player) return;
 
         try {
-            const quality = this.#determineQuality(preferredQuality);
+            const chosen = chooseQuality(preferredQuality, this.#player.getAvailableQualityData());
+            if (!chosen) return;
 
-            if (quality) {
-              this.#player.setPlaybackQualityRange(quality, quality)
-            }
+            // Only ever upward. Re-pinning the same rung every couple of seconds would
+            // restart the stream for nothing, and stepping down is the player's call.
+            if (chosen.pixels <= this.#appliedPixels) return;
+
+            this.#player.setPlaybackQualityRange(chosen.quality, chosen.quality);
+            this.#appliedPixels = chosen.pixels;
         } catch (e) {
             console.warn('[PreferredQuality] Failed to apply quality:', e);
         }
     }
 
-    // YouTube names qualities with constants ('hd1080', 'hd2160') and labels them with
-    // numbers ('1080p'). Asking for one the video does not have is not reported — the
-    // player just keeps what it had — so every answer comes from the list it offers.
-    #determineQuality(preference) {
-        // An entry the player has said it cannot play is not an answer, whichever way
-        // the preference points.
-        const available = (this.#player.getAvailableQualityData() || [])
-            .filter((entry) => entry && entry.isPlayable !== false);
-
-        if (!available.length) return null;
-
-        const pixels = (entry) => parseInt(entry.qualityLabel, 10) || 0;
-
-        // 'highest' is an instruction, not a resolution: take the top of whatever this
-        // video offers. Unlike naming a resolution, it cannot silently do nothing.
-        if (preference === 'highest') {
-            return available.reduce((best, entry) => (pixels(entry) > pixels(best) ? entry : best)).quality;
-        }
-
-        const target = parseInt(preference, 10) || 0;
-        const match = available.find((entry) => pixels(entry) === target);
-
-        // The nearest below beats falling back to the maximum, which would be the
-        // opposite of what a resolution cap is for.
-        if (match) return match.quality;
-
-        const below = available
-            .filter((entry) => pixels(entry) <= target)
-            .reduce((best, entry) => (!best || pixels(entry) > pixels(best) ? entry : best), null);
-
-        return below ? below.quality : null;
-    }
 }
 
 window.preferredVideoQualityHandler = new PreferredQualityHandler();

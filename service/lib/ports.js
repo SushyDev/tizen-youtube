@@ -8,5 +8,6 @@ module.exports = {
     PROXY: 8099,   // MITM proxy used when Developer Mode is off
     DIAL: 8095,    // DIAL server the phone's YouTube app discovers
     SDB: 26101,    // the TV's own SDB daemon
-    DMP: 8001      // the TV's Smart View REST API
+    DMP: 8001,     // the TV's Smart View REST API
+    DEV: 8097      // the diagnostics bridge, off unless the app is asked to open it
 };

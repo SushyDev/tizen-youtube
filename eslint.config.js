@@ -113,6 +113,7 @@ module.exports = [
     },
     {
         // The userscript, which is ES modules running in the TV's browser.
+        ignores: ['mods/test/**/*.js'],
         files: ['mods/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
@@ -120,6 +121,16 @@ module.exports = [
             globals: BROWSER_GLOBALS
         },
         rules: CORRECTNESS_RULES
+    {
+        // Its tests, which run in Node rather than in a television.
+        files: ['mods/test/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: NODE_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
     },
     {
         // Read by the Vite build, so these are ES modules like it is.

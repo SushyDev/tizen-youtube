@@ -19,6 +19,9 @@ import './features/sponsorblock.js';
 import './features/guide.js';          // the sidebar, trimmed
 import './features/moreSubtitles.js';
 import './features/preferredVideoQuality.js';
+import './features/directMedia.js';  // proxy the media, or let the player fetch it
+import './features/playbackStats.js';  // frame counts where the renderer keeps none
+import './features/devBridge.js';      // readings out, when sdbd gives us no debugger
 import './features/videoQueuing.js';
 import './features/enableFeatures.js';
 import './features/pictureInPicture.js';

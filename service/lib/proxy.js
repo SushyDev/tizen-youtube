@@ -23,6 +23,32 @@ const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 // Development only. One more script after the userscript, read from disk per request.
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
+// Development only. Off a television the TV client advertises 30fps itags alone, so a
+// video whose 1080p and above exist only at 60fps tops out at 720p in a browser — which
+// makes the quality logic untestable at the resolutions it exists for. This relabels the
+// high frame rate formats as 30fps so the client will take them. Only the labels in the
+// player response change: the media served is the real 60fps stream.
+const DEV_UNLOCK_HFR = process.env.TUBE_DEV_UNLOCK_HFR === '1';
+
+// Where the media comes from once the page is running. On the proxy path every video
+// byte is piped through this service — at 4K60 that is tens of megabits a second through
+// Node on a television's own chip, which the set is also decoding on. `direct` undoes the
+// googlevideo half of the rewrite so the player pulls from googlevideo itself, leaving
+// the rest of the table alone. It is a diagnosis switch: whether it plays at all depends
+// on googlevideo answering a cross-origin request from localhost, which is the reason
+// the media was proxied in the first place.
+const MEDIA_PROXIED = 'proxy';
+const MEDIA_DIRECT = 'direct';
+
+let mediaMode = MEDIA_PROXIED;
+
+const setMediaMode = (mode) => {
+    mediaMode = mode === MEDIA_DIRECT ? MEDIA_DIRECT : MEDIA_PROXIED;
+    return mediaMode;
+};
+
+const getMediaMode = () => mediaMode;
+
 // Rewritten as text; everything else is streamed through so video is never buffered.
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 
@@ -92,6 +118,33 @@ function rewriteBody(text, url) {
     return text;
 }
 
+// The inverse of the googlevideo rules alone, applied after rewriteBody so the table
+// itself stays exactly as the reference wrote it — service/test/rewrite-parity.js pins
+// that, and this must not count against it.
+//
+// The escaped prefix is produced by the googlevideo rule and by nothing else, so removing
+// it wholesale is safe. The plain prefix is shared with gstatic and the rest, so that one
+// is matched against the host it precedes.
+const ESCAPED_PREFIX = `http:\\/\\/localhost:${ports.PROXY}\\/cors-bypass\\/`;
+const PROXIED_MEDIA = new RegExp(
+    PROXY_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 'https://([a-zA-Z0-9-.]+)\\.googlevideo\\.com',
+    'g'
+);
+
+function unproxyMedia(text) {
+    return text
+        .replace(PROXIED_MEDIA, 'https://$1.googlevideo.com')
+        .split(ESCAPED_PREFIX).join('');
+}
+
+// Development only, and deliberately not part of rewriteBody: that table is pinned
+// against the reference by service/test/rewrite-parity.js and must not grow.
+function unlockHighFrameRate(text) {
+    return text
+        .replace(/"fps":\s*(?:48|50|60)\b/g, '"fps":30')
+        .replace(/"qualityLabel":"(\d+p)(?:48|50|60)([^"]*)"/g, '"qualityLabel":"$1$2"');
+}
+
 // __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are
 // renamed in both directions and the HTTPS-only attributes dropped.
 function rewriteSetCookie(values) {
@@ -136,6 +189,17 @@ function create(platformVersion) {
             res.status(500).type('application/javascript')
                 .send(`console.error(${JSON.stringify(`tube: no userscript available - ${e.message}`)});`);
         }
+    });
+
+    // Whether media is pulled through here or straight from googlevideo. Same origin as
+    // the page, so the app and anything attached to it can read and flip it.
+    app.all('/__tube/media', (req, res) => {
+        const wanted = (req.query && req.query.mode) || '';
+        if (wanted) {
+            setMediaMode(wanted);
+            console.log(`Media is now served ${mediaMode === MEDIA_DIRECT ? 'direct from googlevideo' : 'through this service'}.`);
+        }
+        res.json({ mode: mediaMode, proxied: mediaMode === MEDIA_PROXIED });
     });
 
     // Development only, so a packaged service has no such route.
@@ -221,7 +285,16 @@ function attachFallback(app) {
                     return res.end();
                 }
 
-                return response.text().then((text) => res.send(rewriteBody(text, req.url)));
+                return response.text().then((text) => {
+                    let body = rewriteBody(text, req.url);
+                    if (mediaMode === MEDIA_DIRECT) body = unproxyMedia(body);
+                    // Keyed off the payload, not the path: the format list rides on the
+                    // player response, and the shell can carry one inline as well.
+                    if (DEV_UNLOCK_HFR && body.indexOf('adaptiveFormats') !== -1) {
+                        body = unlockHighFrameRate(body);
+                    }
+                    res.send(body);
+                });
             })
             .catch((error) => {
                 console.error(`Proxy error for ${targetUrl}: ${error.message}`);
@@ -232,4 +305,7 @@ function attachFallback(app) {
     return app;
 }
 
-module.exports = { create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes };
+module.exports = {
+    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
+    unproxyMedia, setMediaMode, getMediaMode
+};

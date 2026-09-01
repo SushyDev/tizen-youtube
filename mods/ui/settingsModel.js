@@ -187,7 +187,13 @@ const GROUPS = [
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step')
+        SKIPPING, INCREMENTS, 'Step'),
+      Switch('enableDevBridge', 'Diagnostics',
+        'Publish what this app is playing to the local network, read-only, so it can be ' +
+        'inspected when Developer Mode cannot reach it. Leave off unless debugging', SCREEN),
+      Switch('directMediaPlayback', 'Direct playback',
+        'Pull video straight from YouTube instead of through this app. Only applies when ' +
+        'Developer Mode is off, and takes effect from the next video', SCREEN)
     ]
   },
   {

@@ -11,7 +11,7 @@
 
     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="false"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/use.uwe" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>

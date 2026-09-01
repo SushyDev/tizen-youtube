@@ -207,7 +207,20 @@ development entry too: `attachDev()` runs **after** the service registers its
 endpoints, or the proxy's catch-all shadows them and the app never launches.
 `service/test/routing.js` pins it.
 
-**Measure before optimising.** `node tools/bench.js` loads a real bundle into headless
+**Measure before optimising.** `node tools/profile.js` profiles the three phases
+separately, because the userscript costs something different in each: `startup`
+(injection to steady state), `navigation` (a screen change through the JSON hooks and
+the DOM rebuild under it) and `playback` (steady state at 60fps). Each compares the same
+work with and without the script, so the number is ours rather than the page's.
+
+One thing it cannot do is decode: a television decodes 4K60 in fixed-function hardware
+off the main thread, headless Chromium has no such decoder, and a captureStream-backed
+video element crashes the renderer here. The playback profile therefore simulates the
+player element and measures what JavaScript can actually affect — main-thread occupancy
+against the 16.7ms frame budget. `--churn` sets how many nodes a frame rewrites, which
+is what the cost of anything observing the document scales with.
+
+`node tools/bench.js` is the regression check rather than the microscope: it loads a real
 Chromium and reports the two costs the userscript actually imposes: what the JSON hooks
 add to a browse response against the native parse of the same bytes, and what anything
 watching the document adds to node churn against the same churn without the script. It

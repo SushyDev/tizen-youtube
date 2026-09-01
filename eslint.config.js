@@ -112,9 +112,9 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        // Runs in Node but carries browser code as `page.evaluate` callbacks, which
-        // eslint sees as ordinary functions in this file's scope.
-        files: ['tools/bench.js'],
+        // Run in Node but carry browser code as `page.evaluate` callbacks, which eslint
+        // sees as ordinary functions in this file's scope.
+        files: ['tools/bench.js', 'tools/profile.js', 'tools/bench/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'commonjs',

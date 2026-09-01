@@ -24,12 +24,11 @@
 // this against each. The absolute numbers are desktop numbers and a television is far
 // slower; the ratio is what carries over.
 
-const http = require('http');
-const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');
 
 const { ROOT } = require('./config.js');
 const ui = require('./ui.js');
+const harness = require('./bench/harness.js');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.indexOf(name) !== -1;
@@ -42,146 +41,18 @@ const BUNDLE = value('--bundle', join(ROOT, 'dist', 'userScript.modern.js'));
 const SHELVES = Number(value('--shelves', 12));
 const TILES = Number(value('--tiles', 15));
 
-function chromium() {
-    let playwright;
-    try {
-        playwright = require('playwright-core');
-    } catch (e) {
-        console.error('playwright-core is not installed.\n  npm i --no-save playwright-core');
-        process.exit(1);
-    }
-
-    // Where the image in Claude Code on the web keeps it; otherwise let playwright look.
-    const bundled = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-    const executablePath = process.env.CHROME_PATH
-        || (existsSync(bundled) ? bundled : undefined);
-
-    return { playwright, executablePath };
-}
-
-const PAGE = `<!doctype html><html><head><style nonce="x"></style></head><body>
-<video></video><ytlr-search-bar></ytlr-search-bar>
-<ytlr-progress-bar hybridnavfocusable="true"></ytlr-progress-bar>
-<div id="stage"></div></body></html>`;
-
-function serve(source) {
-    return new Promise((resolve) => {
-        const server = http.createServer((req, res) => {
-            if (req.url.indexOf('/userScript.js') === 0) {
-                res.setHeader('content-type', 'application/javascript');
-                return res.end(source);
-            }
-            res.setHeader('content-type', 'text/html');
-            res.end(PAGE);
-        });
-        server.listen(0, '127.0.0.1', () => resolve(server));
-    });
-}
-
-// Enough of YouTube's registry that the modules walking it on load do not throw. An
-// exception anywhere in core.js aborts module evaluation before interceptJson() runs,
-// and every number below would then quietly be a measurement of the native function.
-const STUBS = () => {
-    const icons = new Map([['CLEAR_COOKIES', 'a'], ['MICROPHONE_ON', 'b']]);
-    const services = new Map([
-        ['PlayerService', { loadedPlaybackConfig: { watchEndpoint: {} }, loadVideo() {} }],
-        ['PlaybackPreviewService', { start() {}, stop() {} }]
-    ]);
-    services.mappings = true;
-    window._yttv = { a: icons, b: services };
-    window.tectonicConfig = { featureSwitches: {}, clientData: {} };
-    window.queuedVideos = { videos: [], lastVideoId: null };
-};
-
-// A structurally realistic browse response. The handlers walk this shape, so the cost is
-// proportional to it; a flat fixture would measure nothing.
-const FIXTURE = (shelves, tiles) => {
-    const tile = (i) => ({
-        tileRenderer: {
-            contentId: `videoId${i}`,
-            style: 'TILE_STYLE_YTLR_DEFAULT',
-            trackingParams: 'CBQQ__abcdef',
-            header: {
-                tileHeaderRenderer: {
-                    thumbnail: {
-                        thumbnails: [
-                            { url: `https://i.ytimg.com/vi/v${i}/hq.jpg?sqp=abc`, width: 480, height: 360 },
-                            { url: `https://i.ytimg.com/vi/v${i}/mq.jpg?sqp=abc`, width: 320, height: 180 }
-                        ]
-                    },
-                    thumbnailOverlays: [
-                        { thumbnailOverlayResumePlaybackRenderer: { percentDurationWatched: 10 } }
-                    ]
-                }
-            },
-            metadata: {
-                tileMetadataRenderer: {
-                    title: { simpleText: `A video title number ${i} that is reasonably long` },
-                    lines: [{ lineRenderer: { items: [{ lineItemRenderer: { text: { runs: [{ text: `Channel ${i}` }] } } }] } }]
-                }
-            },
-            onSelectCommand: {
-                clickTrackingParams: 'CBQQ_____',
-                commandMetadata: { webCommandMetadata: { url: `/watch?v=v${i}` } },
-                watchEndpoint: { videoId: `videoId${i}`, params: 'ChcKC' }
-            },
-            onLongPressCommand: {
-                showMenuCommand: {
-                    menu: { menuRenderer: { items: [{ menuServiceItemRenderer: { text: { simpleText: 'Not interested' } } }] } }
-                }
-            }
-        }
-    });
-
-    const shelf = (s) => ({
-        shelfRenderer: {
-            title: { simpleText: `Shelf ${s}` },
-            content: { horizontalListRenderer: { items: Array.from({ length: tiles }, (_, i) => tile(s * 100 + i)) } }
-        }
-    });
-
-    return {
-        responseContext: { visitorData: 'abc' },
-        contents: {
-            tvBrowseRenderer: {
-                content: {
-                    tvSurfaceContentRenderer: {
-                        content: { sectionListRenderer: { contents: Array.from({ length: shelves }, (_, s) => shelf(s)) } }
-                    }
-                }
-            }
-        }
-    };
-};
-
-function loadScript(port) {
-    return new Promise((resolve, reject) => {
-        const element = document.createElement('script');
-        element.src = `http://127.0.0.1:${port}/userScript.js`;
-        element.onload = resolve;
-        element.onerror = reject;
-        document.head.appendChild(element);
-    });
-}
+// Evaluated in the page by the json block below, which needs the load to happen inside
+// the same evaluate so it can time it against a clock the page owns.
+const LOAD_SCRIPT = `(port) => new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'http://127.0.0.1:' + port + '/userScript.js';
+    el.onload = resolve; el.onerror = reject;
+    document.head.appendChild(el);
+})`;
 
 async function run() {
-    if (!existsSync(BUNDLE)) {
-        console.error(`No bundle at ${BUNDLE} — run \`npm run build\` first.`);
-        process.exit(1);
-    }
-
-    const { playwright, executablePath } = chromium();
-    const server = await serve(readFileSync(BUNDLE, 'utf8'));
-    const port = server.address().port;
-
-    const browser = await playwright.chromium.launch({ executablePath, args: ['--no-sandbox'] });
-    const page = await browser.newPage();
-
-    const errors = [];
-    page.on('pageerror', (e) => errors.push(String(e).slice(0, 160)));
-
-    await page.goto(`http://127.0.0.1:${port}/`);
-    await page.evaluate(STUBS);
+    const rig = await harness.open(BUNDLE);
+    const { page, port, errors } = rig;
 
     // --- dom: measured before the script exists, then after, on the same page.
     const churn = () => page.evaluate(async () => {
@@ -263,7 +134,7 @@ async function run() {
             boringNative: time(() => nativeParse(boring), 20000),
             boringHooked: time(() => JSON.parse(boring), 20000)
         };
-    }, { port, fixture: FIXTURE(SHELVES, TILES), load: loadScript.toString() });
+    }, { port, fixture: harness.fixture(SHELVES, TILES), load: LOAD_SCRIPT });
 
     const domHooked = await churn();
 
@@ -274,12 +145,10 @@ async function run() {
         await cdp.send('Profiler.setSamplingInterval', { interval: 20 });
         await cdp.send('Profiler.start');
         await page.evaluate(() => { for (let i = 0; i < 200; i++) JSON.parse(window.__benchText || '{}'); });
-        await page.evaluate((t) => { window.__benchText = t; }, '{}');
         profile = (await cdp.send('Profiler.stop')).profile;
     }
 
-    await browser.close();
-    server.close();
+    await rig.close();
 
     const tiles = SHELVES * TILES;
     const pct = (a, b) => `${b >= a ? '+' : ''}${(((b - a) / a) * 100).toFixed(0)}%`;

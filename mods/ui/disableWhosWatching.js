@@ -5,16 +5,12 @@ import { configChangeEmitter, configRead } from '../config.js';
 // one is asked for.
 const RECURRING_ACTIONS = 'yt.leanback.default::recurring_actions';
 
-// The store does not exist on a first launch: this script runs before the page has
-// written anything, and the page writes it a moment later. Reading it blind threw a
-// SyntaxError out of module evaluation — which took the rest of core.js with it,
-// `interceptJson()` included, so a first launch ran with no modification at all. The
-// unsuppressed "You're signed out" prompt was the visible half of that.
+// The store is absent on a first launch, and reading it blind threw out of module
+// evaluation — taking the rest of core.js with it.
 const WAIT_WINDOW = 15000;
 const WAIT_INTERVAL = 250;
 
-// The three prompts, and whether each one is a prompt this store happens to carry: a
-// signed-out set has never fired most of them, so most of the entries are simply absent.
+// A signed-out set has never fired most of these, so most entries are simply absent.
 const PROMPTS = [
     'startup-screen-account-selector-with-guest',
     'whos_watching_fullscreen_zero_accounts',
@@ -51,8 +47,8 @@ function disableWhosWatching(value) {
 
     function setActions() {
         PROMPTS.forEach((prompt) => {
-            // A prompt that has never fired has no entry to push into the future, which
-            // is every prompt on a first launch — the one launch it is most needed on.
+            // A prompt that never fired has no entry to push, which is all of them on
+            // a first launch.
             if (!actions[prompt]) actions[prompt] = {};
             actions[prompt].lastFired = date.getTime();
         });
@@ -80,11 +76,9 @@ function disableWhosWatching(value) {
     return true;
 }
 
-// On a first launch the store lands a moment after this runs, so the setting is applied
-// the moment there is something to apply it to. That is not a full substitute for
-// running first: the page has its own copy in memory by then and writes it back over
-// ours within the second, so the very first launch of a fresh install can still see the
-// prompt. Every launch after it reads the store at document-start and takes this path
+// On a first launch the store lands after this runs, so it is applied as soon as there
+// is something to apply it to. The page still overwrites it within the second, so a
+// fresh install can see the prompt once. Every later launch reads it at document-start
 // once, synchronously, before the page has loaded anything.
 if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
     const until = Date.now() + WAIT_WINDOW;

@@ -12,10 +12,8 @@ const https = require('https');
 const URL = require('url');
 const { readFileSync } = require('fs');
 
-// node-fetch takes no agent unless it is given one, so every segment of a 4K stream was a
-// fresh TLS handshake — a new key exchange and certificate check every few seconds, on the
-// set's own processor, while it was decoding. Reusing the connection is the difference
-// between paying that once and paying it all playback long.
+// Without an agent node-fetch reconnects per request, so every segment of a 4K stream
+// paid for a TLS handshake on the set's own processor while it was decoding.
 const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: 8, timeout: 60000 };
 const httpsAgent = new https.Agent(AGENT_OPTIONS);
 const httpAgent = new http.Agent(AGENT_OPTIONS);
@@ -34,21 +32,6 @@ const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 // Development only. One more script after the userscript, read from disk per request.
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
-
-// Whether the media is piped through this service or fetched from googlevideo directly.
-// `direct` undoes the googlevideo half of the rewrite and leaves the rest of the table
-// alone; whether it plays depends on googlevideo answering a localhost page.
-const MEDIA_PROXIED = 'proxy';
-const MEDIA_DIRECT = 'direct';
-
-let mediaMode = MEDIA_PROXIED;
-
-const setMediaMode = (mode) => {
-    mediaMode = mode === MEDIA_DIRECT ? MEDIA_DIRECT : MEDIA_PROXIED;
-    return mediaMode;
-};
-
-const getMediaMode = () => mediaMode;
 
 // Rewritten as text; everything else is streamed through so video is never buffered.
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
@@ -119,21 +102,6 @@ function rewriteBody(text, url) {
     return text;
 }
 
-// The inverse of the googlevideo rules alone, applied after rewriteBody so the table
-// itself stays as the reference wrote it. The escaped prefix comes from that rule and
-// nothing else; the plain one is shared, so it is matched against the host it precedes.
-const ESCAPED_PREFIX = `http:\\/\\/localhost:${ports.PROXY}\\/cors-bypass\\/`;
-const PROXIED_MEDIA = new RegExp(
-    PROXY_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 'https://([a-zA-Z0-9-.]+)\\.googlevideo\\.com',
-    'g'
-);
-
-function unproxyMedia(text) {
-    return text
-        .replace(PROXIED_MEDIA, 'https://$1.googlevideo.com')
-        .split(ESCAPED_PREFIX).join('');
-}
-
 // __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are
 // renamed in both directions and the HTTPS-only attributes dropped.
 function rewriteSetCookie(values) {
@@ -180,16 +148,6 @@ function create(platformVersion) {
         }
     });
 
-    // Whether media is pulled through here or straight from googlevideo. Same origin as
-    // the page, so the app and anything attached to it can read and flip it.
-    app.all('/__tube/media', (req, res) => {
-        const wanted = (req.query && req.query.mode) || '';
-        if (wanted) {
-            setMediaMode(wanted);
-            console.log(`Media is now served ${mediaMode === MEDIA_DIRECT ? 'direct from googlevideo' : 'through this service'}.`);
-        }
-        res.json({ mode: mediaMode, proxied: mediaMode === MEDIA_PROXIED });
-    });
 
     // Development only, so a packaged service has no such route.
     if (DEV_INJECT_PATH) {
@@ -277,7 +235,7 @@ function attachFallback(app) {
 
                 return response.text().then((text) => {
                     const body = rewriteBody(text, req.url);
-                    res.send(mediaMode === MEDIA_DIRECT ? unproxyMedia(body) : body);
+                    res.send(body);
                 });
             })
             .catch((error) => {
@@ -290,6 +248,5 @@ function attachFallback(app) {
 }
 
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
-    unproxyMedia, setMediaMode, getMediaMode
+    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes
 };

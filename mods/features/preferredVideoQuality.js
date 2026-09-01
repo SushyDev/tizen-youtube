@@ -76,10 +76,8 @@ class PreferredQualityHandler {
         this.#askedAt = 0;
     }
 
-    // A video id that changed, or a video that jumped back to its start: autoplay, play
-    // next, a playlist moving on, the replay button, and repeat looping all arrive here.
-    // Repeat is the one that used to be missed: the id does not change, so nothing reset,
-    // and the video stayed on whatever lower rung the loop restarted it at.
+    // A new id or a jump back to the start: autoplay, play next, replay and repeat all
+    // arrive here. Repeat was missed before, since its id never changes.
     #startedOver() {
         const id = this.#player.getVideoData?.()?.video_id;
         const time = this.#player.getCurrentTime?.() ?? 0;

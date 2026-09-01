@@ -1,30 +1,22 @@
 import { configRead } from '../config.js';
 
-// Frame counts for the path where the platform player owns playback and the renderer
-// composites nothing, so getVideoPlaybackQuality() sits at zero and the stats line shows
-// a dash where a television that counts its own frames shows figures.
-//
-// A second of wall time that advanced the video by less than a second is time the viewer
-// lost, which at a known frame rate converts to frames. Real counts, when the renderer
-// keeps any, are passed through untouched.
+// The platform player counts no frames, so getVideoPlaybackQuality() reads zero and the
+// stats line shows a dash. Time the video failed to advance converts to frames at the
+// reported rate; real counts are passed through untouched.
 
 // Below this a gap is sampling jitter, not a hitch worth reporting.
 export const TOLERANCE = 0.02;
 
-// Two samples further apart than this are a suspended app or a throttled timer, not
-// playback: what happened in between is unknowable, so it is not charged to anyone.
+// A longer gap is a suspended app, not playback, so it is charged to nobody.
 const MAX_GAP = 2;
 
 const DEFAULT_FPS = 60;
 
-/**
- * What one interval between samples adds to the running totals, in seconds. `reseed`
- * drops the baseline, for the transitions where the gap means nothing.
- */
+/** What one sample interval adds, in seconds. `reseed` drops the baseline. */
 export function account(previous, current) {
     const none = { played: 0, lost: 0, reseed: false };
 
-    // Not trying to play: a pause is not lost time, and a seek's jump is not progress.
+    // A pause is not lost time and a seek's jump is not progress.
     if (!current || current.paused || current.seeking) return { played: 0, lost: 0, reseed: true };
     if (!previous) return none;
 
@@ -41,15 +33,13 @@ export function account(previous, current) {
 
     return {
         played: Math.min(advanced, expected),
-        // Starved of data counts too: the video is trying to play and is not, which is
-        // exactly the time a viewer notices. Only the tolerance band is forgiven.
+        // Starving counts too: trying to play and not playing is what a viewer notices.
         lost: missing > TOLERANCE ? missing : 0,
         reseed: false
     };
 }
 
-// One tally per element. The start page keeps a preview player of its own, and a single
-// shared tally let its figures land on the watch player's stats line.
+// One tally per element, or the start page's preview lands on the watch player's line.
 const tallies = new WeakMap();
 
 function tallyFor(video) {
@@ -61,11 +51,7 @@ function tallyFor(video) {
     return tally;
 }
 
-/**
- * The frame rate the player reports, read only when the picture changes size. Asking on
- * every sample means a getStatsForNerds() call several times a second for a number that
- * only moves when the rung does.
- */
+/** The reported frame rate, re-read only on a size change: it moves with the rung. */
 function frameRate(video, tally) {
     const size = video.videoWidth + 'x' + video.videoHeight;
     if (size === tally.size) return tally.fps;
@@ -101,9 +87,8 @@ function sample(video) {
     tally.previous = step.reseed ? null : current;
 }
 
-// timeupdate is the media element's own heartbeat: it fires while a video is playing and
-// stops when it is not, which is exactly when there is something to count. A timer would
-// run for the life of the session to spend most of it measuring a paused player.
+// timeupdate fires only while playing, where a timer would run all session to measure
+// a paused player.
 function watch(video) {
     const tally = tallyFor(video);
     if (tally.watching) return;
@@ -119,8 +104,7 @@ export function install() {
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     if (!proto || !proto.getVideoPlaybackQuality || proto.getVideoPlaybackQuality.__tube) return;
 
-    // Every video that starts playing gets counted, captured at the document so an element
-    // the page creates later is caught without polling for it.
+    // Captured at the document, so a video the page creates later needs no polling.
     document.addEventListener('play', (event) => {
         if (event.target instanceof window.HTMLVideoElement) watch(event.target);
     }, true);
@@ -130,7 +114,7 @@ export function install() {
     function getVideoPlaybackQuality() {
         const real = original.apply(this, arguments);
 
-        // The renderer is compositing and counting: its numbers are the true ones.
+        // The renderer is counting: its numbers are the true ones.
         if (!real || real.totalVideoFrames > 0) return real;
 
         watch(this);
@@ -143,7 +127,7 @@ export function install() {
             totalVideoFrames: Math.round(tally.played * tally.fps) + dropped,
             droppedVideoFrames: dropped,
             corruptedVideoFrames: 0,
-            // Marks these as derived, for anything of ours that wants to know.
+            // Derived, not counted.
             tubeDerived: true
         };
     }

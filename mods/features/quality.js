@@ -1,16 +1,13 @@
-// Which rung a preferred-quality setting resolves to. Asking for one the video does not
-// have is not reported — the player just keeps what it had — so the answer only ever
-// comes from the list on offer.
+// Which rung a preference resolves to. The player never reports a rung it cannot give,
+// so the answer only ever comes from the list on offer.
 export function chooseQuality(preference, offered) {
-    // An entry the player has said it cannot play is not an answer, whichever way the
-    // preference points.
+    // An unplayable entry is not an answer.
     const available = (offered || []).filter((entry) => entry && entry.isPlayable !== false);
     if (!available.length) return null;
 
     const pixels = (entry) => parseInt(entry.qualityLabel, 10) || 0;
 
-    // 'highest' is an instruction, not a resolution: the top of whatever this video
-    // offers. Unlike naming a resolution, it cannot silently do nothing.
+    // 'highest' is an instruction, not a resolution, so it cannot silently do nothing.
     if (preference === 'highest') {
         const best = available.reduce((top, entry) => (pixels(entry) > pixels(top) ? entry : top));
         return { quality: best.quality, pixels: pixels(best) };
@@ -19,8 +16,7 @@ export function chooseQuality(preference, offered) {
     const target = parseInt(preference, 10) || 0;
     const match = available.find((entry) => pixels(entry) === target);
 
-    // The nearest below beats falling back to the maximum, which would be the opposite
-    // of what a resolution cap is for.
+    // Nearest below, since falling back to the maximum defeats a cap.
     if (match) return { quality: match.quality, pixels: pixels(match) };
 
     const below = available

@@ -26,8 +26,6 @@
     "dev": "npm run dev --workspace ui",
     "dev:boot": "npm run dev:boot --workspace ui",
     "dev:service": "node service/index.js",
-    "inspect": "node tools/inspect.js",
-    "sdb": "node tools/sdb.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
     "version:check": "node tools/version.js --check",

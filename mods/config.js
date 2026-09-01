@@ -44,14 +44,9 @@ const defaultConfig = {
   // actually offers, which naming one cannot promise.
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
-  // Takes the service out of the video path. Only applies on the proxy path.
-  directMediaPlayback: false,
-  // The platform player owns playback and counts nothing, so the stats line shows a dash
-  // where a set that counts its own frames shows figures. These are derived from playback
-  // continuity rather than counted, and are marked as such, but a dash is no more honest.
+  // The platform player counts nothing, so the stats line shows a dash. Derived from
+  // playback continuity and marked as such, but a dash is no more honest.
   reportPlaybackStats: true,
-  // Publishes playback readings to the local network, read-only.
-  enableDevBridge: false,
   videoSpeed: 1,
   speedSettingsIncrement: 0.25,
 

@@ -7,7 +7,6 @@ const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const injector = require('./lib/injector.js');
 const proxy = require('./lib/proxy.js');
-const devbridge = require('./lib/devbridge.js');
 const dial = require('./lib/dial.js');
 
 // Off-TV the proxy, loader and rewrite rules still work; only DIAL and injection need
@@ -136,7 +135,6 @@ app.get('/__tube/inject', (req, res) => {
 
 // The page's half of the diagnostics bridge. The reading port only opens when the
 // app asks for it, and serves readings the page chose to push — never the reverse.
-devbridge.attach(app);
 
 // Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);

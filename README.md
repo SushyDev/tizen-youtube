@@ -231,6 +231,21 @@ one, keep it, build the other, run both. Desktop numbers are not television numb
 the ratio carries. It also fails the run if a decorated response has become circular or
 if a decoration stopped applying, both of which are easy to reintroduce.
 
+**Tell the set's truth about what it can decode.** Chromium carries a software AV1
+decoder, so `MediaSource.isTypeSupported` answers yes to `av01` on every television ever
+built. YouTube believes it and the server sends AV1 4K60 HDR to a chip that has to decode
+it on the CPU — about one frame in ten dropped on a real set, with an eleven-second
+buffer and 70Mbit spare, so nothing to do with the network. The official app does not have
+this problem because it asks the hardware rather than the browser.
+`mods/features/codecCapability.js` asks the same question the same way the platform
+answers it, through `mediaCapabilities.decodingInfo` and its `powerEfficient` flag, and
+withdraws the claim to 4K AV1 when there is no hardware path. It runs before every other
+module because the server chooses a format once, from what the client said at the start.
+
+That is also why the format filter in `adblock.js` is not enough on its own: playback is
+server-driven now (SABR), so trimming `streamingData.adaptiveFormats` edits a list the
+server is not choosing from. Capability is what it reads.
+
 **Decorate on interaction, not on render.** A browse response carries a couple of
 hundred tiles and a person touches perhaps three of them, so anything a tile only needs
 once someone acts on it does not belong in the parse path. The queue entry on a

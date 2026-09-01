@@ -3,6 +3,13 @@
 // `JSON.parse` during its own evaluation gets whatever was there at that moment. This
 // file is arranged so that is always ours.
 
+// Before anything else, and before YouTube's own bundle: what this set claims it can
+// decode decides which codec the server sends, and the server decides that once. See
+// features/codecCapability.js — this is the difference between 4K60 in hardware and 4K60
+// on the CPU.
+import installCodecCapability from './features/codecCapability.js';
+installCodecCapability();
+
 // Features: each registers what it wants and does nothing else at import time.
 // Nothing is intercepted until the last line of this file.
 

@@ -82,12 +82,8 @@ class PreferredQualityHandler {
         if (state?.isPlaying && !isShorts) this.#applyQuality();
     };
 
-    // The rungs a video offers are not all known when it starts playing: under SABR they
-    // appear as the stream is explored, and the list a second in is routinely shorter
-    // than the list ten seconds in. Applying once and pinning both ends therefore locks
-    // playback to whatever happened to be known at that instant — on a 4K stream that is
-    // often a rung or two below the best, on a buffer with nothing wrong with it, with no
-    // way back up. So the choice is revisited while it can still improve.
+    // Rungs appear as the stream is explored, so applying once pins the video to
+    // whatever was known a second in, with no way back up.
     #watch() {
         setInterval(() => {
             if (!this.#player || Date.now() > this.#watchUntil) return;

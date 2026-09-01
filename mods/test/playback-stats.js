@@ -1,7 +1,5 @@
-// What the derived frame counts actually detect. The numbers reported on a set whose
-// renderer counts nothing are only worth anything if this arithmetic is, so the cases
-// that matter are pinned here rather than trusted.
-
+// What the derived frame counts actually detect, since they are the only ones reported
+// on a set whose renderer counts nothing.
 import { account, TOLERANCE } from '../features/playbackStats.js';
 
 const results = [];

@@ -1,19 +1,9 @@
 import { configRead, configChangeEmitter } from '../config.js';
 
-// Where the video bytes come from, on the path where there is a choice.
-//
-// With Developer Mode unavailable the app falls back to proxying youtube.com through its
-// own service, and that proxy carries the media too: every segment of a 4K60 stream is
-// piped through Node on the television's own chip, which is also the chip decoding it.
-// Asking the service to leave the media alone lets the player pull from googlevideo
-// directly, which is the comparison worth being able to make from the sofa.
-//
-// It only means anything on that path. Under CDP injection the page *is* youtube.com and
-// the service was never in the video path, so this does nothing there and says so.
-//
-// Whether direct playback works at all is the open question: googlevideo has to answer a
-// cross-origin request from a localhost page, and it being unwilling to is the reason the
-// media was proxied in the first place. If the picture stops, turn it back off.
+// Asks the service to stop proxying the media so the player pulls it from googlevideo
+// itself. Only means anything on the proxy path, where every segment otherwise goes
+// through Node on the television. Whether googlevideo will answer a localhost page is
+// the reason it was proxied to begin with, so if the picture stops, turn it back off.
 
 // The service serves the page over plain HTTP on loopback; anywhere else is youtube.com
 // itself, where there is nothing to ask.

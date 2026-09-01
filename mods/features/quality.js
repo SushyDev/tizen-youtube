@@ -1,9 +1,6 @@
-// YouTube names qualities with constants ('hd1080', 'hd2160') and labels them with
-// numbers ('1080p'). Asking for one the video does not have is not reported — the player
-// just keeps what it had — so every answer comes from the list it offers.
-//
-// Exported and free of the player so the choice can be tested directly; the height comes
-// back with it because the caller has to know whether a later list beats an earlier one.
+// Which rung a preferred-quality setting resolves to. Asking for one the video does not
+// have is not reported — the player just keeps what it had — so the answer only ever
+// comes from the list on offer.
 export function chooseQuality(preference, offered) {
     // An entry the player has said it cannot play is not an answer, whichever way the
     // preference points.

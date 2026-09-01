@@ -1,8 +1,4 @@
-// Which rung the preferred-quality setting resolves to. This is the decision that used
-// to be made once, from whatever list happened to exist a moment after playback started,
-// and then pinned at both ends — which on a 4K stream left the video a rung or two below
-// the best on a perfectly healthy buffer, with no way back up. The climbing is the
-// handler's job; getting the answer right for a given list is this function's.
+// Which rung the preferred-quality setting resolves to, for a given list of offers.
 
 import { chooseQuality } from '../features/quality.js';
 

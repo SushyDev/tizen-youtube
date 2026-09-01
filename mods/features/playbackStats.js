@@ -1,21 +1,9 @@
 import { configRead } from '../config.js';
 
-// Frame counts, on a set where nothing counts frames.
-//
-// `getVideoPlaybackQuality()` reports what the *renderer* composited. When the platform
-// media player owns playback the renderer never sees a frame, so both counters sit at
-// zero and YouTube's own stats line reads "1920x1080 / -". Nothing else knows either:
-// requestVideoFrameCallback never fires, and Chromium's media-internals record for that
-// path carries no decoder to ask.
-//
-// What can still be measured is whether media time keeps up with the wall clock — which
-// is what dropped frames were being read as a proxy for. A second of wall time that
-// advances the video by less than a second is time the viewer lost, and at a known frame
-// rate that converts to frames.
-//
-// The numbers are therefore derived, not counted, and they are only ever substituted
-// when the real ones are absent: if the renderer is compositing and reporting, its counts
-// are passed through untouched.
+// Frame counts for the path where the platform player owns playback and the renderer
+// composites nothing, so getVideoPlaybackQuality() sits at zero. A second of wall time
+// that advances the video by less than a second is time the viewer lost, which at a known
+// frame rate converts to frames. Real counts, when there are any, are passed through.
 
 const TICK = 250;
 
@@ -27,12 +15,8 @@ export const TOLERANCE = 0.02;
 const MAX_GAP = 2;
 
 /**
- * What one interval between samples adds to the running totals. Pure, so the arithmetic
- * can be tested without a video element.
- *
- * `previous` and `current` are { wall, media, rate, paused, seeking, readyState }.
- * Returns { played, lost, reseed } in seconds; `reseed` drops the baseline, for the
- * transitions where the gap means nothing.
+ * What one interval between samples adds to the running totals, in seconds. `reseed`
+ * drops the baseline, for the transitions where the gap means nothing.
  */
 export function account(previous, current) {
     const none = { played: 0, lost: 0, reseed: false };
@@ -95,11 +79,7 @@ function sample() {
     previous = step.reseed ? null : current;
 }
 
-/**
- * Substitutes derived counts when the renderer reports none. The shape is the real
- * VideoPlaybackQuality one, so YouTube's stats line and anything else reading the
- * standard API get what they expect.
- */
+/** Substitutes derived counts when the renderer reports none, in the standard shape. */
 export function install() {
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     if (!proto || !proto.getVideoPlaybackQuality || proto.getVideoPlaybackQuality.__tube) return;

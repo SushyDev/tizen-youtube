@@ -44,23 +44,12 @@ const defaultConfig = {
   // actually offers, which naming one cannot promise.
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
-  // Off: the media is proxied, as it has to be for the page to be allowed to fetch it.
-  // On, the player pulls from googlevideo itself, which takes this service out of the
-  // video path — worth trying on a set that drops frames, and reversible if it will not
-  // play. Only has an effect when the app is on its proxy path.
+  // Takes the service out of the video path. Only applies on the proxy path.
   directMediaPlayback: false,
-  // Off: a diagnostic, not a feature. Where the platform player owns playback the
-  // renderer counts no frames and the stats line reads "1920x1080 / -", which is the
-  // truth. Turning this on fills that gap with figures derived from whether media time
-  // keeps up with the wall clock — useful when investigating, but derived rather than
-  // counted, and a number that looks measured is worse than a dash when it is not.
-  // Real counts are always passed through untouched, so this can never mask them.
+  // Fills the stats line with figures derived from playback continuity where the
+  // renderer counts no frames. Derived, not counted, so off unless investigating.
   reportPlaybackStats: false,
-
-  // Off. Opens a read-only port on the local network carrying what the app is playing
-  // and whether frames are being counted — the things there is no other way to see when
-  // sdbd refuses and there is no debugger. It serves readings only; nothing sent to it
-  // is read, stored or run.
+  // Publishes playback readings to the local network, read-only.
   enableDevBridge: false,
   videoSpeed: 1,
   speedSettingsIncrement: 0.25,

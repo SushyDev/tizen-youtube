@@ -1,24 +1,17 @@
 'use strict';
 
-// A shell on the television, over Tizen Homebrew's command relay.
+// Runs a command on the television's sdb, through Tizen Homebrew's relay. sdbd only
+// accepts connections from 127.0.0.1, so a computer has to ask Homebrew to make them.
+// The relay is switched on for the command and off again afterwards.
 //
-// The set's own sdb daemon only accepts connections from 127.0.0.1, so a computer cannot
-// reach it directly however open port 26101 looks from outside. Homebrew runs on the TV
-// and will forward a command to that loopback daemon on our behalf — behind a PIN, and
-// behind a relay switch that is off until asked. This turns the switch on, runs what it
-// was given, and turns it back off, so one job does not leave a shell open for good.
-//
-//   node tools/tv-relay.js --tv=192.168.1.29 --pin=000000 "getduid"
+//   npm run sdb -- --tv=192.168.1.29 --pin=000000 "getduid"
 
 const WebSocket = require('ws');
 
 const PORT = 8091;
 const DEFAULT_TIMEOUT = 30000;
 
-/**
- * Opens the relay, runs each command in turn, and closes it again.
- * `commands` is a list of shell strings; the answers come back in the same order.
- */
+/** Opens the relay, runs each command in turn, and closes it again. */
 function relay({ host, pin, commands, timeout = DEFAULT_TIMEOUT, onLog = () => {} }) {
     return new Promise((resolve, reject) => {
         const socket = new WebSocket(`ws://${host}:${PORT}`);
@@ -118,11 +111,7 @@ function relay({ host, pin, commands, timeout = DEFAULT_TIMEOUT, onLog = () => {
     });
 }
 
-/**
- * The same, but persistent. sdbd on Tizen 9 refuses most connection attempts even from
- * its own loopback — its own error text says so — and the only workable answer is to
- * keep asking. Each attempt is a fresh session, so a refusal leaves nothing behind.
- */
+/** The same, retried: sdbd refuses most attempts, and each one is a fresh session. */
 async function relayWithRetries(options) {
     const attempts = options.attempts || 12;
     const onLog = options.onLog || (() => {});
@@ -156,7 +145,7 @@ if (require.main === module) {
     });
 
     if (!flags.tv || !flags.pin || !rest.length) {
-        console.error('usage: node tools/tv-relay.js --tv=<ip> --pin=<pin> "<command>" ["<command>" ...]');
+        console.error('usage: npm run sdb -- --tv=<ip> --pin=<pin> "<command>" ["<command>" ...]');
         process.exit(2);
     }
 

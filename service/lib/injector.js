@@ -26,25 +26,16 @@ const isTizen3 = String(platformVersion || '').indexOf('3.0') === 0;
 // died between setting and clearing it, leaving every later launch waiting forever.
 const CONNECT_TIMEOUT = 30000;
 
-// The debugger is a means to get the userscript in, not somewhere to live. A CDP client
-// left attached holds V8's inspector open for the whole session, and the television is
-// then running a 4K60 decode with an inspector on the same thread — so it is dropped
-// once the script has landed. TUBE_KEEP_DEBUGGER=1 keeps it, to measure the difference.
-//
-// The cost of leaving: Page.setBypassCSP is a session override and reverts with the
-// connection, so youtube.com's own CSP applies again from then on. The script is already
-// evaluated by that point — Runtime.evaluate is not subject to CSP — but anything it
-// does later that CSP governs is on its own.
+// An attached client holds V8's inspector open for the whole session, so it is dropped
+// once the script is in. Page.setBypassCSP reverts with the connection, which the script
+// is past needing by then. TUBE_KEEP_DEBUGGER=1 keeps it attached.
 const KEEP_DEBUGGER = process.env.TUBE_KEEP_DEBUGGER === '1';
 
 // Long enough for the page to finish making the contexts it makes at startup.
 const DETACH_DELAY = 3000;
 
-// sdbd refuses most connection attempts on Tizen 9 — its own message says it drops them
-// "intermittently under no particular provocation" — and one refusal used to be the end
-// of it: the app gave up on the debugger and spent the whole session on the proxy
-// fallback instead, piping every video byte through this service. So a refusal is
-// retried until a deadline rather than taken as an answer.
+// sdbd refuses most connection attempts, so one refusal is retried rather than taken as
+// an answer — otherwise the app spends the whole session on the proxy fallback.
 const SDB_DEADLINE = 20000;
 const SDB_RETRY_DELAY = 400;
 const SDB_ATTEMPT_TIMEOUT = 8000;
@@ -141,10 +132,8 @@ function attach(host, port, args, attempt) {
                         .catch((e) => console.error(`Injection failed: ${e.message}`));
                 });
 
-                // The load event of the page we navigated to. By then its context has
-                // been created and the script evaluated into it, so there is nothing
-                // left for the connection to do — a television client is a single page
-                // that never navigates again.
+                // By the load event the script is in, and a television client is a
+                // single page that never navigates again.
                 client.on('Page.loadEventFired', detach);
 
                 // Without this, youtube.com's CSP blocks the injected script.

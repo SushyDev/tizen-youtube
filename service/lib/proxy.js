@@ -23,20 +23,14 @@ const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 // Development only. One more script after the userscript, read from disk per request.
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
-// Development only. Off a television the TV client advertises 30fps itags alone, so a
-// video whose 1080p and above exist only at 60fps tops out at 720p in a browser — which
-// makes the quality logic untestable at the resolutions it exists for. This relabels the
-// high frame rate formats as 30fps so the client will take them. Only the labels in the
-// player response change: the media served is the real 60fps stream.
+// Development only. Off a television the client advertises 30fps itags alone, so a video
+// whose higher rungs are 60fps-only tops out at 720p in a browser. This relabels them;
+// only the labels change, so what plays is still the real 60fps stream.
 const DEV_UNLOCK_HFR = process.env.TUBE_DEV_UNLOCK_HFR === '1';
 
-// Where the media comes from once the page is running. On the proxy path every video
-// byte is piped through this service — at 4K60 that is tens of megabits a second through
-// Node on a television's own chip, which the set is also decoding on. `direct` undoes the
-// googlevideo half of the rewrite so the player pulls from googlevideo itself, leaving
-// the rest of the table alone. It is a diagnosis switch: whether it plays at all depends
-// on googlevideo answering a cross-origin request from localhost, which is the reason
-// the media was proxied in the first place.
+// Whether the media is piped through this service or fetched from googlevideo directly.
+// `direct` undoes the googlevideo half of the rewrite and leaves the rest of the table
+// alone; whether it plays depends on googlevideo answering a localhost page.
 const MEDIA_PROXIED = 'proxy';
 const MEDIA_DIRECT = 'direct';
 
@@ -119,12 +113,8 @@ function rewriteBody(text, url) {
 }
 
 // The inverse of the googlevideo rules alone, applied after rewriteBody so the table
-// itself stays exactly as the reference wrote it — service/test/rewrite-parity.js pins
-// that, and this must not count against it.
-//
-// The escaped prefix is produced by the googlevideo rule and by nothing else, so removing
-// it wholesale is safe. The plain prefix is shared with gstatic and the rest, so that one
-// is matched against the host it precedes.
+// itself stays as the reference wrote it. The escaped prefix comes from that rule and
+// nothing else; the plain one is shared, so it is matched against the host it precedes.
 const ESCAPED_PREFIX = `http:\\/\\/localhost:${ports.PROXY}\\/cors-bypass\\/`;
 const PROXIED_MEDIA = new RegExp(
     PROXY_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 'https://([a-zA-Z0-9-.]+)\\.googlevideo\\.com',

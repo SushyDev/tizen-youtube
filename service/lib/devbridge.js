@@ -1,20 +1,8 @@
 'use strict';
 
-// A way to see what the app is doing when the debugger is out of reach.
-//
-// The CDP path only exists while sdbd will accept a connection, and on this platform it
-// often will not — it refuses most attempts and sometimes wedges until the set is
-// restarted. When that happens the app falls back to the proxy, no debug port is opened,
-// and there is no way to ask the running page anything from a computer.
-//
-// Two facts make a way through. The page served by the proxy is same-origin with this
-// service, so it can report to it. And this process already binds a port on every
-// interface for DIAL, so a second one is reachable from the network the set is on.
-//
-// It carries readings in one direction only. The page decides what to report and pushes
-// it; the network can read that and nothing else. Nothing arriving from the network is
-// evaluated, stored or acted on — a debugging aid should not also be a way into a
-// television that is signed into somebody's account.
+// Publishes what the page reports about playback, so the app can be inspected when sdbd
+// refuses and there is no debugger. Readings travel one way: the page pushes, the network
+// reads, and nothing arriving from the network is stored or run.
 
 const express = require('express');
 const cors = require('cors');
@@ -28,10 +16,7 @@ let server = null;
 let latest = null;
 let receivedAt = 0;
 
-/**
- * The page's half, on the service's own origin. Registered on the main app before the
- * proxy's catch-all.
- */
+/** The page's half, on this service's origin. Registered before the proxy's catch-all. */
 function attach(app) {
     app.post('/__tube/dev/report', express.json({ limit: '256kb' }), (req, res) => {
         latest = req.body || null;

@@ -1,15 +1,8 @@
 import { configRead, configChangeEmitter } from '../config.js';
 
-// The page's half of the diagnostics bridge. See service/lib/devbridge.js for why it
-// exists: when sdbd refuses there is no debugger, and this is the only way left to see
-// what the running app is doing from a computer.
-//
-// It reports a fixed set of readings and accepts nothing back. What goes in this snapshot
-// is decided here, in the app, not by whoever is reading it.
-//
-// Only meaningful where the page is served by our own service — the proxy path — which
-// is what makes this same-origin. On the CDP path there is a real debugger, which is
-// better than this in every way.
+// Pushes playback readings to the service, which publishes them to the network. What
+// goes in the snapshot is decided here, and nothing comes back the other way. Only
+// works on the proxy path, where the page and the service share an origin.
 
 const INTERVAL = 1000;
 

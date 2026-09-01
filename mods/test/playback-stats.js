@@ -1,6 +1,6 @@
 // What the derived frame counts actually detect, since they are the only ones reported
 // on a set whose renderer counts nothing.
-import { account, TOLERANCE } from '../features/playbackStats.js';
+import { account, TOLERANCE, install, sample } from '../features/playbackStats.js';
 
 const results = [];
 function check(name, ok, detail) {
@@ -89,6 +89,53 @@ const at = (wall, media, over) => Object.assign(
 {
     const step = account(null, at(0, 10));
     check('the first sample counts nothing', step.played === 0 && step.lost === 0, JSON.stringify(step));
+}
+
+// The counts have to reach getVideoPlaybackQuality(), because that is what the player
+// reads to build the stats line. Zeroes there show as a dash, however well they are kept.
+{
+    const listeners = {};
+    const video = {
+        currentTime: 0, playbackRate: 1, paused: false, seeking: false, readyState: 4,
+        videoWidth: 3840, videoHeight: 2160,
+        addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); }
+    };
+
+    let native = { totalVideoFrames: 0, droppedVideoFrames: 0, creationTime: 0 };
+
+    global.window = { HTMLVideoElement: function () {} };
+    global.window.HTMLVideoElement.prototype.getVideoPlaybackQuality = function () { return native; };
+    global.document = { addEventListener() {}, querySelector() { return null; } };
+
+    install();
+
+    const proto = global.window.HTMLVideoElement.prototype;
+    check('the patch is installed on the prototype', proto.getVideoPlaybackQuality.__tube === true);
+
+    // Two samples a second apart, the video advancing only 0.8s of it.
+    const quality = () => proto.getVideoPlaybackQuality.call(video);
+    const realNow = Date.now;
+    let clock = 1000000;
+    Date.now = () => clock;
+
+    sample(video);
+    clock += 1000;
+    video.currentTime = 0.8;
+    sample(video);
+
+    Date.now = realNow;
+
+    const derived = quality();
+    check('a renderer counting nothing gets derived counts',
+        derived.tubeDerived === true && derived.totalVideoFrames > 0, JSON.stringify(derived));
+    check('lost time becomes dropped frames',
+        derived.droppedVideoFrames > 0, JSON.stringify(derived));
+
+    native = { totalVideoFrames: 120, droppedVideoFrames: 3, creationTime: 0 };
+    const real = quality();
+    check('a renderer that counts is passed through untouched',
+        real.totalVideoFrames === 120 && real.droppedVideoFrames === 3 && !real.tubeDerived,
+        JSON.stringify(real));
 }
 
 const failed = results.filter((r) => !r).length;

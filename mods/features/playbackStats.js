@@ -45,7 +45,7 @@ const tallies = new WeakMap();
 function tallyFor(video) {
     let tally = tallies.get(video);
     if (!tally) {
-        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, size: '', previous: null, watching: false };
+        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, size: '', previous: null, watching: false, timer: null };
         tallies.set(video, tally);
     }
     return tally;
@@ -67,7 +67,7 @@ function frameRate(video, tally) {
     return tally.fps;
 }
 
-function sample(video) {
+export function sample(video) {
     const tally = tallyFor(video);
 
     const current = {
@@ -87,16 +87,36 @@ function sample(video) {
     tally.previous = step.reseed ? null : current;
 }
 
-// timeupdate fires only while playing, where a timer would run all session to measure
-// a paused player.
+// Sampled on a timer that runs only while playing. timeupdate would be tidier, but the
+// platform player advances currentTime without necessarily firing it, and that is the
+// one path these counts exist for.
+const TICK = 250;
+
 function watch(video) {
     const tally = tallyFor(video);
     if (tally.watching) return;
 
     tally.watching = true;
-    video.addEventListener('timeupdate', () => sample(video));
+
+    const stop = () => {
+        clearInterval(tally.timer);
+        tally.timer = null;
+        tally.previous = null;
+    };
+
+    const start = () => {
+        if (tally.timer) return;
+        tally.timer = setInterval(() => sample(video), TICK);
+    };
+
+    video.addEventListener('playing', start);
+    video.addEventListener('pause', stop);
+    video.addEventListener('ended', stop);
+    video.addEventListener('emptied', stop);
     video.addEventListener('seeking', () => { tally.previous = null; });
     video.addEventListener('ratechange', () => { tally.previous = null; });
+
+    if (!video.paused) start();
 }
 
 /** Substitutes derived counts when the renderer reports none, in the standard shape. */

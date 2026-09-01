@@ -1,8 +1,11 @@
 import { configRead } from '../config.js';
 import { onResponse, onRequest } from '../youtube/json.js';
 
-import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
+import { timelyAction, longPressData, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/nativeSettings.js';
+import { cloneJson } from '../utils/clone.js';
+import { rememberTile } from '../youtube/tileRegistry.js';
+import { formatAllowed } from './codecCapability.js';
 
 // What each SponsorBlock category is called on the skip button. The ids come from
 // the API, so an unknown one falls back to the id itself.
@@ -52,15 +55,19 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       r.paidContentOverlay = null;
     }
 
-    if (r?.streamingData?.adaptiveFormats && configRead('videoPreferredCodec') !== 'any') {
-      const preferredCodec = configRead('videoPreferredCodec');
-      const hasPreferredCodec = r.streamingData.adaptiveFormats.find(format => format.mimeType.includes(preferredCodec));
-      if (hasPreferredCodec) {
-        r.streamingData.adaptiveFormats = r.streamingData.adaptiveFormats.filter(format => {
-          if (format.mimeType.startsWith('audio/')) return true;
-          return format.mimeType.includes(preferredCodec);
-        });
-      }
+    // Codec selection, on the belt as well as the braces. `codecCapability.js` withdraws
+    // the claim to 4K AV1 at the capability layer, which is what a server-driven client
+    // (SABR) chooses from; this trims the list too, for the paths that still read it.
+    // Both ask the same function, so `any` means the same thing in both places: whatever
+    // this set can actually decode, rather than whatever Chromium will attempt.
+    if (r?.streamingData?.adaptiveFormats) {
+      const kept = r.streamingData.adaptiveFormats.filter(
+        (format) => format.mimeType && formatAllowed(format.mimeType));
+
+      // Never leave the player with no video to choose. If the filter would empty the
+      // list, the preference is unsatisfiable for this video and the list stands.
+      const hasVideo = kept.some((format) => format.mimeType.indexOf('video/') === 0);
+      if (hasVideo) r.streamingData.adaptiveFormats = kept;
     }
 
     // Drop "masthead" ad from home screen
@@ -133,10 +140,8 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
     }
 
     if (r?.continuationContents?.horizontalListContinuation?.items) {
-      deArrowify(r.continuationContents.horizontalListContinuation.items);
-      hqify(r.continuationContents.horizontalListContinuation.items);
-      addLongPress(r.continuationContents.horizontalListContinuation.items);
-      r.continuationContents.horizontalListContinuation.items = hideVideo(r.continuationContents.horizontalListContinuation.items);
+      r.continuationContents.horizontalListContinuation.items =
+        decorateTiles(r.continuationContents.horizontalListContinuation.items, tileOptions(false));
     }
 
     if (r?.continuationContents?.gridContinuation?.items) {
@@ -284,18 +289,91 @@ onRequest('playback context', ['playbackContext'], (value) => {
   });
 });
 
+// Every setting a tile pass needs, read once. These used to be read per tile, per pass —
+// `hideVideo` alone re-read two settings and re-derived the page name from
+// `location.hash` for every item in every shelf.
+function tileOptions(shouldAddPreviews) {
+  const pages = configRead('hideWatchedVideosPages');
+  let hideWatched = false;
+
+  if (pages.length) {
+    const hash = location.hash.substring(1);
+    const pageName = hash === '/' ? 'home' : hash.startsWith('/search') ? 'search' : hash.split('?')[1]?.split('&')[0]?.split('=')[1]?.replace('FE', '')?.replace('topics_', '') ?? '';
+    hideWatched = pages.includes(pageName);
+  }
+
+  return {
+    deArrow: configRead('enableDeArrow'),
+    deArrowThumbnails: configRead('enableDeArrowThumbnails'),
+    hqThumbnails: configRead('enableHqThumbnails'),
+    longPress: configRead('enableLongPress'),
+    previews: shouldAddPreviews && configRead('enablePreviews'),
+    hideWatched,
+    watchedThreshold: configRead('hideWatchedVideosThreshold')
+  };
+}
+
+/** True when a tile is watched past the threshold and this surface hides those. */
+function isWatched(tile, options) {
+  if (!options.hideWatched) return false;
+
+  const progressBar = tile.header?.tileHeaderRenderer?.thumbnailOverlays
+    ?.find(overlay => overlay.thumbnailOverlayResumePlaybackRenderer)?.thumbnailOverlayResumePlaybackRenderer;
+
+  if (!progressBar) return false;
+
+  return (progressBar.percentDurationWatched || 0) > options.watchedThreshold;
+}
+
+// One walk of the items array. This was five — deArrowify, hqify, addLongPress,
+// addPreviews and hideVideo each iterated the same array with their own tileRenderer
+// guard and their own per-item `configRead`. Hiding is decided first so nothing is spent
+// decorating a tile that is about to be dropped.
+function decorateTiles(items, options) {
+  const kept = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
+    // Adverts. The old code spliced this array while iterating it with `for...of`,
+    // which skipped the element after every advert it removed.
+    if (item.adSlotRenderer) continue;
+
+    const tile = item.tileRenderer;
+    if (!tile) {
+      kept.push(item);
+      continue;
+    }
+
+    if (isWatched(tile, options)) continue;
+
+    // Thumbnails and long-press only ever applied to the default tile style; DeArrow
+    // and previews never checked it. Keeping that as it was.
+    const styled = tile.style === 'TILE_STYLE_YTLR_DEFAULT';
+
+    if (options.deArrow) deArrowTile(tile, options);
+    if (options.hqThumbnails && styled) hqTile(tile);
+    if (styled) longPressTile(item, tile, options);
+    if (options.previews) previewTile(tile);
+
+    kept.push(item);
+  }
+
+  return kept;
+}
+
 function processShelves(shelves, shouldAddPreviews = true) {
+  const options = tileOptions(shouldAddPreviews);
+  const shorts = configRead('enableShorts');
+
   for (const shelve of shelves) {
     if (shelve.shelfRenderer) {
       if (!shelve.shelfRenderer.content?.horizontalListRenderer?.items) continue;
-      deArrowify(shelve.shelfRenderer.content.horizontalListRenderer.items);
-      hqify(shelve.shelfRenderer.content.horizontalListRenderer.items);
-      addLongPress(shelve.shelfRenderer.content.horizontalListRenderer.items);
-      if (shouldAddPreviews) {
-        addPreviews(shelve.shelfRenderer.content.horizontalListRenderer.items);
-      }
-      shelve.shelfRenderer.content.horizontalListRenderer.items = hideVideo(shelve.shelfRenderer.content.horizontalListRenderer.items);
-      if (!configRead('enableShorts')) {
+
+      shelve.shelfRenderer.content.horizontalListRenderer.items =
+        decorateTiles(shelve.shelfRenderer.content.horizontalListRenderer.items, options);
+
+      if (!shorts) {
         if (shelve.shelfRenderer.tvhtml5ShelfRendererType === 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS') {
           shelves.splice(shelves.indexOf(shelve), 1);
           continue;
@@ -308,132 +386,107 @@ function processShelves(shelves, shouldAddPreviews = true) {
   }
 }
 
-function addPreviews(items) {
-  if (!configRead('enablePreviews')) return;
-  for (const item of items) {
-    if (item.tileRenderer) {
-      const watchEndpoint = item.tileRenderer.onSelectCommand;
-      const copiedEndpoint = JSON.parse(JSON.stringify(watchEndpoint));
-      if (item.tileRenderer?.onFocusCommand?.playbackEndpoint) continue;
-      if (item.tileRenderer?.onFocusCommand?.commandExecutorCommand) continue;
-      item.tileRenderer.onFocusCommand = {
-        startInlinePlaybackCommand: {
-          blockAdoption: true,
-          caption: false,
-          delayMs: 3000,
-          durationMs: 40000,
-          muted: false,
-          restartPlaybackBeforeSeconds: 10,
-          resumeVideo: true,
-          playbackEndpoint: copiedEndpoint
-        }
-      };
+function previewTile(tile) {
+  const watchEndpoint = tile.onSelectCommand;
+  if (tile.onFocusCommand?.playbackEndpoint) return;
+  if (tile.onFocusCommand?.commandExecutorCommand) return;
+
+  tile.onFocusCommand = {
+    startInlinePlaybackCommand: {
+      blockAdoption: true,
+      caption: false,
+      delayMs: 3000,
+      durationMs: 40000,
+      muted: false,
+      restartPlaybackBeforeSeconds: 10,
+      resumeVideo: true,
+      playbackEndpoint: cloneJson(watchEndpoint)
     }
-  }
+  };
 }
 
-function deArrowify(items) {
-  for (const item of items) {
-    if (item.adSlotRenderer) {
-      const index = items.indexOf(item);
-      items.splice(index, 1);
-      continue;
-    }
-    if (!item.tileRenderer) continue;
-    if (configRead('enableDeArrow')) {
-      const videoID = item.tileRenderer.contentId;
-      fetch(`https://sponsor.ajay.app/api/branding?videoID=${videoID}`).then(res => res.json()).then(data => {
-        if (data.titles.length > 0) {
-          const mostVoted = data.titles.reduce((max, title) => max.votes > title.votes ? max : title);
-          item.tileRenderer.metadata.tileMetadataRenderer.title.simpleText = mostVoted.title;
-        }
+function deArrowTile(tile, options) {
+  const videoID = tile.contentId;
 
-        if (data.thumbnails.length > 0 && configRead('enableDeArrowThumbnails')) {
-          const mostVotedThumbnail = data.thumbnails.reduce((max, thumbnail) => max.votes > thumbnail.votes ? max : thumbnail);
-          if (mostVotedThumbnail.timestamp) {
-            item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails = [
-              {
-                url: `https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID=${videoID}&time=${mostVotedThumbnail.timestamp}`,
-                width: 1280,
-                height: 640
-              }
-            ]
+  fetch(`https://sponsor.ajay.app/api/branding?videoID=${videoID}`).then(res => res.json()).then(data => {
+    if (data.titles.length > 0) {
+      const mostVoted = data.titles.reduce((max, title) => max.votes > title.votes ? max : title);
+      tile.metadata.tileMetadataRenderer.title.simpleText = mostVoted.title;
+    }
+
+    if (data.thumbnails.length > 0 && options.deArrowThumbnails) {
+      const mostVotedThumbnail = data.thumbnails.reduce((max, thumbnail) => max.votes > thumbnail.votes ? max : thumbnail);
+      if (mostVotedThumbnail.timestamp) {
+        tile.header.tileHeaderRenderer.thumbnail.thumbnails = [
+          {
+            url: `https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID=${videoID}&time=${mostVotedThumbnail.timestamp}`,
+            width: 1280,
+            height: 640
           }
-        }
-      }).catch(() => { });
+        ]
+      }
     }
-  }
+  }).catch(() => { });
 }
 
-function hqify(items) {
-  for (const item of items) {
-    if (!item.tileRenderer) continue;
-    if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') continue;
-    if (configRead('enableHqThumbnails')) {
-      if (!item.tileRenderer.onSelectCommand?.watchEndpoint?.videoId) continue;
-      if (!item.tileRenderer.header?.tileHeaderRenderer?.thumbnail?.thumbnails?.[0]?.url) continue;
-      const videoID = item.tileRenderer.onSelectCommand.watchEndpoint.videoId;
-      const queryArgs = item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url.split('?')[1];
-      item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails = [
-        {
-          url: `https://i.ytimg.com/vi/${videoID}/sddefault.jpg${queryArgs ? `?${queryArgs}` : ''}`,
-          width: 640,
-          height: 480
-        }
-      ];
+function hqTile(tile) {
+  if (!tile.onSelectCommand?.watchEndpoint?.videoId) return;
+  if (!tile.header?.tileHeaderRenderer?.thumbnail?.thumbnails?.[0]?.url) return;
+
+  const videoID = tile.onSelectCommand.watchEndpoint.videoId;
+  const queryArgs = tile.header.tileHeaderRenderer.thumbnail.thumbnails[0].url.split('?')[1];
+
+  tile.header.tileHeaderRenderer.thumbnail.thumbnails = [
+    {
+      url: `https://i.ytimg.com/vi/${videoID}/sddefault.jpg${queryArgs ? `?${queryArgs}` : ''}`,
+      width: 640,
+      height: 480
     }
-  }
+  ];
 }
 
-function addLongPress(items) {
-  for (const item of items) {
-    if (!item.tileRenderer) continue;
-    if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') continue;
-    if (item.tileRenderer.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
-      const copiedItem = JSON.parse(JSON.stringify(item));
-      item.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer('Add to Queue', {
-        clickTrackingParams: null,
-        playlistEditEndpoint: {
-          customAction: {
-            action: 'ADD_TO_QUEUE',
-            parameters: copiedItem
-          }
-        }
-      }));
-      continue;
-    }
-    if (!configRead('enableLongPress')) continue;
-    if (!item.tileRenderer?.metadata?.tileMetadataRenderer) continue;
-    if (!item.tileRenderer?.header?.tileHeaderRenderer?.thumbnail?.thumbnails) continue;
-    if (!item.tileRenderer.onSelectCommand?.watchEndpoint) continue;
-    const copiedItem = JSON.parse(JSON.stringify(item));
-    const subtitleNode = copiedItem.tileRenderer.metadata.tileMetadataRenderer.lines?.[0]?.lineRenderer?.items?.[0]?.lineItemRenderer?.text;
-    if (!subtitleNode) continue;
-    const subtitle = subtitleNode;
-    const data = longPressData({
-      videoId: copiedItem.tileRenderer.contentId,
-      thumbnails: copiedItem.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails,
-      title: copiedItem.tileRenderer.metadata.tileMetadataRenderer.title.simpleText,
-      subtitle: subtitle.runs ? subtitle.runs[0].text : subtitle.simpleText,
-      watchEndpointData: copiedItem.tileRenderer.onSelectCommand.watchEndpoint,
-      item: copiedItem
-    });
-    item.tileRenderer.onLongPressCommand = data;
+function longPressTile(item, tile, options) {
+  // A tile YouTube already gives a menu to needs nothing done to it now. The queue
+  // entry is added when the menu is opened — see `offerQueueEntry` in youtube/commands.js
+  // — so all that happens here is a hash insert saying which tile this menu belongs to.
+  // This used to push a menu item and deep-clone the whole tile into it, for every tile
+  // of every shelf, against the chance that one would be queued later.
+  if (tile.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
+    rememberTile(tile.onLongPressCommand, item);
+    return;
   }
-}
 
-function hideVideo(items) {
-  return items.filter(item => {
-    if (!item.tileRenderer) return true;
-    const progressBar = item.tileRenderer.header?.tileHeaderRenderer?.thumbnailOverlays?.find(overlay => overlay.thumbnailOverlayResumePlaybackRenderer)?.thumbnailOverlayResumePlaybackRenderer;
-    if (!progressBar) return true;
-    const pages = configRead('hideWatchedVideosPages');
-    if (!pages.length) return true;
-    const hash = location.hash.substring(1);
-    const pageName = hash === '/' ? 'home' : hash.startsWith('/search') ? 'search' : hash.split('?')[1]?.split('&')[0]?.split('=')[1]?.replace('FE', '')?.replace('topics_', '') ?? '';
-    if (!pages.includes(pageName)) return true;
+  if (!options.longPress) return;
+  if (!tile.metadata?.tileMetadataRenderer) return;
+  if (!tile.header?.tileHeaderRenderer?.thumbnail?.thumbnails) return;
+  if (!tile.onSelectCommand?.watchEndpoint) return;
 
-    const percentWatched = (progressBar.percentDurationWatched || 0);
-    return percentWatched <= configRead('hideWatchedVideosThreshold');
+  const subtitle = tile.metadata.tileMetadataRenderer.lines?.[0]?.lineRenderer?.items?.[0]?.lineItemRenderer?.text;
+  if (!subtitle) return;
+
+  // Read straight off the tile. This used to deep-clone the whole thing first and then
+  // read every field off the copy, including the one that decides whether any of it was
+  // needed. The menu it builds carries no queue entry either: that is added on open,
+  // from the registry, like every other tile's.
+  tile.onLongPressCommand = longPressData({
+    videoId: tile.contentId,
+    thumbnails: tile.header.tileHeaderRenderer.thumbnail.thumbnails,
+    title: tile.metadata.tileMetadataRenderer.title.simpleText,
+    subtitle: subtitle.runs ? subtitle.runs[0].text : subtitle.simpleText,
+    watchEndpointData: tile.onSelectCommand.watchEndpoint
   });
+
+  rememberTile(tile.onLongPressCommand, item);
+}
+
+// The grid surfaces want the long-press entry and nothing else.
+function addLongPress(items) {
+  const options = tileOptions(false);
+
+  for (let i = 0; i < items.length; i++) {
+    const tile = items[i].tileRenderer;
+    if (!tile) continue;
+    if (tile.style !== 'TILE_STYLE_YTLR_DEFAULT') continue;
+    longPressTile(items[i], tile, options);
+  }
 }

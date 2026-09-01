@@ -1,7 +1,7 @@
 {
   "name": "tube-service",
   "version": "0.3.1",
-  "description": "Injection, proxy fallback and DIAL for the tube app.",
+  "description": "CDP injection and DIAL for the tube app.",
   "main": "index.js",
   "license": "GPL-3.0-only",
   "scripts": {

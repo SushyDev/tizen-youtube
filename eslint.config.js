@@ -112,6 +112,17 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
+        // Run in Node but carry browser code as `page.evaluate` callbacks, which eslint
+        // sees as ordinary functions in this file's scope.
+        files: ['tools/bench.js', 'tools/profile.js', 'tools/bench/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'commonjs',
+            globals: Object.assign({}, NODE_GLOBALS, BROWSER_GLOBALS, { performance: 'readonly' })
+        },
+        rules: CORRECTNESS_RULES
+    },
+    {
         // The userscript, which is ES modules running in the TV's browser.
         files: ['mods/**/*.js'],
         languageOptions: {

@@ -2,7 +2,8 @@ import { configRead, configWrite } from '../config.js';
 import { findResolver, resolve } from './internals.js';
 import { openOptions, OPTIONS_ACTION } from '../ui/settingsOptions.js';
 import { openSpeedOptions } from '../ui/speedUI.js';
-import { showToast, buttonItem } from '../ui/ytUI.js';
+import { showToast, buttonItem, MenuServiceItemRenderer } from '../ui/ytUI.js';
+import { tileFor, snapshotTile } from './tileRegistry.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
 
 // YouTube routes everything through a single `resolveCommand` on one singleton, so
@@ -161,6 +162,47 @@ const dressPlaybackSettings = (command) => {
     return PASS;
 };
 
+// The queue entry, added when a long-press menu is actually opened rather than built
+// into every tile of every shelf at parse time. `tileRegistry` holds the tile beside
+// the command instead of inside it, so nothing is cloned until there is a menu on
+// screen and exactly one tile it could be about.
+const offerQueueEntry = (command) => {
+    const items = command.showMenuCommand
+        && command.showMenuCommand.menu
+        && command.showMenuCommand.menu.menuRenderer
+        && command.showMenuCommand.menu.menuRenderer.items;
+
+    if (!items) return PASS;
+
+    const tile = tileFor(command);
+    if (!tile) return PASS;
+
+    // The same menu can be opened repeatedly, and YouTube keeps the command object.
+    const already = items.some((entry) => {
+        const action = entry
+            && entry.menuServiceItemRenderer
+            && entry.menuServiceItemRenderer.serviceEndpoint
+            && entry.menuServiceItemRenderer.serviceEndpoint.playlistEditEndpoint
+            && entry.menuServiceItemRenderer.serviceEndpoint.playlistEditEndpoint.customAction;
+        return action && action.action === 'ADD_TO_QUEUE';
+    });
+
+    if (already) return PASS;
+
+    items.push(MenuServiceItemRenderer('Add to Queue', {
+        clickTrackingParams: null,
+        playlistEditEndpoint: {
+            customAction: {
+                action: 'ADD_TO_QUEUE',
+                parameters: snapshotTile(tile)
+            }
+        }
+    }));
+
+    // Edited, not answered: YouTube still has to open the menu.
+    return PASS;
+};
+
 // Starting a video ends any mini player that was running.
 const forgetMiniPlayer = (command) => {
     if (!command.watchEndpoint || !command.watchEndpoint.videoId) return PASS;
@@ -206,6 +248,7 @@ const INTERPRETERS = [
     applyOurSettings,
     runCustomActions,
     dressPlaybackSettings,
+    offerQueueEntry,
     forgetMiniPlayer,
     runCommandBatch,
     skipWhosWatchingOnExit

@@ -13,6 +13,7 @@ modern sets.
 - Its own app; the stock YouTube app is left alone
 - Tizen 3 and up — one bundle for modern sets, one for old ones
 - Updates over the air, digest-verified, with the shipped copy as the floor
+- **Developer Mode must be on.** It is the only way in — see below
 
 **Discord**: https://discord.gg/WjxVnrsV4A
 
@@ -23,6 +24,14 @@ modern sets.
 **Use [Tizen Homebrew](https://github.com/SushyDev/tizen-homebrew).** Set it up
 once by its README, then open it on the TV and pick this app out of the
 catalogue. No computer after that.
+
+**Developer Mode has to stay on.** This app injects over the television's own
+sdb daemon, and that is the only route it has — with Developer Mode off it will
+open, tell you so, and stop. Setting Tizen Homebrew up turns it on already
+(Apps → 12345 → Developer mode On, Host IP `127.0.0.1`, restart the set), so in
+practice this costs nothing; it is worth knowing because a factory reset or
+some firmware updates turn it back off, and that is what it looks like when
+they do.
 
 That is not a convenience. A Tizen signature names the television it may be
 installed on, and sets enforce it from Tizen 7 — a widget signed by whoever
@@ -61,7 +70,7 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run release` | Stage `release/origin/` — the bundles and `latest.json` |
 | `npm run dev` | The whole app in a browser, no hardware needed |
 | `npm run dev:boot` | Just the boot screen, held on screen so it can be looked at |
-| `npm run dev:service` | The service off-TV, on `:8099` |
+| `npm run dev:service` | The service off-TV, on `:8099`, with the development proxy |
 | `npm run version:set 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
 
@@ -69,24 +78,37 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 
 ## How it works
 
-**Injection.** Two paths, chosen at launch by asking the service which is
-available. With Developer Mode on, `shell:0 debug <appId>` over the TV's own sdb
-daemon relaunches this app under the Chrome DevTools Protocol, and the
-userscript is evaluated straight into youtube.com with `Page.setBypassCSP` — no
-proxying, no rewriting. With it off, youtube.com is proxied through
-`localhost:8099` so a plain script tag can inject instead; that path rewrites
-media and static hosts and renames the `__Secure-` / `__Host-` cookie prefixes,
-because the page is now plain HTTP. `service/lib/proxy.js` carries that rewrite
-table **unchanged** from the reference — it is empirically derived, every rule
-is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
-diverges.
+**Injection.** One path. `shell:0 debug <appId>` over the TV's own sdb daemon
+relaunches this app under the Chrome DevTools Protocol, and the userscript is
+evaluated straight into youtube.com with `Page.setBypassCSP`. No proxying and no
+rewriting: the page is the real HTTPS origin, with its own cookies, talking to
+Google directly.
+
+There used to be a second path — a MITM proxy on `localhost:8099` for sets with
+Developer Mode off, splicing in a script tag over plain HTTP. It is gone from
+the device. Every byte of video went through a Node process on the TV's own SoC,
+competing with the decoder for a CPU that has none to spare, and the rewriting
+it had to do to make that work — media and static hosts, `__Secure-` / `__Host-`
+cookie prefixes, the mixed-content scheme flip — was a standing source of
+connection failures. Trading it for a hard Developer Mode requirement costs
+nothing in practice, because installing this app needs Developer Mode anyway.
+
+It survives as a **development harness only**, in `service/dev/`. `service/index.js`
+— the entry ncc bundles — cannot reach it, so what ships cannot contain it
+whatever a runtime flag says; `service/test/routing.js` pins both that and the
+route ordering it depends on off-TV.
+
+**A failure is a failure.** With nowhere to fall through to, the boot screen
+reports what went wrong and holds the log on screen — the service hands it the
+actual error — rather than dropping you into a YouTube with none of the
+modifications in it and no way to tell why.
 
 **Two bundles.** Polyfills in a browser bundle are parsed on *every* launch, so
 they ship only to the TVs that need them. `modern` (Chrome 63+ / Tizen 5.5+)
 drops core-js, the fetch polyfill and the ES5 downlevel; `legacy` (Chrome 47 /
 Tizen 3–4) keeps them. `service/lib/loader.js` picks from the platform version.
-Against the reference's 556,988 bytes: `modern` is 178,633, `legacy` 213,184 —
-369KB less to parse on modern sets. Most of it was 30 statically imported
+Against the reference's 556,988 bytes: `modern` is 76,732, `legacy` 106,315 —
+469KB less to parse on modern sets. Most of it was 30 statically imported
 locales (~375KB, now fetched on demand), `esprima` + `estraverse` shipped for
 four call sites (~150KB, replaced by a marker-anchored scan), and a static
 language-name map (33KB, now `Intl.DisplayNames`). The spatial-navigation
@@ -123,15 +145,24 @@ to develop and package against.
 ```sh
 npm run dev          # the whole app in a browser
 npm run dev:boot     # just the boot screen, held on screen
-npm run dev:service  # the proxy, rewrite table and loader, headless on :8099
+npm run dev:service  # the service and loader, headless on :8099
 npm test
 ```
 
-`npm run dev` runs the real service beside Vite, and the boot screen hands over
-to it exactly as it would on a television — so what opens is youtube.com's own
-TV client, through the real proxy, with the real userscript in it. Every
-feature is reachable, video included. Editing anything under `mods/` rebuilds
-the bundle in about half a second; reload the page and it is running.
+`npm run dev` runs the real service beside Vite and the boot screen hands over
+to it, so what opens is youtube.com's own TV client with the real userscript in
+it. Every feature is reachable, video included. Editing anything under `mods/`
+rebuilds the bundle in about half a second; reload the page and it is running.
+
+Off a television there is no sdb daemon and so no debugger, which is the whole
+reason `service/dev/proxy.js` still exists: serving youtube.com from localhost
+and splicing a script tag in is the only way to get the userscript into the page
+in a desktop browser. `npm run dev` therefore starts `service/dev/index.js`,
+not `service/index.js`, and the proxy URL is named in `ui/dev/tube.js` — the one
+place a hand-over to anything other than the debugger can come from. The rewrite
+table it uses is carried **unchanged** from the reference: it is empirically
+derived, every rule is load bearing, and `service/test/rewrite-parity.js` fails
+if our output ever diverges from it.
 
 Three things are arranged for that to work off hardware, all of them
 environment variables that nothing in a build sets:
@@ -159,21 +190,102 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `mods/core.js` | The userscript's entry: what is patched, and when |
 | `mods/features/` | Adblock, SponsorBlock, quality, queueing, subtitles |
 | `mods/ui/` | The settings panel drawn over YouTube's own |
-| `service/index.js` | Routes, and the once-per-launch update check |
-| `service/lib/injector.js` | CDP injection over loopback sdb |
-| `service/lib/proxy.js` | The rewrite table, carried unchanged |
+| `service/index.js` | What ships: four lines, and no way to reach `dev/` |
+| `service/lib/service.js` | Routes, and the once-per-launch update check |
+| `service/lib/injector.js` | CDP injection over loopback sdb — the only route in |
 | `service/lib/loader.js` | Which bundle a TV gets, and from where |
-| `service/lib/ports.js` | 8099 proxy, 8095 DIAL, 26101 sdb, 8001 Smart View |
+| `service/lib/ports.js` | 8099 service, 8095 DIAL, 26101 sdb, 8001 Smart View |
+| `service/dev/proxy.js` | Development only: the rewrite table, carried unchanged |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 
 Two platform floors are easy to trip and the build enforces both: the boot
 screen against Chromium 63, which drops CSS it cannot parse *silently*, and the
 service bundle against Node 4.4.3 — `service/build/check-node4.js` walks the AST
-and fails on syntax Tizen 3 cannot parse. Route order is load bearing too:
-`proxy.attachFallback()` runs **after** the service registers its endpoints, or
-the catch-all shadows them and the app never launches. `service/test/routing.js`
-pins it.
+and fails on syntax Tizen 3 cannot parse. Route order is load bearing in the
+development entry too: `attachDev()` runs **after** the service registers its
+endpoints, or the proxy's catch-all shadows them and the app never launches.
+`service/test/routing.js` pins it.
+
+**Measure before optimising.** `node tools/profile.js` profiles the three phases
+separately, because the userscript costs something different in each: `startup`
+(injection to steady state), `navigation` (a screen change through the JSON hooks and
+the DOM rebuild under it) and `playback` (steady state at 60fps). Each compares the same
+work with and without the script, so the number is ours rather than the page's.
+
+One thing it cannot do is decode: a television decodes 4K60 in fixed-function hardware
+off the main thread, headless Chromium has no such decoder, and a captureStream-backed
+video element crashes the renderer here. The playback profile therefore simulates the
+player element and measures what JavaScript can actually affect — main-thread occupancy
+against the 16.7ms frame budget. `--churn` sets how many nodes a frame rewrites, which
+is what the cost of anything observing the document scales with.
+
+`node tools/bench.js` is the regression check rather than the microscope: it loads a real
+Chromium and reports the two costs the userscript actually imposes: what the JSON hooks
+add to a browse response against the native parse of the same bytes, and what anything
+watching the document adds to node churn against the same churn without the script. It
+needs `npm i --no-save playwright-core` and a Chromium; neither is a dependency of this
+repo because neither is needed to build or ship it. `--profile` says where the JSON time
+goes, and `--bundle <path>` points it at another build, which is the useful mode: build
+one, keep it, build the other, run both. Desktop numbers are not television numbers, but
+the ratio carries. It also fails the run if a decorated response has become circular or
+if a decoration stopped applying, both of which are easy to reintroduce.
+
+**Tell the set's truth about what it can decode.** A television dropping frames on 4K60
+is not usually being starved of data — the buffer is full and the connection idle. It is
+being sent something its webview has no hardware path for, and Chromium will decode that
+on the CPU rather than admit it cannot.
+
+The tempting conclusion is that a codec is at fault. On the set this was chased on, AV1
+4K60 HDR dropped 10% of frames and forcing VP9 dropped 24% — worse. What the two had in
+common was not the codec but the part nobody quotes: `av01.0.13M.**10**` and
+`vp09.**02**.51.**10**` are both **ten-bit**, both `smpte2084 (PQ) / bt2020`. A panel has a
+hardware path for HDR; a webview need not be wired to it.
+
+So `mods/features/codecCapability.js` takes no position on codecs. It describes a format
+by the three things that decide whether a decoder keeps up — family, resolution class, bit
+depth — reading the level out of the codec string, because neither the resolution nor the
+frame rate appears anywhere else. It asks the platform about each combination through all
+**three** channels a browser can be asked (`decodingInfo`, `MediaSource.isTypeSupported`,
+`canPlayType`; patching only the second does nothing to a client that asks the first), and
+then it checks the answer against the frames the set actually manages. When they disagree
+the frames win, and it gives up one rung at a time — ten-bit at 4K first, because SDR 4K60
+still looks like 4K60, then 4K60 itself. What it learns is kept in `localStorage`, so a
+set works this out once rather than every launch, and every step is logged, because when
+this is wrong that log is the only thing on a television that says why.
+
+If the resolution settles at 1440p, that is usually the player protecting itself from the
+same dropped frames rather than the quality setting failing: re-pinning 2160p over a
+decoder that cannot hold it buys stutter, not sharpness. Fix the drops and the resolution
+comes back on its own.
+
+**Decorate on interaction, not on render.** A browse response carries a couple of
+hundred tiles and a person touches perhaps three of them, so anything a tile only needs
+once someone acts on it does not belong in the parse path. The queue entry on a
+long-press menu is the worked example: it used to be built into every tile of every
+shelf, with a deep clone of the tile embedded in its own menu, against the chance that
+one would be queued later. Now `youtube/tileRegistry.js` notes which tile a menu belongs
+to and `offerQueueEntry` in `youtube/commands.js` adds the entry when the menu is
+actually opened — one clone, at human speed. What stays eager is only what changes what
+is rendered: advert removal, shorts removal, watched-video filtering, thumbnails.
+
+That registry is also a lesson in measuring. The obvious implementation is a WeakMap,
+and it was *slower than the clone it replaced*: two hundred inserts per response put 6.6%
+of the profile in the insert and took the garbage collector from 5% to 21%, because
+ephemeron tables are expensive to mark. A symbol-keyed property on the command is a plain
+assignment, invisible to `JSON.stringify`, `for...in` and `Object.keys` — so it cannot
+form a cycle, `cloneJson` will not follow it, and nothing in YouTube's code sees it.
+
+**The userscript runs on the main thread the decoder shares.** A MutationObserver
+with `subtree: true` over `document.body` costs a MutationRecord allocation for
+every node YouTube's renderer touches, whether or not the callback does anything
+with it, and that is dropped frames rather than a slow function. Anything
+watching the DOM should be connected only while it is needed and disconnected the
+moment it is not, and a callback should cost one pass per batch rather than one
+per record. The same goes for `getBoundingClientRect` in an event handler that
+fires during playback. Where a change can be made through the JSON layer instead
+— `mods/youtube/json.js`, which edits YouTube's own data before YouTube renders
+it — that is both cheaper and less likely to break on a redesign.
 
 **Releasing.** Pushing a `v*` tag builds the unsigned widget and opens a
 **draft** release carrying it — no secrets at all, on purpose, so it works on a

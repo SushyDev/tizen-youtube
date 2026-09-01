@@ -1,7 +1,9 @@
 import './boot.css';
 
-// Two ways in: the debugger evaluates the userscript into youtube.com, or a local
-// proxy splices it in. Every failure falls through to the proxy, so no path dead-ends.
+// One way in: the service relaunches this app under the debugger and evaluates the
+// userscript straight into youtube.com. There is no proxy to fall through to any more,
+// so a failure is a failure — it says what went wrong and what to do about it, and
+// holds the log on screen rather than handing over to something half-modified.
 
 const PORT = 8099;
 
@@ -71,15 +73,34 @@ const handOver = () => {
     document.body.className = 'done';
 };
 
-// Whether there is anywhere to go. Off a TV only the dev server knows — see dev/tube.js.
-const canHandOver = (state) => onTv || !!(state && state.handOver);
-
 /** Reports what the TV would have done next, and stops. */
 const hold = (facility, what) => {
     say(facility, what, 'note');
     say('tube', 'held — off-TV, so nothing is handed over', 'note');
     document.body.className = 'held';
 };
+
+/**
+ * A dead end, said plainly. With a single injection path there is nowhere to fall
+ * through to, so the one useful thing left is to explain the failure and leave it on
+ * screen — a log that stops with a reason beats a YouTube with none of the
+ * modifications in it and no way to tell why. Return still exits.
+ */
+const stall = (facility, what, detail, guidance) => {
+    say(facility, what, 'bad');
+    if (detail) say(facility, detail, 'bad');
+
+    (guidance || []).forEach((line) => say('tube', line, 'warn'));
+
+    summarise();
+    document.body.className = 'held';
+};
+
+// Said whenever the debugger is not available, because it is almost always this.
+const DEVELOPER_MODE_HELP = [
+    'this app injects over the TV\'s own sdb daemon, which needs Developer Mode',
+    'Apps → press 12345 → Developer mode On, Host IP 127.0.0.1, then restart the TV'
+];
 
 /** Splits startup into shell time and time spent waiting on the service. */
 const summarise = () => {
@@ -316,10 +337,16 @@ const boot = async () => {
                 }
             }
 
+            // Development only. On a television this is null and the debugger is the
+            // only way forward — see the service's /__tube/state.
+            if (state.handOverUrl) return handOverTo(state.handOverUrl, args);
+
             // A debug attempt that already failed will fail again, and retrying loops.
             if (state.injectionFailed) {
-                say('inject', 'skipped, the last attempt failed', 'warn');
-                return useProxy(state, args);
+                return stall('inject', 'the last attempt failed',
+                    state.injectionError,
+                    ['the service reopened the app to report this']
+                        .concat(DEVELOPER_MODE_HELP));
             }
 
             if (state.canInject && !state.isConnecting) return useDebugger(state, args);
@@ -331,12 +358,13 @@ const boot = async () => {
                     announcedWait = true;
                 }
             } else if (!state.canInject) {
-                say('inject', 'unavailable, developer mode is off', 'warn');
-                return useProxy(state, args);
+                return stall('inject', 'the debugger is unavailable',
+                    'the sdb daemon refused, or developer mode is off',
+                    DEVELOPER_MODE_HELP);
             }
         }
 
-        if (now() > deadline) return giveUp(state, args);
+        if (now() > deadline) return giveUp();
 
         await wait(POLL_INTERVAL);
     }
@@ -365,15 +393,15 @@ const useDebugger = async (state, args) => {
     application.exit();
 };
 
-const useProxy = (state, args) => {
-    const target = state.proxyUrl + (args ? `&${args}` : '');
+// Development only: off a television there is no debugger, so `npm run dev` stands a
+// proxy up and names it here. Nothing on a TV ever reaches this.
+const handOverTo = (url, args) => {
+    const target = url + (args ? `&${args}` : '');
 
-    say('proxy', 'routing youtube.com through the local proxy');
-    say('proxy', target);
+    say('dev', 'no debugger off-TV; handing over to the development proxy', 'note');
+    say('dev', target);
 
     summarise();
-
-    if (!canHandOver(state)) return hold('proxy', 'would navigate there now');
 
     say('tube', 'handing over to youtube');
 
@@ -384,24 +412,16 @@ const useProxy = (state, args) => {
     }, 120);
 };
 
-// Nothing answered, but the proxy URL is a constant: a page that loads late beats an
-// app that never opens.
-const giveUp = (state, args) => {
+// The service is the only way in, so if it never answered there is nothing to try.
+const giveUp = () => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
-    say('state', 'the service never came up, or came up without opening its port', 'bad');
 
-    if (state && state.proxyUrl) return useProxy(state, args);
-
-    say('proxy', 'no state was ever read; trying the proxy blind', 'warn');
-
-    summarise();
-
-    if (!onTv) return hold('proxy', `would navigate to ${BASE}/tv`);
-
-    setTimeout(() => {
-        handOver();
-        window.location.href = `${BASE}/tv${args ? `?${args}` : ''}`;
-    }, 400);
+    return stall('state', 'the service never came up, or came up without opening its port',
+        null,
+        [
+            'nothing can be injected without it, and there is no proxy to fall back to',
+            'relaunch the app; if it keeps happening, reinstall and check the TV\'s storage'
+        ]);
 };
 
 // Return key exits at any point during startup.

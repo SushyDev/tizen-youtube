@@ -5,7 +5,7 @@
 // binds 8095, so cast payloads were silently dropped on the CDP path.
 
 module.exports = {
-    PROXY: 8099,   // MITM proxy used when Developer Mode is off
+    SERVICE: 8099, // the service's own HTTP endpoints, and the dev proxy off-TV
     DIAL: 8095,    // DIAL server the phone's YouTube app discovers
     SDB: 26101,    // the TV's own SDB daemon
     DMP: 8001      // the TV's Smart View REST API

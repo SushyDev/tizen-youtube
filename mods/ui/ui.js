@@ -80,7 +80,10 @@ function liftLowEndRestrictions() {
         document.body.classList.remove('app-quality-root');
       }
     });
-    observer.observe(document.body, { attributes: true });
+    // `class` only. Watching every attribute on body woke this on changes it can do
+    // nothing about, and the removal below is itself a class mutation, so the callback
+    // re-enters once per removal either way.
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   } catch (e) { /* no MutationObserver on this build */ }
 }
 

@@ -183,7 +183,7 @@ const GROUPS = [
         'Applied when playback starts, falling back to the next best the video has',
         SCREEN, QUALITIES, 'Quality'),
       Choice('videoPreferredCodec', 'Preferred codec',
-        'Some sets decode one codec in hardware and the rest in software',
+        'Any asks the set what it decodes in hardware and refuses 4K AV1 if it does not',
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',

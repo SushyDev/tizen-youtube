@@ -235,15 +235,6 @@ function longPressData(data) {
                                 videoId: data.videoId
                             }
                         }),
-                        MenuServiceItemRenderer('Add to Queue', {
-                            clickTrackingParams: null,
-                            playlistEditEndpoint: {
-                                customAction: {
-                                    action: 'ADD_TO_QUEUE',
-                                    parameters: data.item
-                                }
-                            }
-                        }),
                     ],
                     trackingParams: null,
                     accessibility: {

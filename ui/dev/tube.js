@@ -12,7 +12,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 
 // Kept in step with service/lib/ports.js, which cannot be imported from a Vite config.
-const PROXY_PORT = 8099;
+const SERVICE_PORT = 8099;
 
 // A Samsung set of the generation this app mostly runs on.
 const TV_USER_AGENT = 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 ' +
@@ -49,17 +49,22 @@ const tubeService = ({ enabled }) => {
             const log = server.config.logger;
             const say = (message) => log.info(`  \x1b[36mtube\x1b[0m  ${message}`);
 
-            // `proxyUrl` is a localhost URL in both modes, so off a TV the shell cannot
-            // tell "the service is here" from "it is on a television across the room".
-            // This is the mode where it is here. Registered before Vite's middlewares.
+            // On a television the service reports `handOverUrl: null` — the debugger is
+            // the only route and the boot screen stops if it is unavailable. Off one
+            // there is no debugger at all, so this is where the development proxy is
+            // named: the single place the no-debugger hand-over can come from, and it
+            // cannot reach a package. Registered before Vite's middlewares.
             server.middlewares.use((request, response, next) => {
                 if (request.url.split('?')[0] !== '/__tube/state') return next();
 
-                fetch(`http://localhost:${PROXY_PORT}/__tube/state`)
+                fetch(`http://localhost:${SERVICE_PORT}/__tube/state`)
                     .then((upstream) => upstream.json())
                     .then((state) => {
                         response.setHeader('content-type', 'application/json; charset=utf-8');
-                        response.end(JSON.stringify({ ...state, handOver: true }));
+                        response.end(JSON.stringify({
+                            ...state,
+                            handOverUrl: `http://localhost:${SERVICE_PORT}/tv`
+                        }));
                     })
                     // The shell already handles no answer: it says so and keeps polling.
                     .catch(() => next());
@@ -103,8 +108,10 @@ const tubeService = ({ enabled }) => {
                     cwd: join(ROOT, 'mods')
                 });
 
-                if (await portIsFree(PROXY_PORT)) {
-                    service = start('svc', '\x1b[33m', process.execPath, ['index.js'], {
+                if (await portIsFree(SERVICE_PORT)) {
+                    // dev/index.js, not index.js: the shipped entry has no proxy, and
+                    // off a TV the proxy is the only way to get the script into the page.
+                    service = start('svc', '\x1b[33m', process.execPath, [join('dev', 'index.js')], {
                         cwd: join(ROOT, 'service'),
                         env: {
                             TUBE_DEV_UA: process.env.TUBE_DEV_UA || TV_USER_AGENT,
@@ -117,11 +124,11 @@ const tubeService = ({ enabled }) => {
                         }
                     });
                 } else {
-                    say(`something is already on :${PROXY_PORT} — using it rather than starting a second service`);
+                    say(`something is already on :${SERVICE_PORT} — using it rather than starting a second service`);
                 }
 
-                say('the boot screen hands over to youtube; the service is the real one');
-                say(`youtube directly: http://localhost:${PROXY_PORT}/tv`);
+                say('the boot screen hands over to youtube through the development proxy');
+                say(`youtube directly: http://localhost:${SERVICE_PORT}/tv`);
                 say('keys: b is the blue button, escape is return, tubeRemote(code) presses anything');
             });
 
@@ -139,4 +146,4 @@ const tubeService = ({ enabled }) => {
     };
 };
 
-export { tubeService, PROXY_PORT, TV_USER_AGENT };
+export { tubeService, SERVICE_PORT, TV_USER_AGENT };

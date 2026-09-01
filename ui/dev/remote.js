@@ -33,7 +33,7 @@
             try {
                 event = new KeyboardEvent(type, { bubbles: true, cancelable: true });
             } catch (e) {
-                // Older engines: this file also runs against the legacy bundle.
+                // Older engines: the boot screen's floor is Chromium 63, not this file's.
                 event = document.createEvent('Event');
                 event.initEvent(type, true, true);
             }

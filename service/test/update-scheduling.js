@@ -90,7 +90,7 @@ origin.listen(0, '127.0.0.1', async () => {
                 !!state.script && typeof state.script.version === 'string',
                 JSON.stringify(state.script));
             check('state reports the bundle variant',
-                state.script.variant === 'legacy' || state.script.variant === 'modern',
+                state.script.variant === 'modern',
                 JSON.stringify(state.script));
 
             // Give the fire-and-forget check time to reach the origin.

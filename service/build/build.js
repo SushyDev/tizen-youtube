@@ -78,24 +78,18 @@ readdirSync(staging).forEach((entry) => {
 
 rmSync(staging, { recursive: true, force: true });
 
-console.log('[3/4] embedding the userscript bundles');
+console.log('[3/4] embedding the userscript bundle');
 if (!existsSync(assetsDir)) mkdirSync(assetsDir);
-let embedded = 0;
-['modern', 'legacy'].forEach((variant) => {
-    const source = join(modsDist, `userScript.${variant}.js`);
-    if (!existsSync(source)) {
-        console.error(`      MISSING ${source} — build mods first (cd mods && npm run build)`);
-        return;
-    }
-    copyFileSync(source, join(assetsDir, `userScript.${variant}.js`));
-    embedded++;
-    console.log(`      dist/assets/userScript.${variant}.js  ${Math.round(readFileSync(source).length / 1024)}kB`);
-});
+const bundle = join(modsDist, 'userScript.modern.js');
 
-if (embedded !== 2) {
-    console.error('      refusing to ship without both bundles: first launch must work offline');
+if (!existsSync(bundle)) {
+    console.error(`      MISSING ${bundle} — build mods first (cd mods && npm run build)`);
+    console.error('      refusing to ship without it: a first launch must work offline');
     process.exit(1);
 }
+
+copyFileSync(bundle, join(assetsDir, 'userScript.modern.js'));
+console.log(`      dist/assets/userScript.modern.js  ${Math.round(readFileSync(bundle).length / 1024)}kB`);
 
 console.log('[4/4] verifying Node 4.4.3 compatibility');
 run('node', [join(__dirname, 'check-node4.js'), join(outDir, 'index.js')]);

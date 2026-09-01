@@ -1,7 +1,8 @@
 # Everything that can be checked without a television.
 #
 # The build matters here: ui/build.js refuses CSS a Tizen webview would silently
-# drop, and service/build/check-node4.js refuses syntax Tizen 3's Node cannot parse.
+# drop, and service/build/check-node4.js refuses syntax the oldest Node it targets
+# cannot parse.
 
 name: CI
 

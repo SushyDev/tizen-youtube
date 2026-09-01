@@ -22,8 +22,8 @@ const STEPS = [
         label: 'userscript bundles',
         workspace: 'mods',
         // The service embeds these, so they must exist before it builds.
-        outputs: ['dist/userScript.modern.js', 'dist/userScript.legacy.js'],
-        summarise: (sizes) => `modern ${ui.bytes(sizes[0])} · legacy ${ui.bytes(sizes[1])}`
+        outputs: ['dist/userScript.modern.js'],
+        summarise: (sizes) => ui.bytes(sizes[0])
     },
     {
         label: 'service bundle',

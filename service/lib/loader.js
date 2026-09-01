@@ -43,10 +43,16 @@ function timed(promise, ms, label) {
     });
 }
 
-// Chrome 63 shipped in Tizen 5.5; anything older gets the polyfilled bundle.
-function variantFor(platformVersion) {
-    const major = Number(String(platformVersion || '').split('.')[0]);
-    return isNaN(major) || major < 5 ? 'legacy' : 'modern';
+// One bundle now that the floor is Tizen 5: every set that can install this runs an
+// engine the modern bundle targets, so there is nothing to choose between.
+//
+// The name is kept. latest.json describes the bundle under `bundles.modern`, the cache
+// file is `userScript.modern.js`, and an app that has not updated yet looks itself up by
+// that key — renaming it would strand those sets on their shipped script forever.
+const VARIANT = 'modern';
+
+function variantFor() {
+    return VARIANT;
 }
 
 function bundledPath(variant) {

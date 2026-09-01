@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="0.3.1" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="3.0"/>
+    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
     <content src="ui/dist/index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>

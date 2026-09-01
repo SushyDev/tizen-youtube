@@ -14,7 +14,8 @@ const dial = require('./lib/dial.js');
 // the platform. This is what `npm run dev` uses.
 const isTV = typeof tizen !== 'undefined';
 
-// Off-TV the variant would always come out `legacy`, so this says which TV to be.
+// Off-TV there is no platform to ask, so this says which TV to be. One bundle is
+// served whatever it says; it decides what /__tube/state reports.
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
@@ -133,11 +134,11 @@ app.get('/__tube/inject', (req, res) => {
     res.json({ ok: true });
 });
 
-// Registered last so it cannot shadow the endpoints above.
 // The page's half of the diagnostics bridge. The reading port only opens when the
 // app asks for it, and serves readings the page chose to push — never the reverse.
 devbridge.attach(app);
 
+// Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);
 
 app.listen(ports.PROXY, '127.0.0.1', () => {

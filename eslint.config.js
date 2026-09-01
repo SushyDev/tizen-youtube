@@ -96,7 +96,6 @@ module.exports = [
             '**/.ncc/**',
             '**/.package/**',
             // Vendored upstream polyfills are not ours to lint.
-            'mods/domrect-polyfill.js',
             'mods/tiny-sha256.js'
         ]
     },
@@ -113,14 +112,15 @@ module.exports = [
     },
     {
         // The userscript, which is ES modules running in the TV's browser.
-        ignores: ['mods/test/**/*.js'],
         files: ['mods/**/*.js'],
+        ignores: ['mods/test/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
             globals: BROWSER_GLOBALS
         },
         rules: CORRECTNESS_RULES
+    },
     {
         // Its tests, which run in Node rather than in a television.
         files: ['mods/test/**/*.js'],
@@ -130,7 +130,6 @@ module.exports = [
             globals: NODE_GLOBALS
         },
         rules: CORRECTNESS_RULES
-    },
     },
     {
         // Read by the Vite build, so these are ES modules like it is.

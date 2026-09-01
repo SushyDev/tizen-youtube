@@ -11,9 +11,9 @@ import { load } from '../tools/config.js';
 const config = load();
 const version = config.version;
 
-// Two bundles from one source. Legacy support in a browser bundle is not free the way
-// it is in a Node service: core-js, the fetch polyfill and ES5 downlevelling are parsed
-// and executed on every launch, so only the TVs that need them get them.
+// One bundle. It is still named `modern`, and latest.json still describes it under that
+// key, because an app already installed looks its own bundle up by that name — renaming
+// it would strand every set that has not updated yet on its shipped script.
 function bundle({ name, input, target, ecma }) {
     return {
         input,
@@ -55,6 +55,5 @@ function bundle({ name, input, target, ecma }) {
 }
 
 export default [
-    bundle({ name: 'modern', input: 'entry.modern.js', target: 'Chrome 63', ecma: 2017 }),
-    bundle({ name: 'legacy', input: 'entry.legacy.js', target: 'Chrome 47', ecma: 5 })
+    bundle({ name: 'modern', input: 'entry.modern.js', target: 'Chrome 63', ecma: 2017 })
 ];

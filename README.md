@@ -11,7 +11,7 @@ modern sets.
 
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
-- Tizen 3 and up — one bundle for modern sets, one for old ones
+- Tizen 5 and up — one bundle, with nothing in it for engines that no longer run
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A
@@ -81,12 +81,13 @@ table **unchanged** from the reference — it is empirically derived, every rule
 is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
 diverges.
 
-**Two bundles.** Polyfills in a browser bundle are parsed on *every* launch, so
-they ship only to the TVs that need them. `modern` (Chrome 63+ / Tizen 5.5+)
-drops core-js, the fetch polyfill and the ES5 downlevel; `legacy` (Chrome 47 /
-Tizen 3–4) keeps them. `service/lib/loader.js` picks from the platform version.
-Against the reference's 556,988 bytes: `modern` is 178,633, `legacy` 213,184 —
-369KB less to parse on modern sets. Most of it was 30 statically imported
+**One bundle.** Polyfills in a browser bundle are parsed on *every* launch, and
+with the floor at Tizen 5 there is no set left that needs any: core-js, the
+fetch polyfill, the DOMRect polyfill and the ES5 downlevel are gone, and the
+second bundle with them. It is still named `modern` — `latest.json` describes it
+under that key and an app that has not updated yet looks itself up by it, so
+renaming would strand those sets on their shipped script. Against the
+reference's 556,988 bytes it is 79,599 — 477KB less to parse. Most of it was 30 statically imported
 locales (~375KB, now fetched on demand), `esprima` + `estraverse` shipped for
 four call sites (~150KB, replaced by a marker-anchored scan), and a static
 language-name map (33KB, now `Intl.DisplayNames`). The spatial-navigation
@@ -139,7 +140,7 @@ environment variables that nothing in a build sets:
 | | |
 | --- | --- |
 | `TUBE_DEV_UA` | youtube.com/tv serves a redirect notice to anything that is not a television, so the proxy presents itself as one — upstream, and to the page |
-| `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
+| `TUBE_PLATFORM_VERSION` | What the loader reports as the set's version when there is no platform to ask. Defaults to `6.5`. One bundle is served whatever it says, so this now only changes what `/__tube/state` reports |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
 Only DIAL discovery and debugger injection need real hardware, and those report
@@ -170,7 +171,10 @@ run at the same time; the test suite says so rather than failing obscurely.
 Two platform floors are easy to trip and the build enforces both: the boot
 screen against Chromium 63, which drops CSS it cannot parse *silently*, and the
 service bundle against Node 4.4.3 — `service/build/check-node4.js` walks the AST
-and fails on syntax Tizen 3 cannot parse. Route order is load bearing too:
+and fails on syntax it cannot parse. That Node floor is now lower than the app's
+own: the floor is Tizen 5, and the downlevel is kept only because a service
+bundle is parsed once at start rather than on every launch, so it costs nothing
+to stay conservative. Raise it when there is a Tizen 5 set to verify against. Route order is load bearing too:
 `proxy.attachFallback()` runs **after** the service registers its endpoints, or
 the catch-all shadows them and the app never launches. `service/test/routing.js`
 pins it.

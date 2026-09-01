@@ -28,7 +28,8 @@ const assetsDir = join(ROOT, 'assets');
 const outDir = join(ROOT, 'release', 'origin');
 
 const version = config.version;
-const VARIANTS = ['modern', 'legacy'];
+// Still a list, and still named `modern`: installed apps look their bundle up by key.
+const VARIANTS = ['modern'];
 
 function sha256(buffer) {
     return createHash('sha256').update(buffer).digest('hex');

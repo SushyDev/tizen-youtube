@@ -309,10 +309,6 @@ const boot = async () => {
                         say('loader', 'that origin is the documentation placeholder', 'bad');
                         say('loader', 'set tube.origin in tizen.config.json and rebuild', 'warn');
                     }
-
-                    if (state.script.variant === 'legacy') {
-                        say('loader', 'legacy build: this set is older than the modern script targets', 'note');
-                    }
                 }
             }
 

@@ -19,12 +19,11 @@ const scratch = mkdtempSync(join(tmpdir(), 'tube-loader-'));
 process.env.TUBE_CACHE_DIR = scratch;
 const loader = require('../lib/loader.js');
 
-// Variant selection.
-check('Tizen 3 gets the legacy bundle', loader.variantFor('3.0') === 'legacy', loader.variantFor('3.0'));
-check('Tizen 4 gets the legacy bundle', loader.variantFor('4.0') === 'legacy', loader.variantFor('4.0'));
+// One bundle, and the name is part of the update format: latest.json describes it under
+// `bundles.modern` and an app that has not updated yet looks itself up by that key.
 check('Tizen 5.5 gets the modern bundle', loader.variantFor('5.5') === 'modern', loader.variantFor('5.5'));
 check('Tizen 7 gets the modern bundle', loader.variantFor('7.0') === 'modern', loader.variantFor('7.0'));
-check('unknown version degrades to legacy', loader.variantFor(null) === 'legacy', loader.variantFor(null));
+check('an unknown version still names a bundle', loader.variantFor(null) === 'modern', loader.variantFor(null));
 
 // Bundled fallback.
 let bundled;

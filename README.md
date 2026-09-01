@@ -237,10 +237,19 @@ built. YouTube believes it and the server sends AV1 4K60 HDR to a chip that has 
 it on the CPU — about one frame in ten dropped on a real set, with an eleven-second
 buffer and 70Mbit spare, so nothing to do with the network. The official app does not have
 this problem because it asks the hardware rather than the browser.
-`mods/features/codecCapability.js` asks the same question the same way the platform
-answers it, through `mediaCapabilities.decodingInfo` and its `powerEfficient` flag, and
-withdraws the claim to 4K AV1 when there is no hardware path. It runs before every other
-module because the server chooses a format once, from what the client said at the start.
+`mods/features/codecCapability.js` withdraws the claim to 4K AV1 when there is no
+hardware path, and it answers **all three** ways a browser can be asked — `decodingInfo`,
+`MediaSource.isTypeSupported` and `canPlayType`. Patching only `isTypeSupported` does
+nothing on a client that asks `decodingInfo`, which is the modern one and the one that
+reports `powerEfficient`. It runs before every other module because the server chooses a
+format once, from what the client said at the start.
+
+A set can also claim a hardware path it does not really have, or have one for 8-bit and
+not for the 10-bit HDR profile YouTube actually sends. So the claim is checked against
+reality: if frames are being dropped while AV1 plays, that is the set answering the
+question properly, and the answer is remembered in `localStorage` for next time. The
+verdict is logged — `[tube] AV1 4K verdict: …` — because when this is wrong, that line is
+the only thing that says why.
 
 That is also why the format filter in `adblock.js` is not enough on its own: playback is
 server-driven now (SABR), so trimming `streamingData.adaptiveFormats` edits a list the

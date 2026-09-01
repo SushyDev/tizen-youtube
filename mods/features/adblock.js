@@ -5,6 +5,7 @@ import { timelyAction, longPressData, ShelfRenderer, TileRenderer, ButtonRendere
 import { PatchSettings } from '../ui/nativeSettings.js';
 import { cloneJson } from '../utils/clone.js';
 import { rememberTile } from '../youtube/tileRegistry.js';
+import { formatAllowed } from './codecCapability.js';
 
 // What each SponsorBlock category is called on the skip button. The ids come from
 // the API, so an unknown one falls back to the id itself.
@@ -54,15 +55,19 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       r.paidContentOverlay = null;
     }
 
-    if (r?.streamingData?.adaptiveFormats && configRead('videoPreferredCodec') !== 'any') {
-      const preferredCodec = configRead('videoPreferredCodec');
-      const hasPreferredCodec = r.streamingData.adaptiveFormats.find(format => format.mimeType.includes(preferredCodec));
-      if (hasPreferredCodec) {
-        r.streamingData.adaptiveFormats = r.streamingData.adaptiveFormats.filter(format => {
-          if (format.mimeType.startsWith('audio/')) return true;
-          return format.mimeType.includes(preferredCodec);
-        });
-      }
+    // Codec selection, on the belt as well as the braces. `codecCapability.js` withdraws
+    // the claim to 4K AV1 at the capability layer, which is what a server-driven client
+    // (SABR) chooses from; this trims the list too, for the paths that still read it.
+    // Both ask the same function, so `any` means the same thing in both places: whatever
+    // this set can actually decode, rather than whatever Chromium will attempt.
+    if (r?.streamingData?.adaptiveFormats) {
+      const kept = r.streamingData.adaptiveFormats.filter(
+        (format) => format.mimeType && formatAllowed(format.mimeType));
+
+      // Never leave the player with no video to choose. If the filter would empty the
+      // list, the preference is unsatisfiable for this video and the list stands.
+      const hasVideo = kept.some((format) => format.mimeType.indexOf('video/') === 0);
+      if (hasVideo) r.streamingData.adaptiveFormats = kept;
     }
 
     // Drop "masthead" ad from home screen

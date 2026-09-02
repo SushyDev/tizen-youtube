@@ -13,9 +13,63 @@ const URL = require('url');
 const { readFileSync } = require('fs');
 
 const journal = require('./journal.js');
+const media = require('./stream.js');
 
-// DEV: on while this is being proven. Becomes a setting once it is.
-const ANONYMOUS_PLAYER = process.env.TUBE_SIGNED_IN_PLAYER !== '1';
+// The page's own player fetches a second copy of every video into a source buffer that
+// keeps none of it. It has to keep fetching — one that appends nothing decides its
+// pipeline has died and reloads — but decoding two 2160p60 streams is more than this set
+// can do, and the one nobody watches wins because it is not also writing to disk.
+//
+// Held back only at the start of a response, and never for long. An earlier version paced
+// the whole body at a fixed rate: a twelve-megabyte reply then took over a minute, those
+// connections accumulated, and the proxy and the debug bridge — which share a process with
+// the stream being watched — stopped answering at all.
+const HOLD_MS = 250;
+const HOLD_FOR_FIRST = 12;
+const MOST_HELD_AT_ONCE = 2;
+
+let holding = 0;
+
+/** Slows the opening of a response, then lets it run. */
+function held(source) {
+    if (holding >= MOST_HELD_AT_ONCE) return source;
+
+    holding += 1;
+
+    let chunks = 0;
+    let done = false;
+
+    const release = () => {
+        if (done) return;
+        done = true;
+        holding -= 1;
+    };
+
+    source.on('end', release);
+    source.on('error', release);
+    source.on('close', release);
+
+    source.on('data', () => {
+        chunks += 1;
+        if (done || chunks > HOLD_FOR_FIRST) return release();
+
+        source.pause();
+        setTimeout(() => source.resume(), HOLD_MS);
+        return undefined;
+    });
+
+    return source;
+}
+
+// Asking for the player response without the account's token is what gets an ordinary,
+// serveable ladder back instead of an encrypted one — and it is also what makes the app
+// believe nobody is signed in. It arrives at guest mode and an account-picker loop with no
+// way out, which is a far worse thing to live with than a video that plays through the
+// page's own player.
+//
+// So: off, until it can be had without costing the account. Set TUBE_ANON_PLAYER=1 at
+// build time to measure with it on.
+const ANONYMOUS_PLAYER = process.env.TUBE_ANON_PLAYER === '1';
 
 // Without an agent node-fetch reconnects per request, so every segment of a 4K stream
 // paid for a TLS handshake on the set's own processor while it was decoding.
@@ -257,6 +311,9 @@ function attachFallback(app) {
         // where the token has to be stripped.
         const isInnertube = req.path.indexOf('/youtubei/v1/') === 0;
 
+        // Media, the only thing large enough to be worth holding back.
+        const isMedia = targetUrl.indexOf('videoplayback') !== -1;
+
         // The two requests whose answers decide what this app can play.
         const isPlayerCall = req.path.indexOf('/youtubei/v1/player') === 0;
         const isNextCall = req.path.indexOf('/youtubei/v1/next') === 0;
@@ -274,10 +331,12 @@ function attachFallback(app) {
         //
         // Only the player call is stripped. Everything else — the guide, subscriptions,
         // history, search — keeps the token, so the app stays signed in.
-        // `next` carries the streams for whatever the app expects to play next, and those
-        // answers arrive with no player request behind them — so signing only the player
-        // call out leaves half the media still coming back encrypted.
-        if ((isPlayerCall || isNextCall) && ANONYMOUS_PLAYER) {
+        // Only the player call. `next` also carries streams, and signing that out too was
+        // tried — but a session whose browsing is signed in and whose watch-next calls are
+        // not reads as a client worth challenging, and the account picker starts appearing
+        // in a loop that cannot be escaped. Dropping the formats it cannot serve already
+        // sends the app back to the player call, which is the one that matters.
+        if (isPlayerCall && ANONYMOUS_PLAYER) {
             delete headers.authorization;
             delete headers['x-goog-authuser'];
             delete headers['x-goog-pageid'];
@@ -328,8 +387,10 @@ function attachFallback(app) {
                 const isTextual = TEXTUAL.some((type) => contentType.indexOf(type) !== -1);
 
                 if (!isTextual) {
-                    if (response.body) return response.body.pipe(res);
-                    return res.end();
+                    if (!response.body) return res.end();
+
+                    if (isMedia && media.busy()) return held(response.body).pipe(res);
+                    return response.body.pipe(res);
                 }
 
                 return response.text().then((text) => {

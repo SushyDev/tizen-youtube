@@ -107,6 +107,15 @@ export function haveAttestation() {
  * Removing what cannot be served is what sends it back to the call that can be. The
  * response is the object the app itself is about to read, so this edits it in place.
  */
+// Whether asking again has ever been worth it. Taking the streams away sends the app back
+// to the player endpoint, which only helps if that endpoint answers with something this
+// app can serve. Where it never does — every response encrypted — the app is left with no
+// streams at all, asks again, is answered the same way, and gives up with an error.
+//
+// So this proves itself first: until one serveable response has been seen, nothing is
+// taken away.
+let everServed = false;
+
 onResponse('playerRequest', ['streamingData'], (response) => {
     if (!wanted()) return;
 
@@ -120,7 +129,12 @@ onResponse('playerRequest', ['streamingData'], (response) => {
         && !format.drmFamilies
         && format.type !== 'FORMAT_STREAM_TYPE_OTF');
 
-    if (servable) return;
+    if (servable) {
+        everServed = true;
+        return;
+    }
+
+    if (!everServed) return;
 
     const videoId = (response.videoDetails || {}).videoId || 'this video';
     note('innertube', `dropping ${formats.length} unplayable formats for ${videoId}; `

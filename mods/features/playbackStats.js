@@ -1,4 +1,5 @@
 import { configRead } from '../config.js';
+import { servingNow } from './nativePlayback.js';
 
 // The platform player counts no frames, so getVideoPlaybackQuality() reads zero and the
 // stats line shows a dash. Time the video failed to advance converts to frames at the
@@ -80,6 +81,73 @@ function measureRate(video, tally, wall) {
 // element next to it is never rewritten, so there is nothing to lose the race to.
 const FIND_EVERY = 2000;
 
+// Rows the panel fills in from what the player selected. Once the picture comes from here
+// that is no longer what reaches the decoder, and the panel goes on saying it — opus while
+// the set plays AAC, AV1 while it plays VP9, protected while nothing is. Not merely useless
+// but misleading, which is worse: every measurement read off it has to be thrown away.
+//
+// Each is written as a label and then its value, so the value is reached from the label
+// rather than by recognising the shape of what is written in it.
+const CORRECTED = {
+    Codecs: (now) => `${now.video.codecs} (${now.video.itag}) / ${now.audio.codecs} (${now.audio.itag})`,
+
+    Color: (now) => (now.video.colour
+        ? `${now.video.colour.transfer} / ${now.video.colour.primaries}`
+        : null),
+
+    Protected: () => 'no — served from this app',
+
+    // The player's own figures describe the copy it is fetching and discarding, which is
+    // neither what is playing nor a measure of anything. Ours is the size of the stream
+    // actually being decoded.
+    'Connection Speed': (now) => `${Math.round((now.video.bitrate + now.audio.bitrate) / 1000)} Kbps of media`
+};
+
+/** The value beside a label, when the panel has written that row. */
+function valueBeside(label) {
+    const all = document.querySelectorAll('div');
+
+    for (let i = 0; i < all.length; i++) {
+        const node = all[i];
+        if (node.children.length !== 0) continue;
+        if (node.textContent.trim() !== label) continue;
+
+        const value = node.nextElementSibling;
+        if (value && value.children.length === 0) return value;
+    }
+
+    return null;
+}
+
+/**
+ * Rewrites the rows the panel cannot know the answer to.
+ *
+ * The panel refreshes on its own timer and puts its own text back, so this runs on the
+ * same interval as the frame rate beside it and simply writes over it again. Only when
+ * this app is the one feeding the element — otherwise the panel is right and should be
+ * left alone.
+ */
+function correctRows(video) {
+    if (pipelineOf(video) !== 'enhanced') return;
+
+    const now = servingNow();
+    if (!now || !now.video || !now.audio) return;
+
+    Object.keys(CORRECTED).forEach((label) => {
+        let said;
+        try {
+            said = CORRECTED[label](now);
+        } catch (e) {
+            return;
+        }
+
+        if (!said) return;
+
+        const node = valueBeside(label);
+        if (node && node.textContent !== said) node.textContent = said;
+    });
+}
+
 function framesNode() {
     const all = document.querySelectorAll('div, span, pre');
     for (let i = 0; i < all.length; i++) {
@@ -118,6 +186,8 @@ function showRate(video, tally, wall) {
     }
 
     tally.label.textContent = `  @ ${tally.rate.toFixed(2)} fps · ${pipelineOf(video)} player`;
+
+    correctRows(video);
 }
 
 /** The reported frame rate, re-read only on a size change: it moves with the rung. */

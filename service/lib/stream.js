@@ -46,8 +46,18 @@ const READ_AHEAD_AT_FIRST = 8;
 const KEEP_BEHIND = 3;
 
 // Nothing has asked this session for a segment in this long, so nobody is watching it.
-const IDLE_TIMEOUT = 5 * 60 * 1000;
-const SWEEP_INTERVAL = 60 * 1000;
+// How long a stream nobody is reading is kept before it is dropped.
+//
+// This was five minutes, swept once a minute, which meant closing a video left its
+// download alive for up to six — and every video opened in that window stacked another.
+// At 2160p60 each one is tens of megabits a second of media nobody will ever see, and
+// together they starved the picture that was actually playing, and the thumbnails, and
+// the proxy itself.
+//
+// Short enough that leaving a video frees the line almost at once; long enough to survive
+// the gap while the player restarts one for a quality or audio change.
+const IDLE_TIMEOUT = 45 * 1000;
+const SWEEP_INTERVAL = 15 * 1000;
 
 // The initialization segment is ftyp, moov and sidx together, and until all three have
 // arrived there is nothing to parse.
@@ -636,6 +646,17 @@ async function open(params) {
     return session;
 }
 
+/**
+ * Whether this app is serving a picture at the moment.
+ *
+ * `read` is stamped every time a segment is asked for, so a session the player is actually
+ * pulling from is recent and one it has moved on from is not.
+ */
+function busy() {
+    const now = Date.now();
+    return [...sessions.values()].some((session) => session.ready && now - session.read < 15000);
+}
+
 /** Everything needed to send one segment, once it is on disk. */
 function locate(track, number) {
     if (number === 0) return track.init;
@@ -708,5 +729,5 @@ async function clean() {
 module.exports = {
     HEAD_BYTES, IDLE_TIMEOUT, KEEP_BEHIND, MEDIA_DIR, READ_AHEAD, READ_AHEAD_AT_FIRST,
     SEGMENT_WAIT, SWEEP_INTERVAL, Track,
-    awaitVideo, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
+    awaitVideo, busy, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
 };

@@ -215,7 +215,10 @@ function open(input) {
 
     const stream = new SabrStream({ fetch: fetcher(params.userAgent, params.gate) });
 
-    stream.setStreamingURL(ownSession(params.streamingUrl));
+    // DEV: `keepCpn` leaves the page's playback nonce alone, to find out whether the PO
+    // token is bound to it. Normally ours is used, so the server does not resume where the
+    // page is and the two tracks do not share one position.
+    stream.setStreamingURL(params.keepCpn ? params.streamingUrl : ownSession(params.streamingUrl));
     stream.setUstreamerConfig(params.ustreamerConfig);
     stream.setServerAbrFormats(params.formats.map(buildSabrFormat));
     stream.setDurationMs(Number(params.durationMs));

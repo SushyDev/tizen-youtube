@@ -12,6 +12,19 @@ const journal = require('./journal.js');
 const sabr = require('./sabr.js');
 const stream = require('./stream.js');
 
+/** What the response says about a format's colour, in words the page can show. */
+function colourOf(format) {
+    const colour = format.colorInfo || {};
+    if (!colour.primaries && !colour.transferCharacteristics) return null;
+
+    const name = (value) => String(value || '')
+        .replace('COLOR_PRIMARIES_', '')
+        .replace('COLOR_TRANSFER_CHARACTERISTICS_', '')
+        .toLowerCase();
+
+    return { primaries: name(colour.primaries), transfer: name(colour.transferCharacteristics) };
+}
+
 function codecsOf(mimeType) {
     const match = /codecs="([^"]+)"/.exec(mimeType || '');
     return match ? match[1] : '';
@@ -105,6 +118,8 @@ function describe(session) {
         // range share one — so what the page compares against has to carry this too.
         xtags: format.xtags || '',
         codecs: codecsOf(format.mimeType),
+        colour: colourOf(format),
+        bitrate: format.bitrate || 0,
         width: format.width,
         height: format.height,
         fps: format.fps,

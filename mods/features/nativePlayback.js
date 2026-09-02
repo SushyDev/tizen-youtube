@@ -596,6 +596,18 @@ if (typeof window !== 'undefined') {
         );
     });
 
+    // Leaving a video should stop fetching it. Without this the service goes on pulling
+    // media for something nobody is watching until it times out, and everything else on
+    // the connection — the next video, the thumbnails — waits behind it.
+    window.addEventListener('hashchange', () => {
+        const videoId = routeVideo();
+        if (videoId === serving?.videoId) return;
+
+        note('stream', `left ${serving ? serving.videoId : 'the video'}; closing what it was fetching`);
+        keepOnly(videoId);
+        if (!videoId) serving = null;
+    });
+
     // Installed once, before the player builds anything. Handing back a URL is the whole
     // intervention: the player attaches to a source that never feeds it, and the element
     // plays what the service is serving.

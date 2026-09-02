@@ -81,6 +81,47 @@ things stand.
 
 yt-dlp's guidance that `tv` and `android_vr` need no GVS token is stale for 2026.
 
+## What the enrolment is actually keyed to
+
+Measured directly, on one television, within minutes of each other:
+
+| Varied | Result |
+|---|---|
+| **A second Google account**, same TV, same IP, same build | **ordinary ladder** — the enhanced player worked immediately |
+| Client version — asked as a year-old `7.20250901.15.00`, bearer intact | encrypted ladder, unchanged |
+| Fresh `visitorData` | no change |
+| The same account on a phone or a desktop browser | ordinary quality |
+
+So it is **the account, on the `tv` client**. Not the device, not the address, not the
+client version, and not anything this app does. The same account is served properly
+everywhere else in the same minute.
+
+That also means there is nothing to escape by randomising identifiers. Churning device or
+visitor identity does not change who is asking, and it is the single strongest way to
+attract the bot check — an evening of it got every path on this address answered
+`LOGIN_REQUIRED`.
+
+## Why no PO token can be minted for this client
+
+The attestation flow works: challenge, snapshot, `GenerateIT`, a real 102-character token.
+But the token is session-bound and does not satisfy a player call.
+
+Minting a **content-bound** token needs `webPoSignalOutput` — an array BotGuard populates
+during the snapshot with a minter function, which is then called with the video id. On this
+device it stays empty. Checked thoroughly:
+
+- called with BgUtils' full nine-argument form, taking `?.[0]` from the return value
+- with a **fresh interpreter** fetched from the challenge's own `interpreterUrl` and run in
+  its own iframe, rather than the `trayride` the page had already loaded
+
+Both give a callback receiving **one** function where BgUtils expects four, and an empty
+signal array. The program the `tv` client is served simply has no web-PO minter in it —
+consistent with yt-dlp's guide, which lists the `tv` client as requiring no PO token because
+it authenticates with cookies instead.
+
+`mweb` is bot-gated even on an account that gets the ordinary ladder, so the other clients
+are not a way round this either.
+
 ## Rate limiting is real, and it lasts
 
 After an evening of automated anonymous player requests, *every* anonymous path returned

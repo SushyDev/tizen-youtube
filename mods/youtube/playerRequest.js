@@ -15,6 +15,20 @@ import { onRequest, onResponse } from './json.js';
 //
 // The player leaves it out. Nothing else in the request comes close to mattering as much.
 
+// A client version to ask as, when the one this app is running is being answered with media
+// it cannot serve.
+//
+// The encrypted ladder is an experiment YouTube runs against accounts on the `tv` client —
+// the same account is served ordinary media on a phone or a desktop browser in the same
+// minute, so it is the client that is enrolled, not the person. Which version of that
+// client is the only part of it this app can honestly vary.
+//
+// Empty means ask as ourselves, which is what ships. A year-old version was measured and
+// changed nothing — the same account is answered with the encrypted ladder whichever
+// version asks — so this is kept only because it is the one honest lever left if the
+// experiment ever becomes version-scoped.
+const ASK_AS_VERSION = '';
+
 // What the page last told YouTube, which is where this comes from: the timestamp belongs
 // to the player script the page is running, and reading it from a request the page itself
 // made is the only way to have the right one without parsing that script.
@@ -61,9 +75,12 @@ onRequest('playerRequest', ['videoId', 'context'], (body) => {
 
     if (!wanted()) return undefined;
 
+    const client = body.context.client || {};
     const needsTime = !content.signatureTimestamp && timestamp;
     const needsToken = !integrity.poToken && attestation;
-    if (!needsTime && !needsToken) return undefined;
+    const needsVersion = ASK_AS_VERSION && client.clientVersion !== ASK_AS_VERSION;
+
+    if (!needsTime && !needsToken && !needsVersion) return undefined;
 
     note('innertube', `repairing ${body.videoId}: adding ${needsTime ? 'timestamp' : ''}`
         + `${needsTime && needsToken ? ' and ' : ''}${needsToken ? 'attestation' : ''}`);
@@ -80,6 +97,12 @@ onRequest('playerRequest', ['videoId', 'context'], (body) => {
 
     if (needsToken) {
         repaired.serviceIntegrityDimensions = Object.assign({}, integrity, { poToken: attestation });
+    }
+
+    if (needsVersion) {
+        repaired.context = Object.assign({}, body.context, {
+            client: Object.assign({}, client, { clientVersion: ASK_AS_VERSION })
+        });
     }
 
     return repaired;

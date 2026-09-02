@@ -377,18 +377,61 @@ const REAL = [
     { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
 ];
 
-check('webm carries the picture when mp4 has only ten bits at that size',
-    stream.pick(REAL, 'video', 2160).itag === 315, 'stepped down or took ten bits');
-check('vp9 profile 2 counts as ten bits like the rest',
-    stream.pick(REAL.filter((f) => f.itag !== 315), 'video', 2160).itag === 308,
-    'took the ten-bit webm');
+// Colour, not depth. A ten-bit encode of BT.709 material is a bigger file of the same
+// picture; ten bits on BT.2020 is the HDR master. The set's own app plays the eight-bit
+// encode on an SDR video at this size, so an SDR ladder should give exactly that.
+const GRADED = { primaries: 'COLOR_PRIMARIES_BT2020', transferCharacteristics: 'COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084' };
+const withHdr = REAL.map((f) => (f.itag === 337 || f.itag === 701 ? Object.assign({}, f, { colorInfo: GRADED }) : f));
+
+check('the wider colour is taken where the video has it',
+    stream.pick(withHdr, 'video', 2160).itag === 337, 'left HDR on the shelf');
+check('a ten-bit encode of ordinary colour is not preferred',
+    stream.pick(REAL, 'video', 2160).itag === 315, 'took ten bits for nothing');
+check('ten-bit AV1 above thirty is refused even when it is the HDR one',
+    stream.pick(withHdr.filter((f) => f.itag !== 337 && f.itag !== 315), 'video', 2160).itag === 308,
+    'took the one format that stalls');
+check('HDR outranks the container an even tie would have won',
+    stream.pick(withHdr.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
+        'video', 2160).itag === 337, 'took SDR mp4 over HDR');
+
+// Colour has to be stated in the manifest or the set decodes wide-gamut video and shows it
+// as if it were ordinary — which looks worse than not offering HDR at all.
+const HDR_FORMAT = {
+    itag: 337, mimeType: 'video/webm; codecs="vp9.2"', width: 3840, height: 2160, fps: 60,
+    bitrate: 30206899, colorInfo: GRADED
+};
+const SDR_FORMAT = Object.assign({}, HDR_FORMAT, { itag: 315, colorInfo: {
+    primaries: 'COLOR_PRIMARIES_BT709', transferCharacteristics: 'COLOR_TRANSFER_CHARACTERISTICS_BT709' } });
+
+const oneSegment = [{ number: 1, startMs: 0, durationMs: 5000, start: 0, end: 1 }];
+const shaped = (f) => ({
+    id: 'x', videoId: 'y', durationMs: 5000,
+    tracks: { video: { kind: 'video', index: oneSegment, format: f }, audio: { kind: 'audio', index: oneSegment, format: f } }
+});
+
+const hdrManifest = dash.manifest(shaped(HDR_FORMAT));
+check('wide colour is stated as code points',
+    hdrManifest.indexOf('cicp:ColourPrimaries" value="9"') !== -1, 'primaries missing');
+check('and so is the transfer curve',
+    hdrManifest.indexOf('cicp:TransferCharacteristics" value="16"') !== -1, 'transfer missing');
+check('ordinary colour is left unsaid',
+    dash.manifest(shaped(SDR_FORMAT)).indexOf('SupplementalProperty') === -1, 'stated bt709 needlessly');
+check('the page is told the colour so it can correct the panel',
+    dash.describe(shaped(HDR_FORMAT)).video.colour.transfer === 'smptest2084', 'colour missing');
 check('an eight-bit mp4 still wins an even tie',
     stream.pick(REAL.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
         'video', 2160).itag === 401, 'preferred webm needlessly');
-check('the long form of vp9 is read the same way',
+// Depth only ever breaks a tie now — ten-bit VP9 plays cleanly here, so it is no reason to
+// step down a rung. The long form of the codec string has to be read for it all the same.
+check('the long form of vp9 is read for depth',
+    stream.pick([
+        { itag: 1, mimeType: 'video/webm; codecs="vp09.02.51.10"', height: 2160, fps: 60 },
+        { itag: 2, mimeType: 'video/webm; codecs="vp09.00.51.08"', height: 2160, fps: 60 }
+    ], 'video', 2160).itag === 2, 'missed the depth in the long form');
+check('and depth never costs a rung of picture',
     stream.pick([
         { itag: 1, mimeType: 'video/webm; codecs="vp09.02.51.10"', height: 2160, fps: 60 },
         { itag: 2, mimeType: 'video/webm; codecs="vp09.00.51.08"', height: 1440, fps: 60 }
-    ], 'video', 2160).itag === 2, 'missed the depth in the long form');
+    ], 'video', 2160).itag === 1, 'stepped down for eight bits');
 check('sound is still never taken from webm',
     stream.pick(AUDIO.concat(REAL), 'audio', null, [{ itag: 251, xtags: '' }]).itag === 140, 'took the webm');

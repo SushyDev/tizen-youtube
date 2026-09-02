@@ -80,6 +80,35 @@ const WEBM = /^(video|audio)\/webm/;
 const preIndexed = (format) => format.type !== 'FORMAT_STREAM_TYPE_OTF';
 
 /**
+ * Whether a format carries a wider colour space than ordinary video.
+ *
+ * The response says so outright, in the primaries and the transfer curve — BT.2020 with
+ * either of the two HDR curves. A ten-bit encode of BT.709 material is not this.
+ */
+function isHdr(format) {
+    const colour = format.colorInfo || {};
+    if (colour.primaries !== 'COLOR_PRIMARIES_BT2020') return false;
+
+    return colour.transferCharacteristics === 'COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084'
+        || colour.transferCharacteristics === 'COLOR_TRANSFER_CHARACTERISTICS_ARIB_STD_B67';
+}
+
+/**
+ * Whether a picture asks more of this hardware than it can give.
+ *
+ * Measured on the set: 2160p60 in ten-bit AV1 stalls for seconds before the first frame and
+ * drops throughout, while the same size and rate in eight-bit AV1, and in VP9 at either
+ * depth, plays without dropping a frame. VP9 profile 2 is not lumped in with it — that is
+ * the path the set's own YouTube app uses for HDR.
+ */
+function tooMuch(format) {
+    if ((format.fps || 30) <= 30 || !isTenBit(format)) return false;
+
+    const codec = (/codecs="([^"]+)"/.exec(format.mimeType || '') || [])[1] || '';
+    return codec.indexOf('av01.') === 0;
+}
+
+/**
  * Whether a format is ten bits deep.
  *
  * AV1 and the long form of VP9 both put the depth in the fourth field of the codec string —
@@ -287,14 +316,22 @@ function pick(formats, kind, maxHeight, chosen, xtags) {
     // Equal pictures are ordered by container only to be predictable: MP4 is what the rest
     // of this was written against, so it wins a tie and WebM is taken when it offers
     // something MP4 does not.
-    const tallest = (formats) => formats
+    // Tallest, then fastest, then the wider colour where the video actually has one.
+    //
+    // Colour rather than bit depth, because they are not the same question. Ten bits on a
+    // video graded for BT.709 is a bigger file of the same picture; ten bits on one graded
+    // for BT.2020 is the HDR master. Where neither is HDR the eight-bit encode wins, which
+    // is what the set's own app plays on an SDR video at this size.
+    const best = (formats) => formats
         .sort((a, b) => (b.height - a.height)
             || ((b.fps || 30) - (a.fps || 30))
+            || ((isHdr(b) ? 1 : 0) - (isHdr(a) ? 1 : 0))
+            || ((isTenBit(a) ? 1 : 0) - (isTenBit(b) ? 1 : 0))
             || (MP4.test(a.mimeType || '') ? -1 : 1))[0] || null;
 
-    const easy = offered.filter((format) => (format.fps || 30) <= 30 || !isTenBit(format));
+    const holds = offered.filter((format) => !tooMuch(format));
 
-    return tallest(easy.length ? easy : offered);
+    return best(holds.length ? holds : offered);
 }
 
 /**

@@ -12,6 +12,35 @@ const journal = require('./journal.js');
 const sabr = require('./sabr.js');
 const stream = require('./stream.js');
 
+// The coding-independent code points a manifest states colour with. The set reads these to
+// decide whether to switch the panel into HDR; without them it decodes wide-gamut video and
+// shows it as if it were ordinary, which looks worse than not offering HDR at all.
+const CICP = {
+    COLOR_PRIMARIES_BT2020: 9,
+    COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084: 16,
+    COLOR_TRANSFER_CHARACTERISTICS_ARIB_STD_B67: 18
+};
+
+/**
+ * The colour of the picture, said in the manifest so the set can act on it.
+ *
+ * Only worth stating when it is not ordinary video: BT.709 is what everything assumes, and
+ * saying it changes nothing. BT.2020 with one of the two HDR curves is what makes the panel
+ * switch, and the matrix goes with the primaries.
+ */
+function colourProperties(format) {
+    const colour = format.colorInfo || {};
+    if (colour.primaries !== 'COLOR_PRIMARIES_BT2020') return '';
+
+    const transfer = CICP[colour.transferCharacteristics];
+    const property = (name, value) =>
+        `\n                <SupplementalProperty schemeIdUri="urn:mpeg:mpegB:cicp:${name}" value="${value}"/>`;
+
+    return property('ColourPrimaries', CICP.COLOR_PRIMARIES_BT2020)
+        + (transfer ? property('TransferCharacteristics', transfer) : '')
+        + property('MatrixCoefficients', CICP.COLOR_PRIMARIES_BT2020);
+}
+
 /** What the response says about a format's colour, in words the page can show. */
 function colourOf(format) {
     const colour = format.colorInfo || {};
@@ -89,6 +118,7 @@ function manifest(session) {
 
     const video = session.tracks.video;
     const audio = session.tracks.audio;
+    const colour = colourProperties(video.format);
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011"
@@ -96,7 +126,7 @@ function manifest(session) {
     <Period id="0" duration="${iso(session.durationMs)}">${set(
         video,
         ` width="${video.format.width}" height="${video.format.height}" frameRate="${video.format.fps || 30}"`,
-        ''
+        colour
     )}${set(
         audio,
         audio.format.audioSampleRate ? ` audioSamplingRate="${audio.format.audioSampleRate}"` : '',

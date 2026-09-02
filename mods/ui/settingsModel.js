@@ -188,9 +188,13 @@ const GROUPS = [
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
         SKIPPING, INCREMENTS, 'Step'),
+      Switch('rememberPlaybackSpeed', 'Remember playback speed',
+        'Carry the speed you chose into the next video. YouTube starts each one at normal '
+        + 'speed', SKIPPING),
       Switch('bypassMediaSource', 'Smooth 4K playback',
         'Plays through the set\u2019s own decoder instead of the browser\u2019s. Much smoother at '
-        + '2160p60, but changing quality or audio track will not take effect until the video is reopened',
+        + '2160p60. The set decodes it silently at anything but normal speed, so playback at '
+        + 'another speed goes back to the ordinary player until it is set to normal again',
         SCREEN)
     ]
   },

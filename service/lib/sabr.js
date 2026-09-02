@@ -6,6 +6,8 @@
 
 const crypto = require('crypto');
 
+const journal = require('./journal.js');
+
 const {
     SabrStream, EnabledTrackTypes, buildSabrFormat, VideoPlaybackAbrRequest
 } = require('../vendor/googlevideo.cjs');
@@ -42,8 +44,24 @@ const observed = {
             const context = request.streamerContext || {};
             const streamingUrl = new URL(url);
 
+            // Decoding proves nothing. Protobuf reads almost any bytes as a message with
+            // none of the fields set, and the player also POSTs to this path for a single
+            // format at a time — `itag=314&mime=video/webm` in the URL, nothing in the
+            // body. Letting one of those through replaces a working session with an
+            // address that names one format, and the stream comes back as WebM with no
+            // segment index in it.
+            //
+            // What makes a request one of ours is the ustreamer config it carries, and the
+            // absence of an itag in the address: a SABR endpoint names no format, because
+            // which format it serves is what the body is for.
+            if (!request.videoPlaybackUstreamerConfig
+                || !request.videoPlaybackUstreamerConfig.length
+                || streamingUrl.searchParams.has('itag')) return;
+
             // The page numbers its own requests; ours are numbered from our own count.
             streamingUrl.searchParams.delete('rn');
+
+            const was = observed.session;
 
             observed.session = {
                 at: Date.now(),
@@ -65,6 +83,11 @@ const observed = {
                     : null,
                 clientInfo: context.clientInfo || null
             };
+
+            if (!was || was.streamingUrl !== observed.session.streamingUrl) {
+                journal.service('sabr', `session from ${observed.session.selected.length} `
+                    + `selected format(s), ${observed.session.poToken ? 'with' : 'without'} a token`);
+            }
         } catch (e) {
             // A request shaped differently than expected is not worth failing playback for.
         }
@@ -203,6 +226,104 @@ function open(input) {
     return stream;
 }
 
+// ---------------------------------------------------------------------------------------
+// DEV INSTRUMENTATION — temporary, remove before release.
+//
+// A SABR stream that returns nothing returns it silently: the library reports byte counts
+// and swallows everything else into a logger that writes to a console nobody can read from
+// the television. This says what actually happened on the wire — every request, every
+// response, and the name of every UMP part that came back.
+// ---------------------------------------------------------------------------------------
+
+// The part numbers the protocol uses, by the name that makes a trace readable.
+const PART_NAMES = {
+    20: 'MEDIA_HEADER', 21: 'MEDIA', 22: 'MEDIA_END', 35: 'NEXT_REQUEST_POLICY',
+    42: 'FORMAT_INITIALIZATION_METADATA', 43: 'SABR_REDIRECT', 44: 'SABR_ERROR',
+    45: 'SABR_SEEK', 46: 'RELOAD_PLAYER_RESPONSE', 47: 'PLAYBACK_START_POLICY',
+    48: 'ALLOWED_CACHED_FORMATS', 49: 'START_BW_SAMPLING_HINT', 51: 'SELECTABLE_FORMATS',
+    52: 'REQUEST_IDENTIFIER', 53: 'REQUEST_CANCELLATION_POLICY', 55: 'TIMELINE_CONTEXT',
+    56: 'REQUEST_PIPELINING', 57: 'SABR_CONTEXT_UPDATE', 58: 'STREAM_PROTECTION_STATUS',
+    59: 'SABR_CONTEXT_SENDING_POLICY', 61: 'SABR_ACK', 62: 'END_OF_TRACK',
+    63: 'CACHE_LOAD_POLICY', 65: 'PREWARM_CONNECTION', 66: 'PLAYBACK_DEBUG_INFO'
+};
+
+const partName = (id) => PART_NAMES[id] || `part ${id}`;
+
+/**
+ * Watches one stream and writes down what it does. Nothing here changes behaviour: the
+ * library's own methods are called through, and only what they said is recorded.
+ *
+ * Returns the lines, which the caller hands back to whoever asked for the trace.
+ */
+function trace(stream) {
+    const lines = [];
+    const started = Date.now();
+
+    const say = (text) => {
+        const at = ((Date.now() - started) / 1000).toFixed(2);
+        lines.push(`${at}s ${text}`);
+        journal.service('sabr', `${at}s ${text}`);
+    };
+
+    // The library's own account of itself, which otherwise goes to a console on the set.
+    stream.logger = {
+        setLogLevels() { /* every level is wanted here */ },
+        getLogLevels() { return new Set(); },
+        log(level, tag, ...rest) { say(`log ${rest.join(' ')}`); },
+        error(tag, ...rest) { say(`ERROR ${rest.join(' ')}`); },
+        warn(tag, ...rest) { say(`warn ${rest.join(' ')}`); },
+        info(tag, ...rest) { say(`info ${rest.join(' ')}`); },
+        debug(tag, ...rest) { say(`debug ${rest.join(' ')}`); }
+    };
+
+    // Own properties, so the prototype's versions are still what runs.
+    const request = stream.makeStreamingRequest.bind(stream);
+    const process = stream.processStreamingResponse.bind(stream);
+
+    stream.makeStreamingRequest = async (body) => {
+        say(`POST #${stream.requestNumber} body ${body ? body.length : 0}b`);
+
+        try {
+            const response = await request(body);
+            say(`  ${response.status} ${response.headers.get('content-type') || 'no type'}`
+                + ` len ${response.headers.get('content-length') || '?'}`);
+            return response;
+        } catch (error) {
+            say(`  request failed: ${error.message}`);
+            throw error;
+        }
+    };
+
+    stream.processStreamingResponse = async (response) => {
+        try {
+            const parts = await process(response);
+            const counts = new Map();
+            parts.forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
+
+            say(`  parts: ${[...counts].map(([id, n]) => `${partName(id)}${n > 1 ? `×${n}` : ''}`).join(', ') || 'none'}`);
+            return parts;
+        } catch (error) {
+            say(`  reading failed: ${error.message}`);
+            throw error;
+        }
+    };
+
+    // Everything the stream announces, in case the answer is in a part that is handled
+    // rather than counted.
+    ['error', 'sabrError', 'streamProtectionStatusUpdate', 'reloadPlayerResponse',
+        'formatInitialization', 'snackbarMessage', 'finish'].forEach((name) => {
+        stream.on(name, (value) => {
+            try {
+                say(`event ${name}: ${JSON.stringify(value).slice(0, 240)}`);
+            } catch (e) {
+                say(`event ${name}`);
+            }
+        });
+    });
+
+    return lines;
+}
+
 /**
  * Opens a stream and reads from it for a while, reporting what arrived. This is the
  * question the whole approach rests on — whether SABR can be spoken from the television
@@ -210,6 +331,9 @@ function open(input) {
  */
 async function measure(params, seconds) {
     const stream = open(params);
+
+    // Dev only: `trace: true` in the request body asks for a blow-by-blow account.
+    const lines = params.trace ? trace(stream) : null;
 
     const protection = [];
     stream.on('streamProtectionStatusUpdate', (status) => protection.push(status && status.status));
@@ -259,7 +383,8 @@ async function measure(params, seconds) {
         megabitsPerSecond: +(((counts.video + counts.audio) * 8) / elapsed / 1e6).toFixed(2),
         protection,
         videoFormat: describe(selectedFormats && selectedFormats.videoFormat),
-        audioFormat: describe(selectedFormats && selectedFormats.audioFormat)
+        audioFormat: describe(selectedFormats && selectedFormats.audioFormat),
+        trace: lines || undefined
     };
 }
 

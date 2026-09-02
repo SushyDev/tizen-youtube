@@ -57,6 +57,9 @@ const defaultConfig = {
   // Publishes readings on the network and runs evaluate requests, while debugging.
   enableDevBridge: true,
   videoSpeed: 1,
+  // Carrying a speed from one video to the next is this app's doing, not YouTube's, which
+  // starts every video at normal speed. Off to match it.
+  rememberPlaybackSpeed: false,
   speedSettingsIncrement: 0.25,
 
   // What is on screen

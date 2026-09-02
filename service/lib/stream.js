@@ -8,7 +8,9 @@
 const { mkdir, rm, writeFile } = require('fs/promises');
 const { join } = require('path');
 
+const journal = require('./journal.js');
 const mp4 = require('./mp4.js');
+const webm = require('./webm.js');
 const sabr = require('./sabr.js');
 
 // On a TV this is the app's own data directory. Media is large and never leaves it.
@@ -17,6 +19,11 @@ const MEDIA_DIR = process.env.TUBE_MEDIA_DIR || '/home/owner/share/tube/media';
 // A segment the player asks for that has not arrived is waited for, not refused: the
 // download runs faster than playback, so this is a stall rather than a failure.
 const SEGMENT_WAIT = 30000;
+
+// The index sits at the front of the file, so it arrives with the first bytes or the
+// stream is not one this can serve. Waiting the full segment timeout on that only keeps
+// the viewer in front of nothing for half a minute before the page takes the picture back.
+const INDEX_WAIT = 10000;
 
 // How far ahead of what the player has asked for the download may get. Roughly a minute of
 // media: enough that a slow patch is not felt, small enough that the set is not writing
@@ -27,7 +34,12 @@ const READ_AHEAD = 10;
 // flat out for the first ten seconds — saturating the link and writing several megabytes a
 // second — which is exactly when the decoder is starting on 2160p60 and when frames get
 // dropped. It opens up as playback settles.
-const READ_AHEAD_AT_FIRST = 3;
+const READ_AHEAD_AT_FIRST = 8;
+
+// Holding the manifest back until a few segments were on disk was tried, to give the
+// decoder something to start against. It made the wait before the picture longer and
+// changed nothing about the frames lost, because what is actually short is throughput
+// rather than the head start.
 
 // Segments this far behind the player are deleted. It only returns to them by seeking, and
 // seeking fetches again.
@@ -44,6 +56,37 @@ const HEAD_BYTES = 128 * 1024;
 // A container the platform's own decoder path opens from a plain URL. Everything else in
 // the response is WebM, which it does not.
 const MP4 = /^(video|audio)\/mp4/;
+const WEBM = /^(video|audio)\/webm/;
+
+/**
+ * Whether a format describes itself before it is fetched.
+ *
+ * YouTube also offers the same video transcoded as it is served — no `initRange`, no
+ * `indexRange`, and no `sidx` in what arrives. Everything here is built on that index:
+ * it is what says how many segments there are and where each one starts, so a manifest
+ * covering the whole video can be written before a byte of media has been fetched.
+ * Without it there is nothing to serve.
+ */
+const preIndexed = (format) => format.type !== 'FORMAT_STREAM_TYPE_OTF';
+
+/**
+ * Whether a format is ten bits deep.
+ *
+ * AV1 and the long form of VP9 both put the depth in the fourth field of the codec string —
+ * `av01.0.13M.10` against `av01.0.12M.08`, `vp09.00.51.08` against `vp09.02.51.10`. VP9's
+ * short form names only its profile, and profile 2 is the ten-bit one. Anything that does
+ * not say is taken as eight, which is what everything else in the ladder is.
+ */
+function isTenBit(format) {
+    const codec = (/codecs="([^"]+)"/.exec(format.mimeType || '') || [])[1] || '';
+
+    if (codec.indexOf('av01.') === 0 || codec.indexOf('vp09.') === 0) {
+        const depth = codec.split('.')[3];
+        return depth === '10' || depth === '12';
+    }
+
+    return /^vp9\.(2|3)$/.test(codec);
+}
 
 const sessions = new Map();
 
@@ -75,6 +118,7 @@ class Track {
     seekTo(number) {
         if (this.restartAt === number) return;
 
+        journal.service('seek', `${this.kind} to segment ${number} (at ${this.next}, holds ${this.have.size})`);
         this.restartAt = number;
         if (this.abort) {
             try { this.abort(); } catch (e) { /* already stopped */ }
@@ -123,6 +167,7 @@ class Track {
 
     /** Nothing more is coming; everyone still waiting is told rather than left to time out. */
     broke(error) {
+        journal.service('broke', `${this.kind}: ${error.message}`);
         this.failure = error;
 
         this.waiting.forEach((waiters) => waiters.forEach((waiter) => {
@@ -190,8 +235,16 @@ class Track {
  * hear was decided by YouTube, not by which has the higher bitrate.
  */
 function pick(formats, kind, maxHeight, chosen, xtags) {
+    // Picture may be WebM; sound stays MP4. At 2160p60 the MP4 ladder offers only ten-bit
+    // AV1, which this hardware cannot hold, while its VP9 path plays that size without
+    // dropping a frame — and VP9 is never offered in anything but WebM.
+    const container = kind === 'video'
+        ? (format) => MP4.test(format.mimeType || '') || WEBM.test(format.mimeType || '')
+        : (format) => MP4.test(format.mimeType || '');
+
     const wanted = formats
-        .filter((format) => MP4.test(format.mimeType || ''))
+        .filter(container)
+        .filter(preIndexed)
         .filter((format) => (kind === 'video' ? !!format.height : !format.height));
 
     // Sound is never ours to choose. The player says which track it is playing — the
@@ -214,13 +267,40 @@ function pick(formats, kind, maxHeight, chosen, xtags) {
     // Picture is chosen by a ceiling, never by what the player last asked for. Before it has
     // buffered anything it asks for a low rung and works upwards, so following that would
     // take a viewer who chose 2160p straight back down.
-    return wanted
-        .filter((format) => !maxHeight || format.height <= maxHeight)
-        .sort((a, b) => (b.height - a.height) || ((b.fps || 30) - (a.fps || 30)))[0] || null;
+    //
+    // Depth before height, above thirty frames a second. This set decodes 2160p60 in eight
+    // bits without dropping a frame and stalls for seconds on the same rung in ten — and
+    // some videos offer only ten-bit AV1 at the top, so taking the tallest picture on
+    // offer is how a video that would have played perfectly at 1440p hangs at 2160p.
+    const offered = wanted.filter((format) => !maxHeight || format.height <= maxHeight);
+
+    // Equal pictures are ordered by container only to be predictable: MP4 is what the rest
+    // of this was written against, so it wins a tie and WebM is taken when it offers
+    // something MP4 does not.
+    const tallest = (formats) => formats
+        .sort((a, b) => (b.height - a.height)
+            || ((b.fps || 30) - (a.fps || 30))
+            || (MP4.test(a.mimeType || '') ? -1 : 1))[0] || null;
+
+    const easy = offered.filter((format) => (format.fps || 30) <= 30 || !isTenBit(format));
+
+    return tallest(easy.length ? easy : offered);
 }
 
-/** Reads the file's own segment index, once enough of the head has arrived to hold it. */
-function readIndex(carry) {
+/**
+ * Reads the file's own segment index, once enough of the head has arrived to hold it.
+ *
+ * MP4 carries a `sidx` that says how long each segment runs and how many bytes it takes;
+ * WebM carries cues that say where each cluster begins, and the file's own length is what
+ * closes the last one. Both come back in the same shape, so nothing downstream has to know
+ * which container it is serving.
+ */
+function readIndex(carry, format) {
+    if (WEBM.test((format && format.mimeType) || '')) {
+        const index = webm.segmentIndex(carry, format.contentLength, format);
+        return index && { init: index.init, segments: index.segments };
+    }
+
     const sidx = mp4.boxes(carry).filter((box) => box.type === 'sidx')[0];
     if (!sidx) return null;
 
@@ -419,7 +499,7 @@ async function fill(track, params, chosen, using) {
                     // Bounded rather than conditional: a first chunk larger than this would
                     // mean the index is never looked for, and an unbounded search would
                     // re-join a growing buffer on every chunk of a stream that has none.
-                    const read = readIndex(Buffer.concat(parts, held).subarray(0, HEAD_BYTES));
+                    const read = readIndex(Buffer.concat(parts, held).subarray(0, HEAD_BYTES), track.format);
                     if (read) {
                         track.init = read.init;
                         track.index = read.segments;
@@ -460,7 +540,7 @@ function indexed(track) {
         const look = () => {
             if (track.index) return resolve(track);
             if (track.failure) return reject(track.failure);
-            if (Date.now() - started > SEGMENT_WAIT) {
+            if (Date.now() - started > INDEX_WAIT) {
                 return reject(new Error(`${track.kind} never sent its segment index`));
             }
             setTimeout(look, 50);
@@ -548,6 +628,10 @@ async function open(params) {
 
     session.durationMs = Math.min(span(tracks.video.index), span(tracks.audio.index));
     session.ready = true;
+
+    journal.service('open', `${id}: video ${chosen.video.itag} ${chosen.video.height}p, `
+        + `audio ${chosen.audio.itag} xtags ${JSON.stringify(chosen.audio.xtags || '')}, `
+        + `${tracks.video.index.length} segments, ${Math.round(session.durationMs / 1000)}s`);
 
     return session;
 }

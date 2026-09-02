@@ -12,6 +12,11 @@ const https = require('https');
 const URL = require('url');
 const { readFileSync } = require('fs');
 
+const journal = require('./journal.js');
+
+// DEV: on while this is being proven. Becomes a setting once it is.
+const ANONYMOUS_PLAYER = process.env.TUBE_SIGNED_IN_PLAYER !== '1';
+
 // Without an agent node-fetch reconnects per request, so every segment of a 4K stream
 // paid for a TLS handshake on the set's own processor while it was decoding.
 const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: 8, timeout: 60000 };
@@ -179,6 +184,49 @@ function collect(req) {
     });
 }
 
+// DEV INSTRUMENTATION — temporary, remove before release.
+//
+// Headers that carry who is asking. Everything else on a player request is boilerplate,
+// and printing all of it would bury the one line that matters.
+const TELLING = [
+    'authorization', 'x-goog-authuser', 'x-goog-pageid', 'x-goog-visitor-id',
+    'x-youtube-client-name', 'x-youtube-client-version', 'x-youtube-bootstrap-logged-in',
+    'x-youtube-device', 'x-youtube-page-cl', 'x-youtube-page-label', 'x-youtube-utc-offset',
+    'x-youtube-identity-token', 'x-goog-request-time', 'x-origin', 'origin', 'referer',
+    'content-type', 'user-agent', 'cookie'
+];
+
+function notePlayerCall(headers, buffer) {
+    try {
+        const body = JSON.parse(buffer.toString('utf8'));
+        if (!body.videoId || body.licenseRequest) return;
+
+        const said = TELLING
+            .filter((name) => headers[name] !== undefined)
+            .map((name) => {
+                const value = String(headers[name]);
+                // Long and secret-ish: how much there is says as much as what it is.
+                if (name === 'cookie') return `cookie[${value.split(';').length} names]`;
+                if (name === 'authorization') return `authorization[${value.split(' ')[0]} ${value.length}b]`;
+                return `${name}=${value.length > 40 ? `${value.slice(0, 37)}...` : value}`;
+            });
+
+        journal.service('askedwith', `${body.videoId}: ${said.join(' ')}`);
+    } catch (e) {
+        // A body shaped differently is not worth failing a request for.
+    }
+}
+
+// DEV INSTRUMENTATION — temporary, remove before release.
+let lastAnswer = '';
+
+function noteAnswer(path, how) {
+    const line = `${path.split('?')[0]} ${how}`;
+    if (line === lastAnswer) return;
+    lastAnswer = line;
+    journal.service('innertube', `${line}`);
+}
+
 function attachFallback(app) {
     app.all('*', (req, res) => {
         const isBypass = req.path.indexOf('/cors-bypass/') === 0;
@@ -203,19 +251,48 @@ function attachFallback(app) {
             headers.host = 'www.youtube.com';
         }
 
+        // Any innertube call can carry media in its answer — a watch-next payload embeds
+        // the streams for what it expects to be played, and those arrive with no player
+        // request behind them. Which endpoint an encrypted ladder comes from decides
+        // where the token has to be stripped.
+        const isInnertube = req.path.indexOf('/youtubei/v1/') === 0;
+
+        // The two requests whose answers decide what this app can play.
+        const isPlayerCall = req.path.indexOf('/youtubei/v1/player') === 0;
+        const isNextCall = req.path.indexOf('/youtubei/v1/next') === 0;
+
         headers.origin = 'https://www.youtube.com';
         if (headers.referer) headers.referer = 'https://www.youtube.com/tv';
         if (DEV_USER_AGENT) headers['user-agent'] = DEV_USER_AGENT;
         // Brotli is not decoded downstream, so ask for encodings we can rewrite.
         headers['accept-encoding'] = 'gzip, deflate';
 
+        // The account is what YouTube applies the encrypted-ladder experiment to: the same
+        // request signed with the player's bearer token comes back with formats that are
+        // transcoded as they are served and encrypted, and unsigned comes back with the
+        // ordinary indexed ladder this app can serve.
+        //
+        // Only the player call is stripped. Everything else — the guide, subscriptions,
+        // history, search — keeps the token, so the app stays signed in.
+        // `next` carries the streams for whatever the app expects to play next, and those
+        // answers arrive with no player request behind them — so signing only the player
+        // call out leaves half the media still coming back encrypted.
+        if ((isPlayerCall || isNextCall) && ANONYMOUS_PLAYER) {
+            delete headers.authorization;
+            delete headers['x-goog-authuser'];
+            delete headers['x-goog-pageid'];
+        }
+
         const hasBody = ['POST', 'PUT', 'PATCH'].indexOf(req.method) !== -1;
+
 
         // Held rather than streamed: a SABR request is a couple of kilobytes, and reading
         // it is how this service learns the session the page opened.
         const body = hasBody && sabr.observed.wants(req.method, targetUrl)
             ? collect(req).then((buffer) => { sabr.observed.note(targetUrl, buffer); return buffer; })
-            : Promise.resolve(hasBody ? req : undefined);
+            : (hasBody && isPlayerCall
+                ? collect(req).then((buffer) => { notePlayerCall(headers, buffer); return buffer; })
+                : Promise.resolve(hasBody ? req : undefined));
 
         body.then((payload) => fetch(targetUrl, {
             method: req.method,
@@ -226,6 +303,8 @@ function attachFallback(app) {
         }))
             .then((response) => {
                 res.status(req.method === 'OPTIONS' ? 200 : response.status);
+
+                if (isInnertube) noteAnswer(req.path, headers.authorization ? 'signed' : 'anon');
 
                 const raw = response.headers.raw();
                 for (const key in raw) {

@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 
 const ports = require('./ports.js');
+const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
 const sabr = require('./sabr.js');
 
@@ -31,6 +32,11 @@ function attach(app) {
     app.post('/__tube/dev/report', express.json({ limit: '256kb' }), (req, res) => {
         latest = req.body || null;
         receivedAt = Date.now();
+        res.json({ received: true });
+    });
+
+    app.post('/__tube/dev/log', express.json({ limit: '256kb' }), (req, res) => {
+        journal.fromPage((req.body || {}).lines);
         res.json({ received: true });
     });
 
@@ -137,6 +143,14 @@ function start() {
     });
 
     app.get('/stats', (_, res) => res.json(snapshot()));
+
+    // Everything both sides recorded, oldest first, as plain text to be read with `tail`.
+    app.get('/log', (req, res) => {
+        const count = Number(req.query && req.query.tail) || 0;
+        res.type('text/plain').send(journal.read(count) || 'nothing recorded yet');
+    });
+
+    app.post('/log/clear', (_, res) => { journal.clear(); res.json({ cleared: true }); });
 
     // What stopped the service last time, which is otherwise unanswerable on a television.
     app.get('/postmortem', (_, res) => res.type('text/plain').send(postmortem.read() || 'nothing recorded'));

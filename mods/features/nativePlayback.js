@@ -1,5 +1,7 @@
 import { configRead } from '../config.js';
+import { note } from '../dev/journal.js';
 import { onResponse } from '../youtube/json.js';
+import { keepCurrentChoice } from './preferredVideoQuality.js';
 import { replaceMediaSource } from '../youtube/mediaSource.js';
 
 // Points the player at a stream the service serves rather than at its own MediaSource.
@@ -7,36 +9,90 @@ import { replaceMediaSource } from '../youtube/mediaSource.js';
 // 2160p60 and from a URL it drops none. The player keeps its interface and keeps driving
 // playback; it is just not the thing feeding the decoder.
 
-const SERVICE = `${window.location.origin}/dash`;
+// Read when it is used rather than when this is imported: the file is loaded off the
+// television by the tests, where there is no page to have an origin.
+const service = () => `${window.location.origin}/dash`;
 
 // Where the player is pointed, from the first moment it asks. The stream behind it is still
 // opening then, so the service holds the request — a short wait reads as loading, where
 // playing something else first and swapping reads as a black screen and a spinner.
-const manifestFor = (videoId) => `${SERVICE}/by-video/${encodeURIComponent(videoId)}/manifest.mpd`;
+const manifestFor = (videoId) => `${service()}/by-video/${encodeURIComponent(videoId)}/manifest.mpd`;
 
-// How often the player is asked what the viewer has settled on. Quality, audio track,
-// stable volume and voice boost are all a different format underneath, so one check covers
-// every one of them.
-const WATCH_EVERY = 2000;
+// Where the player means to begin, by video: a part-watched one resumes where it was left.
+const resumeAt = new Map();
 
-// A change has to read the same this many times before it is acted on, and one cannot
-// follow another sooner than the cooldown. Acting on a video restarts it.
-const STEADY_READS = 2;
-const COOLDOWN = 12000;
+/** Told by the page when a video is opened at a position rather than at its start. */
+export function startsAt(videoId, seconds) {
+    if (seconds > 1) resumeAt.set(videoId, seconds);
+    else resumeAt.delete(videoId);
+}
 
-// How many times a video may be handed our address before we stop offering it. A player
-// that cannot play what it is given asks again, and again: without a limit the page spends
-// its life attaching to a stream that will never work instead of falling back to the one
-// that always does.
-const MOST_ATTEMPTS = 3;
+/**
+ * The address, with the moment the player means to start at.
+ *
+ * Without it the element is handed a manifest describing the whole video and does the
+ * obvious thing: begins at the beginning. The viewer sees the opening seconds play before
+ * the seek lands. MediaSource never showed that, because the player only ever gave it the
+ * segments around the position it wanted.
+ */
+function addressFor(videoId) {
+    const address = manifestFor(videoId);
+
+    let at = resumeAt.get(videoId) || 0;
+    try {
+        at = Math.max(at, player().getCurrentTime() || 0);
+    } catch (e) {
+        // The player has not got that far; whatever the page said stands.
+    }
+
+    return at > 1 ? `${address}#t=${Math.floor(at)}` : address;
+}
+
+// How long to let the player apply a change before reading back what it settled on. The
+// menu says a track by the name it shows; the player says which format that is.
+const AFTER_CHOOSING = 400;
+
+// How long a video may be handed our address without the picture ever coming from it.
+// A player that cannot play what it is given asks again, and again, so without a limit the
+// page spends its life attaching to a stream that will never work rather than falling back
+// to the one that always does.
+//
+// Measured in time rather than in attempts: the player re-attaches in bursts, and counting
+// those gives up seconds into a stream that was only slow to start.
+const GIVE_UP_AFTER = 25000;
 
 // Streams the service is holding for us, by video. The page asks about more than one — it
 // loads responses for what it might play next — and which one the player is actually
 // setting up for is only known when it asks for a URL.
 const opened = new Map();
 
-// How many times each has been handed over, so a stream that never plays is given up on.
-const attempts = new Map();
+// When each was handed over with nothing playing yet, so one that never plays is given up
+// on. Cleared the moment the picture arrives, by the element itself: between one hand-out
+// and the next the player says nothing, and a video watched for a minute would otherwise
+// carry a minute-old clock into the next thing that made the player re-attach.
+const handedAt = new Map();
+
+/**
+ * Stops the clock on a video as soon as the stream is actually playing.
+ *
+ * The listener takes itself off on the first frame, or once the clock has stopped for any
+ * other reason, so at most one is ever attached.
+ */
+function clockStopsOnPlay(videoId) {
+    const video = document.querySelector('video');
+    if (!video) return;
+
+    const playing = () => {
+        if (handedAt.has(videoId) && !playingOurs()) return;
+
+        video.removeEventListener('timeupdate', playing);
+        if (!handedAt.delete(videoId)) return;
+
+        note('element', `${videoId} is playing ours`);
+    };
+
+    video.addEventListener('timeupdate', playing);
+}
 
 // Set when a change is what caused the video to be loaded again, so the service knows to
 // wait for the player to say what was chosen rather than reading the previous answer.
@@ -44,6 +100,30 @@ const changed = new Set();
 
 // What is being served for the video now playing, so a change can be seen.
 let serving = null;
+
+// The picture the viewer asked for during this video, if they asked. Only ever set from a
+// choice made in the menu, and forgotten when the video is opened afresh: a rung picked
+// once is not a preference for everything after it.
+const asked = new Map();
+
+/**
+ * The formats the element is really being fed, or nothing when it is on its own player.
+ *
+ * The player's own stats say what the player selected, which is not what is playing once
+ * the picture comes from here — it will report opus while the set decodes AAC.
+ */
+export function servingNow() {
+    return serving;
+}
+
+/** The ceiling to open at when the viewer has not said otherwise. */
+function preferredHeight() {
+    const preference = configRead('preferredVideoQuality');
+    if (!preference || preference === 'highest') return 2160;
+
+    const lines = parseInt(preference, 10);
+    return lines > 0 ? lines : 2160;
+}
 
 /** What the player says it is loading. */
 function playerVideo() {
@@ -79,7 +159,7 @@ function attachingTo() {
 }
 
 function closeSession(id) {
-    return fetch(`${SERVICE}/close`, {
+    return fetch(`${service()}/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
@@ -95,60 +175,131 @@ function playingOurs() {
 }
 
 /**
- * Follows what the viewer changes. Quality, audio track, stable volume and voice boost are
- * each a different format underneath, so watching the format watches all four.
+ * The viewer picked a quality from the player's own menu.
  *
- * The change is applied by asking the player to load the video again at the moment it is
- * at. Nothing here touches the element: it is the player's, and reaching past it to change
- * what it is playing is what leaves its controls out of step with the picture.
+ * This is the only reliable sign of it. The quality the player reports is whatever its
+ * adaptive logic settled on, and with a source that never reports a network it settles
+ * somewhere and stays; the menu, on the other hand, says what was asked for.
  */
-function watch() {
-    if (watch.timer) clearInterval(watch.timer);
+export function chooseQuality(quality) {
+    if (!serving || !playingOurs()) return;
 
-    let steady = null;
-    let reads = 0;
-    let movedAt = 0;
+    const height = heightOf(quality);
+    if (!height || height === serving.video.height) return;
 
-    watch.timer = setInterval(() => {
-        if (!serving || serving.videoId !== attachingTo()) return;
+    asked.set(serving.videoId, height);
+    changed.add(serving.videoId);
 
-        // Nothing to follow while nothing is playing. A stream that has not started is a
-        // problem of its own, and restarting the video over it would turn it into a loop.
-        if (!playingOurs()) return;
+    // The restart below looks like a new video to the preference, which would apply itself
+    // over the choice that caused it.
+    keepCurrentChoice();
+
+    const video = document.querySelector('video');
+    const at = video ? video.currentTime : 0;
+
+    note('choice', `quality ${quality} = ${height}p (serving ${serving.video.height}p)`);
+    console.log(`[nativePlayback] the viewer chose ${quality} (${height}p)`);
+    restart(serving.videoId, at);
+}
+
+/** What a quality is called in lines, from the list the player itself offers. */
+function heightOf(quality) {
+    try {
+        const match = (player().getAvailableQualityData() || [])
+            .filter((entry) => entry.quality === quality)[0];
+
+        return match ? parseInt(match.qualityLabel, 10) || null : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Starts the video again through the player's own API, at the moment it had reached.
+ *
+ * Nothing here touches the element. It is the player's, and reaching past it to change what
+ * it is playing is what leaves its controls out of step with the picture.
+ */
+function restart(videoId, at) {
+    try {
+        player().loadVideoById(videoId, at);
+    } catch (e) {
+        console.error(`[nativePlayback] could not restart the video: ${e.message}`);
+    }
+}
+
+/**
+ * The viewer picked an audio track from the player's own menu.
+ *
+ * The menu names it as it is shown — "French (FR)" — and what has to be fetched is a
+ * format. So the player is left to apply the choice and then asked what it is playing,
+ * which answers in the only terms that identify a format exactly.
+ */
+export function chooseAudioTrack() {
+    if (!serving || !playingOurs()) return;
+
+    setTimeout(() => {
+        if (!serving) return;
 
         const track = audioXtags();
-
-        // Sound only. The player's quality is its own adaptive choice, not the viewer's:
-        // with a source that never reports a network it settles wherever it likes and stays
-        // there, so comparing it against what is being served disagrees for ever and
-        // restarts the video every time it is asked.
-        const wrongSound = typeof track === 'string' && (serving.audio.xtags || '') !== track;
-        const change = wrongSound ? String(track) : null;
-
-        if (!change) { steady = null; reads = 0; return; }
-        if (change !== steady) { steady = change; reads = 1; return; }
-        if (++reads < STEADY_READS) return;
-        if (Date.now() - movedAt < COOLDOWN) return;
-
-        movedAt = Date.now();
-        steady = null;
-        reads = 0;
+        if (typeof track !== 'string' || track === (serving.audio.xtags || '')) return;
 
         changed.add(serving.videoId);
 
         const video = document.querySelector('video');
-        const at = video ? video.currentTime : 0;
+        note('choice', `audio ${JSON.stringify(track)} (serving ${JSON.stringify(serving.audio.xtags || '')})`);
+        console.log(`[nativePlayback] the viewer chose the audio track ${JSON.stringify(track)}`);
+        restart(serving.videoId, video ? video.currentTime : 0);
+    }, AFTER_CHOOSING);
+}
 
-        console.log(`[nativePlayback] the viewer changed the audio track to ${JSON.stringify(track)}`);
+// How long to keep asking the player what it is playing, and how often. It answers within
+// a moment of building itself; a video where it never does is one where the response's own
+// default is the best anyone knows.
+const RECONCILE_FOR = 6000;
+const RECONCILE_EVERY = 250;
 
-        // The player's own way of starting a video again. It rebuilds its source as it
-        // does, which is when it asks for an address and gets the new stream.
-        try {
-            player().loadVideoById(serving.videoId, at);
-        } catch (e) {
-            console.error(`[nativePlayback] could not restart the video: ${e.message}`);
-        }
-    }, WATCH_EVERY);
+// Videos already checked against the player's answer. A track it names that cannot be
+// served would otherwise be asked for, missed, and asked for again for as long as it plays.
+const reconciled = new Set();
+
+/**
+ * Puts the sound right once the player can say what it means to play.
+ *
+ * The stream is opened from the response, which knows the video's default track but not the
+ * viewer's standing preference for a dub, nor whether stable volume or voice boost is on.
+ * The player knows all three, a moment later. Once per video: the restart is the same one a
+ * menu choice causes, and one of those near the start is a flicker where a stream of them
+ * would be unwatchable.
+ */
+function reconcileAudio(videoId) {
+    const deadline = Date.now() + RECONCILE_FOR;
+
+    const look = () => {
+        if (reconciled.has(videoId)) return;
+        if (!serving || serving.videoId !== videoId) return;
+        if (Date.now() > deadline) return;
+
+        // Asked too early it answers for the video before this one, so the player has to
+        // agree it is on this one and to have our stream on the element.
+        if (!playingOurs() || playerVideo() !== videoId) return void setTimeout(look, RECONCILE_EVERY);
+
+        const track = audioXtags();
+        if (typeof track !== 'string') return void setTimeout(look, RECONCILE_EVERY);
+
+        reconciled.add(videoId);
+        if (track === (serving.audio.xtags || '')) return;
+
+        changed.add(videoId);
+
+        const video = document.querySelector('video');
+        note('audio', `the player wants ${JSON.stringify(track)}, serving `
+            + `${JSON.stringify(serving.audio.xtags || '')}; opening again`);
+
+        restart(videoId, video ? video.currentTime : 0);
+    };
+
+    setTimeout(look, RECONCILE_EVERY);
 }
 
 /** Everything but this one is media nobody is watching, still being fetched. */
@@ -175,34 +326,117 @@ function sessionFrom(response) {
     };
 }
 
-/** Whether this is a response the picture can be taken over for. */
+/**
+ * Whether anyone is signed in, when the page will say.
+ *
+ * Recorded beside a response that cannot be served, not because it is known to be the
+ * cause — the enhanced player has worked with this reading false — but because it is one
+ * of the few things about the client that can be read at that moment and compared later.
+ */
+function signedIn() {
+    try {
+        return window.ytcfg.data_.LOGGED_IN;
+    } catch (e) {
+        return undefined;
+    }
+}
+
+/**
+ * Whether this is a response the picture can be taken over for.
+ *
+ * YouTube sometimes offers a video only as transcoded-on-the-fly formats, which carry no
+ * segment index — and the index is what the whole manifest is written from. Recognising
+ * that here rather than finding out from the bytes is the difference between the page
+ * playing the video and the viewer watching nothing for as long as the service waits.
+ */
 function playable(request) {
     if (!request.videoId || !request.ustreamerConfig) return false;
     if (!request.formats.length) return false;
 
     // Live reports no length and has no fixed segment index, so there is nothing to
     // describe and nothing to serve.
-    return request.durationMs > 0;
+    if (!(request.durationMs > 0)) return false;
+
+    return request.formats.some((format) => /^video\/mp4/.test(format.mimeType || '')
+        && format.height
+        && format.type !== 'FORMAT_STREAM_TYPE_OTF');
 }
 
-/** The audio track the player is playing, which is the viewer's answer and not a guess. */
+/**
+ * The audio track the player is playing, as the tag that identifies which format it is.
+ *
+ * Not from the track's own `xtags`, which is empty on every one of them. What tells a
+ * dubbed track from the original is its id — `itag;xtags` — and the itag there names the
+ * track's WebM form while the tag itself is the same one the MP4 formats carry.
+ */
 function audioXtags() {
     try {
         const track = player().getAudioTrack();
-        return track && typeof track.xtags === 'string' ? track.xtags : undefined;
+        if (!track) return undefined;
+
+        if (typeof track.xtags === 'string' && track.xtags) return track.xtags;
+
+        const id = String(track.id || '');
+        const tag = id.indexOf(';');
+
+        // A video with one track says `und` and has nothing to distinguish.
+        return tag === -1 ? undefined : id.slice(tag + 1);
     } catch (e) {
         return undefined;
     }
 }
 
+/** The bytes of an xtags tag, whose keys are plain text inside it. */
+function tagText(xtags) {
+    try {
+        const base64 = String(xtags).replace(/-/g, '+').replace(/_/g, '/');
+        return atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4));
+    } catch (e) {
+        return '';
+    }
+}
+
+// A tag holds its keys length-prefixed, so this matches the key itself rather than the two
+// letters appearing anywhere in the language or the content type.
+const ADJUSTED = /\x03drc|\x02vb/;
+
+/**
+ * The tag of the track YouTube marks as this video's own default, read from the response.
+ *
+ * The player cannot be asked yet. Its response arrives before it has built anything, so
+ * `getAudioTrack()` answers nothing, and without this the choice falls through to the
+ * highest bitrate — which on a video with dubs is a dub, in whichever language happens to
+ * be encoded fattest.
+ *
+ * Several formats carry the default mark, differing only in whether the dynamic range is
+ * compressed or the voice lifted. Those are the viewer's settings rather than the video's,
+ * and nothing has said yet whether they are on, so the untouched one is taken and anything
+ * else is put right once the player answers for itself.
+ */
+function defaultXtags(formats) {
+    const defaults = (formats || []).filter((format) => format.audioTrack
+        && format.audioTrack.audioIsDefault
+        && typeof format.xtags === 'string');
+
+    if (!defaults.length) return undefined;
+
+    const plain = defaults.filter((format) => !ADJUSTED.test(tagText(format.xtags)));
+    return (plain[0] || defaults[0]).xtags;
+}
+
+/** Which sound to fetch: what the player says, or failing that what the video says. */
+function wantedAudio(formats) {
+    const said = audioXtags();
+    return typeof said === 'string' ? said : defaultXtags(formats);
+}
+
 function openSession(request) {
-    return fetch(`${SERVICE}/open`, {
+    return fetch(`${service()}/open`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // TODO: follow the quality the viewer picked; the menu does not reach this yet.
         body: JSON.stringify(Object.assign({
-            maxHeight: 2160,
-            audioXtags: audioXtags(),
+            maxHeight: asked.get(request.videoId) || preferredHeight(),
+            audioXtags: wantedAudio(request.formats),
             fresh: changed.delete(request.videoId)
         }, request))
     })
@@ -211,26 +445,121 @@ function openSession(request) {
             if (!answer.ok) throw new Error(answer.error);
 
             const video = answer.session.video;
-            console.log(`[nativePlayback] ${answer.session.id}: itag ${video.itag} `
-                + `${video.width}x${video.height}@${video.fps}, ${video.segments} segments`);
+            const audio = answer.session.audio;
+
+            note('stream', `open ${answer.session.id}: video itag ${video.itag} `
+                + `${video.width}x${video.height}@${video.fps}, audio itag ${audio.itag} `
+                + `xtags ${JSON.stringify(audio.xtags)}, ${video.segments} segments`);
 
             return answer.session;
         });
 }
 
+// What the video is meant to run at, which is not what the element says during a reload:
+// the player resets the rate to normal while it loads and the choice is put back after.
+//
+// The set's own decoder plays our stream silently at anything but normal speed — through
+// MediaSource it does not — so this decides which pipeline the video can use, and it has
+// to be known before the element has a rate to read.
+let intendedRate = 1;
+
+// The video the last response was for, so a genuinely different one can be told from this
+// one being loaded again. Only the former starts at the speed YouTube would start it at.
+let lastVideo = null;
+
+/** The speed a video begins at: normal, unless the viewer asked for the last one to carry. */
+const startingRate = () => (configRead('rememberPlaybackSpeed')
+    ? Number(configRead('videoSpeed')) || 1
+    : 1);
+
+/**
+ * The viewer changed the speed.
+ *
+ * Only crossing normal speed matters — 1.5 to 2 stays where it is — and crossing it means
+ * the video has to be loaded again, because which pipeline is feeding the decoder is
+ * settled when the player builds its source and cannot be changed under it.
+ */
+export function noteSpeed(value) {
+    const now = Number(value) > 0 ? Number(value) : 1;
+    if (now === intendedRate) return;
+
+    const was = intendedRate;
+    intendedRate = now;
+
+    if ((was === 1) === (now === 1)) return;
+    if (!configRead('bypassMediaSource')) return;
+
+    const videoId = attachingTo();
+    if (!videoId) return;
+
+    const video = document.querySelector('video');
+    const at = video ? video.currentTime : 0;
+
+    note('speed', `${was}x to ${now}x: ${now === 1 ? 'taking the picture back' : 'handing it to the page'}`);
+
+    // Leaving ours: the download is no longer feeding anything, and left running it
+    // competes with the player for the same network.
+    if (now !== 1) {
+        const held = opened.get(videoId);
+        opened.delete(videoId);
+        handedAt.delete(videoId);
+        if (serving && serving.videoId === videoId) serving = null;
+        if (held) closeSession(held);
+    }
+
+    // The player starts every load at normal speed, so without this the choice that caused
+    // the load would be lost by the load.
+    if (video) {
+        const apply = () => {
+            video.removeEventListener('canplay', apply);
+            video.playbackRate = now;
+        };
+        video.addEventListener('canplay', apply);
+    }
+
+    restart(videoId, at);
+}
+
 // Read at each decision rather than once, so the setting takes effect on the next video
 // instead of the next restart.
-const wanted = () => configRead('bypassMediaSource');
+const wanted = () => configRead('bypassMediaSource') && intendedRate === 1;
 
 if (typeof window !== 'undefined') {
     // Registered before the player has parsed anything. The response naming a video is what
     // starts a stream for it, and it arrives just before the player asks for a URL — which
     // is why the two can be joined without the page playing anything in between.
     onResponse('nativePlayback', ['streamingData'], (response) => {
+        const request = sessionFrom(response);
+        if (!playable(request)) {
+            if (request.videoId && request.formats.length) {
+                note('player', `nothing to serve for ${request.videoId}: `
+                    + `${request.formats.length} formats, none of them an indexed MP4 picture`
+                    + ` (signed in: ${signedIn()})`);
+            }
+            return;
+        }
+
+        // Before `wanted` is consulted: a video the viewer has not reached yet cannot be
+        // ruled out by the speed they left the last one at.
+        if (request.videoId !== lastVideo) {
+            lastVideo = request.videoId;
+            intendedRate = startingRate();
+        }
+
         if (!wanted()) return;
 
-        const request = sessionFrom(response);
-        if (!playable(request) || opened.has(request.videoId)) return;
+        // The page loads responses for what it might play next, and the same one can arrive
+        // twice, so a video already being served is normally nothing to act on. Unless the
+        // viewer changed something: then this response is the reload that change asked for,
+        // and ignoring it leaves them watching the stream they just changed away from.
+        if (opened.has(request.videoId) && !changed.has(request.videoId)) return;
+
+        // Opened afresh rather than reopened for a change the viewer made: whatever rung
+        // they picked last time belongs to that watching, not to this one.
+        if (!changed.has(request.videoId)) {
+            asked.delete(request.videoId);
+            reconciled.delete(request.videoId);
+        }
 
         // One at a time per video: the player asks again whenever it restarts, and a stream
         // left over from the previous attempt goes on downloading beside its replacement.
@@ -240,7 +569,12 @@ if (typeof window !== 'undefined') {
         // Marked before it is open, so a URL asked for in the meantime is still ours to
         // answer — the service holds that request until the stream behind it is ready.
         opened.set(request.videoId, null);
-        attempts.delete(request.videoId);
+        handedAt.delete(request.videoId);
+
+        note('player', `response for ${request.videoId}: ${request.formats.length} formats, `
+            + `${Math.round(request.durationMs / 1000)}s, asked ${asked.get(request.videoId) || 'none'}, `
+            + `player track ${JSON.stringify(audioXtags())}, `
+            + `default ${JSON.stringify(defaultXtags(request.formats))}`);
 
         openSession(request).then(
             (session) => {
@@ -248,10 +582,11 @@ if (typeof window !== 'undefined') {
 
                 opened.set(request.videoId, session.id);
                 serving = { videoId: request.videoId, video: session.video, audio: session.audio };
-                watch();
+                reconcileAudio(request.videoId);
                 return null;
             },
             (failure) => {
+                note('stream', `open failed for ${request.videoId}: ${failure.message}`);
                 console.error(`[nativePlayback] ${request.videoId}: ${failure.message}`);
 
                 // The URL already handed out will answer "no stream here". Forgetting the
@@ -272,16 +607,24 @@ if (typeof window !== 'undefined') {
 
         // Playing already means the player is re-attaching for its own reasons, not because
         // what it was given failed.
-        const tried = playingOurs() ? 0 : (attempts.get(videoId) || 0) + 1;
-        attempts.set(videoId, tried);
+        if (playingOurs()) {
+            handedAt.delete(videoId);
+        } else if (!handedAt.has(videoId)) {
+            handedAt.set(videoId, Date.now());
+            clockStopsOnPlay(videoId);
+        }
 
-        if (tried > MOST_ATTEMPTS) {
-            console.error(`[nativePlayback] ${videoId}: giving up after ${MOST_ATTEMPTS} attempts; playing the ordinary way`);
+        const waiting = handedAt.has(videoId) ? Date.now() - handedAt.get(videoId) : 0;
+
+        if (waiting > GIVE_UP_AFTER) {
+            note('stream', `gave up on ${videoId} after ${Math.round(waiting / 1000)}s; the page plays it`);
+            console.error(`[nativePlayback] ${videoId}: nothing played in ${Math.round(waiting / 1000)}s; playing the ordinary way`);
 
             // Stopped, not just unused. The player has the picture back and a download still
             // running at full speed is competing with it for the same network.
             const held = opened.get(videoId);
             opened.delete(videoId);
+            handedAt.delete(videoId);
             if (serving && serving.videoId === videoId) serving = null;
             if (held) closeSession(held);
 
@@ -291,6 +634,10 @@ if (typeof window !== 'undefined') {
         // The player is committing to this one, so everything else being held for it is not
         // going to be watched.
         keepOnly(videoId);
-        return manifestFor(videoId);
+
+        const address = addressFor(videoId);
+        note('element', `handed ${videoId} ${address.slice(address.indexOf('/dash/'))}`);
+
+        return address;
     });
 }

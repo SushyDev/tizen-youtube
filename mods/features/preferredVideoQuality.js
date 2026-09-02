@@ -41,6 +41,22 @@ class PreferredQualityHandler {
     // player's own menu was overridden again within the tick.
     #settled = false;
 
+    // Set when the video is about to be started again on purpose, carrying a quality the
+    // viewer picked. The restart looks exactly like a new video from here — same id, time
+    // back at the start — and applying the preference to it would undo the choice that
+    // caused it.
+    #keepChoice = false;
+
+    keepCurrentChoice() {
+        // Both halves matter. Standing down now stops the preference, which retries for a
+        // few seconds after a video starts, from pushing back over a choice made while it
+        // was still trying; the flag stops the restart that follows from undoing that.
+        this.#keepChoice = true;
+        this.#settled = true;
+        this.#attempts = 0;
+        this.#target = null;
+    }
+
     constructor() {
         this.init();
     }
@@ -109,7 +125,14 @@ class PreferredQualityHandler {
         if (!this.#player) return;
 
         try {
-            if (this.#startedOver()) this.#forget();
+            if (this.#startedOver()) {
+                if (this.#keepChoice) {
+                    this.#keepChoice = false;
+                    this.#settled = true;
+                } else {
+                    this.#forget();
+                }
+            }
 
             const preference = configRead(CONFIG_KEYS.QUALITY);
             if (!preference || preference === 'auto') return;
@@ -148,4 +171,16 @@ class PreferredQualityHandler {
     };
 }
 
-window.preferredVideoQualityHandler = new PreferredQualityHandler();
+// Off the television this file is only imported for what it exports, and there is no page
+// for a handler to watch.
+if (typeof window !== 'undefined') window.preferredVideoQualityHandler = new PreferredQualityHandler();
+
+/**
+ * Leaves the quality alone through the next restart.
+ *
+ * Starting a video again to change what is being fetched looks like a new video from here,
+ * and the preference would be applied over the very choice that asked for the restart.
+ */
+export function keepCurrentChoice() {
+    if (typeof window !== 'undefined') window.preferredVideoQualityHandler.keepCurrentChoice();
+}

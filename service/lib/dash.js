@@ -8,6 +8,7 @@
 const express = require('express');
 const { createReadStream } = require('fs');
 
+const journal = require('./journal.js');
 const sabr = require('./sabr.js');
 const stream = require('./stream.js');
 
@@ -25,6 +26,34 @@ const escape = (text) => String(text)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
+ * The segment timeline, with runs of equal-length segments written once.
+ *
+ * A segment element each meant a 2.5-hour video arrived as some three thousand of them
+ * across the two tracks, and the set has to parse the whole thing before it can show a
+ * frame — which is most of the black screen between pressing play and seeing anything.
+ * YouTube cuts at a constant cadence, so nearly all of them collapse into a handful of
+ * runs. `r` is the number of *additional* repeats, and this stays exact: a segment whose
+ * length differs starts a new run rather than being rounded into the last one.
+ */
+function timelineOf(index) {
+    const runs = [];
+
+    index.forEach((segment, at) => {
+        const last = runs[runs.length - 1];
+        if (last && segment.durationMs === last.d) {
+            last.r += 1;
+            return;
+        }
+
+        runs.push({ d: segment.durationMs, r: 0, t: at === 0 ? segment.startMs : null });
+    });
+
+    return runs
+        .map((run) => `<S${run.t === null ? '' : ` t="${run.t}"`} d="${run.d}"${run.r ? ` r="${run.r}"` : ''}/>`)
+        .join('');
+}
+
+/**
  * The manifest, describing every segment of both tracks. It is written once and does not
  * change: the file's own index says how long each segment runs, so nothing about it depends
  * on how much has been downloaded.
@@ -32,9 +61,7 @@ const escape = (text) => String(text)
 function manifest(session) {
     const set = (track, attributes, extra) => {
         const format = track.format;
-        const timeline = track.index
-            .map((segment, at) => (at === 0 ? `<S t="${segment.startMs}" d="${segment.durationMs}"/>` : `<S d="${segment.durationMs}"/>`))
-            .join('');
+        const timeline = timelineOf(track.index);
 
         return `
         <AdaptationSet contentType="${track.kind}" mimeType="${escape(typeOf(format.mimeType))}" startWithSAP="1" segmentAlignment="true">
@@ -228,7 +255,7 @@ function send(session, kind, number, res) {
             createReadStream(track.file(number)).pipe(res);
         },
         (error) => {
-            console.error(`[dash] ${session.id} ${kind} ${number}: ${error.message}`);
+            journal.service('segment', `${kind} ${number} refused: ${error.message}`);
             if (!res.headersSent) res.status(503).end();
         }
     );

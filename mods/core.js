@@ -21,6 +21,8 @@ import './features/moreSubtitles.js';
 import './features/preferredVideoQuality.js';
 import './features/playbackStats.js';  // frame counts where the renderer keeps none
 import './features/devBridge.js';      // readings out and evaluate in, while debugging
+import './youtube/playerRequest.js';    // ask for media that can be served
+import './dev/playerProbe.js';         // what was actually asked, after the repair
 import './features/nativePlayback.js';    // the picture, off MediaSource
 import './features/videoQueuing.js';
 import './features/enableFeatures.js';

@@ -4,6 +4,7 @@ import { openOptions, OPTIONS_ACTION } from '../ui/settingsOptions.js';
 import { openSpeedOptions } from '../ui/speedUI.js';
 import { showToast, buttonItem } from '../ui/ytUI.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
+import { chooseQuality, chooseAudioTrack, noteSpeed, startsAt } from '../features/nativePlayback.js';
 
 // YouTube routes everything through a single `resolveCommand` on one singleton, so
 // wrapping it is how this app's settings end up behaving exactly like YouTube's.
@@ -39,6 +40,10 @@ const ACTIONS = {
     SET_PLAYER_SPEED: (parameters) => {
         const video = document.querySelector('video');
         if (video) video.playbackRate = Number(parameters);
+
+        // The set plays our own stream silently at anything but normal speed, so the
+        // choice decides which pipeline the video has to be on.
+        noteSpeed(Number(parameters));
     },
 
     ENTER_MP: () => enterMiniPlayer(),
@@ -202,7 +207,63 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
+/**
+ * What the viewer settled on, which is not the same as what they moved over.
+ *
+ * Walking the quality list emits a setting for every rung the highlight passes, so acting
+ * on those alone follows the cursor rather than the choice — and lands on whichever rung
+ * the list happened to stop at. Confirming is what closes the menu, so the choice is the
+ * setting that arrives in the same batch as the signal to close it.
+ */
+const noteViewerChoice = (command) => {
+    const batch = command.commandExecutorCommand;
+    if (!batch || !Array.isArray(batch.commands)) return PASS;
+
+    const closes = batch.commands.some((one) =>
+        one.signalAction && one.signalAction.signal === 'POPUP_BACK');
+
+    if (!closes) return PASS;
+
+    batch.commands.forEach((one) => {
+        const settings = one.setClientSettingEndpoint;
+        if (!settings || !Array.isArray(settings.settingDatas)) return;
+
+        settings.settingDatas.forEach((setting) => {
+            const item = (setting.clientSettingEnum || {}).item;
+
+            if (item === 'PLAYBACK_QUALITY' && typeof setting.stringValue === 'string') {
+                try {
+                    const { quality } = JSON.parse(setting.stringValue);
+                    if (quality) chooseQuality(quality);
+                } catch (e) {
+                    // A shape this does not recognise is not a reason to swallow the command.
+                }
+                return;
+            }
+
+            // Any other playback setting: the audio track, stable volume, voice boost. Each
+            // is a different variant of the same sound, and telling them apart by name would
+            // mean guessing at names. Asking what changed costs nothing and answers all of
+            // them — it does nothing unless the format the player is on has actually moved.
+            if (typeof item === 'string' && item.indexOf('PLAYBACK_') === 0) chooseAudioTrack();
+        });
+    });
+
+    return PASS;
+};
+
+// Opening a part-watched video says where it is to resume. Knowing that before the element
+// is given an address is what stops the opening seconds playing before the seek lands.
+const noteStartTime = (command) => {
+    const watch = command.watchEndpoint;
+    if (watch && watch.videoId) startsAt(watch.videoId, Number(watch.startTimeSeconds) || 0);
+
+    return PASS;
+};
+
 const INTERPRETERS = [
+    noteViewerChoice,
+    noteStartTime,
     applyOurSettings,
     runCustomActions,
     dressPlaybackSettings,

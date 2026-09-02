@@ -96,6 +96,16 @@ const VIDEO = [
     { itag: 315, mimeType: 'video/webm; codecs="vp9"', height: 2160, fps: 60 }
 ];
 
+// A track named for a language is fetched as that language, not as the loudest on offer.
+const DUBBED = [
+    { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130000, xtags: 'lang-ja' },
+    { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 129000, xtags: 'lang-en' }
+];
+
+const english = stream.pick(DUBBED, 'audio', null, [], 'lang-en');
+check('the language the player names is the one fetched',
+    english && english.xtags === 'lang-en', english && `xtags ${english.xtags}`);
+
 // What the player says it is playing wins over anything inferred from its requests.
 const said = stream.pick(AUDIO.concat(VIDEO), 'audio', null, [{ itag: 140, xtags: '' }], 'CggKA2RyYxIBMQ');
 check('the track the player names is the one fetched',
@@ -120,6 +130,21 @@ check('the tallest mp4 picture is chosen',
     stream.pick(VIDEO.concat(AUDIO), 'video', 2160).itag === 401, 'wrong format');
 check('a ceiling is respected',
     stream.pick(VIDEO.concat(AUDIO), 'video', 1440).itag === 400, 'ignored the ceiling');
+
+// The same video is sometimes offered only as transcoded-on-the-fly formats, which carry
+// no segment index. Every manifest here is written from that index, so one of those is not
+// a format this can serve at any height.
+const OTF = [
+    { itag: 146, mimeType: 'video/mp4; codecs="avc1.640028"', height: 1080, fps: 30, type: 'FORMAT_STREAM_TYPE_OTF' },
+    { itag: 148, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130000, xtags: '', type: 'FORMAT_STREAM_TYPE_OTF' }
+];
+
+check('a transcoded-on-the-fly picture is not chosen',
+    stream.pick(OTF, 'video', 2160) === null, 'took a format with no index');
+check('transcoded-on-the-fly sound is not chosen',
+    stream.pick(OTF, 'audio', null, []) === null, 'took a format with no index');
+check('an indexed format is still chosen beside them',
+    stream.pick(OTF.concat(VIDEO), 'video', 2160).itag === 401, 'wrong format');
 
 // Seeking. Playback resumes where the viewer left off, so the very first segment asked for
 // is routinely one the stream has not reached — which has to move the stream, not wait.
@@ -163,16 +188,23 @@ check('both formats are named, which the restore requires',
 check('a claim cannot be made before both formats are known',
     stream.stateFor(seeking, new Map(), 3, 60000) === null, 'made one anyway');
 
-// Read-ahead opens up rather than running flat out from the first second.
+// Read-ahead opens up rather than running flat out from the first second. Written against
+// the constants rather than the numbers they happen to hold: the opening allowance is a
+// tuning decision — it was raised once already, to stop the decoder starting into an empty
+// pipe — and a test that pins the number fails on every such change without finding a bug.
 const ahead = new stream.Track('video', { itag: 1 }, dir);
 
+// The allowance while starting is the opening figure plus whatever is already behind.
 ahead.wanted = 1;
-ahead.next = 5;
+ahead.next = ahead.wanted + stream.READ_AHEAD_AT_FIRST + 1;
 check('the download holds back while playback is starting', ahead.satisfied, 'kept fetching');
 
-ahead.wanted = 9;
-ahead.next = 12;
-check('and opens up once it is under way', !ahead.satisfied, 'stopped too early');
+ahead.next = ahead.wanted + stream.READ_AHEAD_AT_FIRST;
+check('and is still fetching before it has that much', !ahead.satisfied, 'stopped too early');
+
+ahead.wanted = stream.READ_AHEAD + 4;
+ahead.next = ahead.wanted + stream.READ_AHEAD - 1;
+check('and opens up to the full window once it is under way', !ahead.satisfied, 'stopped too early');
 
 // Seeking to the very start has nothing before it to claim, and must not be mistaken for a
 // position that cannot be named.
@@ -271,3 +303,92 @@ const sliced = (buffer, at) => {
     console.log(`\n${results.filter(Boolean).length}/${results.length} checks passed.`);
     process.exit(results.every(Boolean) ? 0 : 1);
 })();
+
+// The manifest the set has to parse before it can show a frame. YouTube cuts at a constant
+// cadence, so a long video collapses into a couple of runs — and a segment that breaks the
+// cadence has to start its own run rather than be rounded into the last one, or every
+// timestamp after it is wrong.
+const dash = require('../lib/dash.js');
+
+const evenly = Array.from({ length: 500 }, (_, at) => ({
+    number: at + 1, startMs: at * 5000, durationMs: 5000, start: 0, end: 1
+}));
+
+const format = { itag: 1, mimeType: 'video/mp4; codecs="av01"', width: 3840, height: 2160, fps: 60, bitrate: 1 };
+const asSession = (index) => ({
+    id: 'x', videoId: 'y', durationMs: 2500000,
+    tracks: { video: { kind: 'video', index, format }, audio: { kind: 'audio', index, format } }
+});
+
+const tidy = dash.manifest(asSession(evenly));
+check('a constant cadence collapses to one run per track',
+    (tidy.match(/<S /g) || []).length === 2, `${(tidy.match(/<S /g) || []).length} entries`);
+check('the run says how many more follow the first',
+    tidy.indexOf('r="499"') !== -1, 'repeat count missing or wrong');
+
+const ragged = [
+    { number: 1, startMs: 0, durationMs: 5000, start: 0, end: 1 },
+    { number: 2, startMs: 5000, durationMs: 5000, start: 0, end: 1 },
+    { number: 3, startMs: 10000, durationMs: 4200, start: 0, end: 1 },
+    { number: 4, startMs: 14200, durationMs: 5000, start: 0, end: 1 }
+];
+
+const mixed = dash.manifest(asSession(ragged));
+check('a segment that breaks the cadence starts its own run',
+    (mixed.match(/<S /g) || []).length === 6, `${(mixed.match(/<S /g) || []).length} entries`);
+check('and the odd length is stated exactly',
+    mixed.indexOf('d="4200"') !== -1, 'the odd duration was lost');
+check('only the first run carries a start time',
+    (mixed.match(/ t="/g) || []).length === 2, 'more than one start time per track');
+
+// Bit depth before height, above thirty frames a second. This set plays 2160p60 in eight
+// bits without dropping a frame and stalls for seconds on the same rung in ten, and some
+// videos offer nothing but ten-bit AV1 at the top.
+const TEN_BIT = [
+    { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 },
+    { itag: 700, mimeType: 'video/mp4; codecs="av01.0.12M.10"', height: 1440, fps: 60 },
+    { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
+];
+
+check('a rung with eight bits is taken over a taller one with ten',
+    stream.pick(TEN_BIT, 'video', 2160).itag === 299, 'took the ten-bit picture');
+check('eight bits at the top is still the tallest picture',
+    stream.pick(VIDEO.concat(AUDIO), 'video', 2160).itag === 401, 'stepped down needlessly');
+check('ten bits is fine below sixty frames a second',
+    stream.pick([{ itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 24 }],
+        'video', 2160).itag === 701, 'stepped down at 24fps');
+check('a longer codec string is read the same way',
+    stream.pick([
+        { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10.0.110.01.01.01.0"', height: 2160, fps: 60 },
+        { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
+    ], 'video', 2160).itag === 299, 'missed the depth field');
+check('nothing but ten-bit still plays rather than nothing at all',
+    stream.pick([{ itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 }],
+        'video', 2160).itag === 701, 'refused the only picture on offer');
+
+// At 2160p60 the MP4 ladder offers only ten-bit AV1, which this hardware stalls on, while
+// its VP9 path plays that size without dropping a frame — and VP9 is only ever in WebM.
+// This is the real ladder of a video that would not play.
+const REAL = [
+    { itag: 315, mimeType: 'video/webm; codecs="vp9"', height: 2160, fps: 60 },
+    { itag: 337, mimeType: 'video/webm; codecs="vp9.2"', height: 2160, fps: 60 },
+    { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 },
+    { itag: 308, mimeType: 'video/webm; codecs="vp9"', height: 1440, fps: 60 },
+    { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
+];
+
+check('webm carries the picture when mp4 has only ten bits at that size',
+    stream.pick(REAL, 'video', 2160).itag === 315, 'stepped down or took ten bits');
+check('vp9 profile 2 counts as ten bits like the rest',
+    stream.pick(REAL.filter((f) => f.itag !== 315), 'video', 2160).itag === 308,
+    'took the ten-bit webm');
+check('an eight-bit mp4 still wins an even tie',
+    stream.pick(REAL.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
+        'video', 2160).itag === 401, 'preferred webm needlessly');
+check('the long form of vp9 is read the same way',
+    stream.pick([
+        { itag: 1, mimeType: 'video/webm; codecs="vp09.02.51.10"', height: 2160, fps: 60 },
+        { itag: 2, mimeType: 'video/webm; codecs="vp09.00.51.08"', height: 1440, fps: 60 }
+    ], 'video', 2160).itag === 2, 'missed the depth in the long form');
+check('sound is still never taken from webm',
+    stream.pick(AUDIO.concat(REAL), 'audio', null, [{ itag: 251, xtags: '' }]).itag === 140, 'took the webm');

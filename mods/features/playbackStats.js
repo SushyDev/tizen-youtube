@@ -89,7 +89,18 @@ function framesNode() {
     return null;
 }
 
-function showRate(tally, wall) {
+/**
+ * Which pipeline is feeding the element.
+ *
+ * A stream served by this app comes from an address of its own; the player's own media
+ * arrives through MediaSource as a blob. Worth saying on the line, because the two look
+ * identical until you count frames.
+ */
+function pipelineOf(video) {
+    return String(video.currentSrc || '').indexOf('/dash/') !== -1 ? 'enhanced' : 'default';
+}
+
+function showRate(video, tally, wall) {
     if (!tally.rate) return;
 
     if (!tally.node || !tally.node.isConnected) {
@@ -106,7 +117,7 @@ function showRate(tally, wall) {
         tally.node.parentNode.insertBefore(tally.label, tally.node.nextSibling);
     }
 
-    tally.label.textContent = `  @ ${tally.rate.toFixed(2)} fps`;
+    tally.label.textContent = `  @ ${tally.rate.toFixed(2)} fps · ${pipelineOf(video)} player`;
 }
 
 /** The reported frame rate, re-read only on a size change: it moves with the rung. */
@@ -151,7 +162,7 @@ export function sample(video) {
     tally.lost += step.lost;
     frameRate(video, tally);
     measureRate(video, tally, current.wall);
-    showRate(tally, current.wall);
+    showRate(video, tally, current.wall);
 
     tally.previous = step.reseed ? null : current;
 }

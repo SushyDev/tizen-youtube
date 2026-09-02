@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build/build.js",
     "check:node4": "node build/check-node4.js dist/index.js",
-    "test": "node test/rewrite-parity.js && node test/routing.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js && node test/segments.js"
+    "test": "node test/rewrite-parity.js && node test/routing.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js && node test/segments.js && node test/webm.js"
   },
   "dependencies": {
     "@patrickkfkan/peer-dial": "^0.1.3",

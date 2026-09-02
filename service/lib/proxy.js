@@ -12,44 +12,7 @@ const https = require('https');
 const URL = require('url');
 const { readFileSync } = require('fs');
 
-const { Transform } = require('stream');
-
 const journal = require('./journal.js');
-const media = require('./stream.js');
-
-// What the page's own player is allowed while this app is serving the picture.
-//
-// It fetches a second copy of every video into a source buffer that keeps none of it, and
-// it has to go on fetching: a player that appends nothing decides its pipeline has died
-// and reloads the video every fifteen seconds. It does not have to have the line, though —
-// at 2160p60 its copy is as large as the one being watched, and the first segment of the
-// real stream cannot arrive until they have finished competing for the same connection.
-//
-// Slowed rather than refused, because a failed fetch is an error the player reacts to and
-// a slow one is just a network it adapts to.
-const SPARE_BYTES_PER_SECOND = 192 * 1024;
-
-/** Paces a response to roughly that rate, without buffering it. */
-function trickle() {
-    const started = Date.now();
-    let sent = 0;
-
-    return new Transform({
-        transform(chunk, encoding, done) {
-            sent += chunk.length;
-
-            const owed = (sent / SPARE_BYTES_PER_SECOND) * 1000;
-            const waited = Date.now() - started;
-
-            // Capped: a large chunk should slow the stream, not stall it for a minute.
-            const delay = Math.max(0, Math.min(owed - waited, 2000));
-            if (!delay) return done(null, chunk);
-
-            setTimeout(() => done(null, chunk), delay);
-            return undefined;
-        }
-    });
-}
 
 // DEV: on while this is being proven. Becomes a setting once it is.
 const ANONYMOUS_PLAYER = process.env.TUBE_SIGNED_IN_PLAYER !== '1';
@@ -294,9 +257,6 @@ function attachFallback(app) {
         // where the token has to be stripped.
         const isInnertube = req.path.indexOf('/youtubei/v1/') === 0;
 
-        // Media, which is the only thing large enough to be worth pacing.
-        const isMedia = targetUrl.indexOf('videoplayback') !== -1;
-
         // The two requests whose answers decide what this app can play.
         const isPlayerCall = req.path.indexOf('/youtubei/v1/player') === 0;
         const isNextCall = req.path.indexOf('/youtubei/v1/next') === 0;
@@ -368,10 +328,8 @@ function attachFallback(app) {
                 const isTextual = TEXTUAL.some((type) => contentType.indexOf(type) !== -1);
 
                 if (!isTextual) {
-                    if (!response.body) return res.end();
-
-                    if (isMedia && media.busy()) return response.body.pipe(trickle()).pipe(res);
-                    return response.body.pipe(res);
+                    if (response.body) return response.body.pipe(res);
+                    return res.end();
                 }
 
                 return response.text().then((text) => {

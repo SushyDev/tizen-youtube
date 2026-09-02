@@ -636,17 +636,6 @@ async function open(params) {
     return session;
 }
 
-/**
- * Whether this app is serving a picture at the moment.
- *
- * `read` is stamped every time a segment is asked for, so a session that the player is
- * actually pulling from is recent and one it has moved on from is not.
- */
-function busy() {
-    const now = Date.now();
-    return [...sessions.values()].some((session) => session.ready && now - session.read < 15000);
-}
-
 /** Everything needed to send one segment, once it is on disk. */
 function locate(track, number) {
     if (number === 0) return track.init;
@@ -719,5 +708,5 @@ async function clean() {
 module.exports = {
     HEAD_BYTES, IDLE_TIMEOUT, KEEP_BEHIND, MEDIA_DIR, READ_AHEAD, READ_AHEAD_AT_FIRST,
     SEGMENT_WAIT, SWEEP_INTERVAL, Track,
-    awaitVideo, busy, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
+    awaitVideo, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
 };

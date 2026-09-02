@@ -21,9 +21,13 @@ const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : ht
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
+const sabr = require('./sabr.js');
 
-const PROXY_PREFIX = `http://localhost:${ports.PROXY}/cors-bypass/`;
-const LOCAL_ORIGIN = `http://localhost:${ports.PROXY}`;
+// The set reaches the service on loopback. TUBE_PROXY_HOST points it at another machine
+// instead, which is how the proxy's cost can be taken off the television entirely.
+const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
+const PROXY_PREFIX = `http://${PROXY_HOST}:${ports.PROXY}/cors-bypass/`;
+const LOCAL_ORIGIN = `http://${PROXY_HOST}:${ports.PROXY}`;
 
 // Development only. youtube.com/tv decides from the user agent whether the caller is a
 // TV, so the proxy presents as one upstream and tells the page to report the same.
@@ -165,6 +169,16 @@ function create(platformVersion) {
 }
 
 // Must be called after every other route is registered.
+/** Reads a request body into memory. Only used for the requests capture asks for. */
+function collect(req) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', () => resolve(Buffer.concat(chunks)));
+        req.on('error', reject);
+    });
+}
+
 function attachFallback(app) {
     app.all('*', (req, res) => {
         const isBypass = req.path.indexOf('/cors-bypass/') === 0;
@@ -197,13 +211,19 @@ function attachFallback(app) {
 
         const hasBody = ['POST', 'PUT', 'PATCH'].indexOf(req.method) !== -1;
 
-        fetch(targetUrl, {
+        // Held rather than streamed: a SABR request is a couple of kilobytes, and reading
+        // it is how this service learns the session the page opened.
+        const body = hasBody && sabr.observed.wants(req.method, targetUrl)
+            ? collect(req).then((buffer) => { sabr.observed.note(targetUrl, buffer); return buffer; })
+            : Promise.resolve(hasBody ? req : undefined);
+
+        body.then((payload) => fetch(targetUrl, {
             method: req.method,
             headers,
-            body: hasBody ? req : undefined,
+            body: payload,
             redirect: 'manual',
             agent: agentFor(targetUrl)
-        })
+        }))
             .then((response) => {
                 res.status(req.method === 'OPTIONS' ? 200 : response.status);
 

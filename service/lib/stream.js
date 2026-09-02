@@ -1,0 +1,628 @@
+'use strict';
+
+// Fetches a video's media over SABR a segment at a time, keeping only what is near the
+// playhead, so a twelve-hour video costs the same disk as a three-minute one. The segment
+// index in YouTube's initialization segment describes the whole file before any of it has
+// been fetched, which is what the manifest and the cutting are both built on.
+
+const { mkdir, rm, writeFile } = require('fs/promises');
+const { join } = require('path');
+
+const mp4 = require('./mp4.js');
+const sabr = require('./sabr.js');
+
+// On a TV this is the app's own data directory. Media is large and never leaves it.
+const MEDIA_DIR = process.env.TUBE_MEDIA_DIR || '/home/owner/share/tube/media';
+
+// A segment the player asks for that has not arrived is waited for, not refused: the
+// download runs faster than playback, so this is a stall rather than a failure.
+const SEGMENT_WAIT = 30000;
+
+// How far ahead of what the player has asked for the download may get. Roughly a minute of
+// media: enough that a slow patch is not felt, small enough that the set is not writing
+// hundreds of megabytes while it decodes 2160p60.
+const READ_AHEAD = 10;
+
+// What it is allowed to get ahead by at the very beginning. Without this the download runs
+// flat out for the first ten seconds — saturating the link and writing several megabytes a
+// second — which is exactly when the decoder is starting on 2160p60 and when frames get
+// dropped. It opens up as playback settles.
+const READ_AHEAD_AT_FIRST = 3;
+
+// Segments this far behind the player are deleted. It only returns to them by seeking, and
+// seeking fetches again.
+const KEEP_BEHIND = 3;
+
+// Nothing has asked this session for a segment in this long, so nobody is watching it.
+const IDLE_TIMEOUT = 5 * 60 * 1000;
+const SWEEP_INTERVAL = 60 * 1000;
+
+// The initialization segment is ftyp, moov and sidx together, and until all three have
+// arrived there is nothing to parse.
+const HEAD_BYTES = 128 * 1024;
+
+// A container the platform's own decoder path opens from a plain URL. Everything else in
+// the response is WebM, which it does not.
+const MP4 = /^(video|audio)\/mp4/;
+
+const sessions = new Map();
+
+/** One track being fetched, a segment at a time. */
+class Track {
+    constructor(kind, format, dir) {
+        this.kind = kind;
+        this.format = format;
+        this.dir = dir;
+
+        this.index = null;       // every segment in the file, from the segment index
+        this.have = new Set();   // segment numbers currently on disk
+        this.waiting = new Map();
+
+        this.wanted = 0;         // the furthest segment the player has asked for
+        this.next = 0;           // the segment being cut out of the stream
+        this.from = 0;           // where the stream running now began
+        this.restartAt = null;   // where the download is to begin again
+        this.stopped = false;
+        this.failure = null;
+    }
+
+    /**
+     * Asks the download to begin again at a segment. Playback starts wherever it was left
+     * off and can be sent anywhere by a seek, while a stream only ever runs forwards from
+     * where it began — so the only way to serve a segment it has passed, or one far beyond
+     * it, is to start another one there.
+     */
+    seekTo(number) {
+        if (this.restartAt === number) return;
+
+        this.restartAt = number;
+        if (this.abort) {
+            try { this.abort(); } catch (e) { /* already stopped */ }
+        }
+    }
+
+    /** Whether a segment will arrive on its own before long, or needs the stream moved. */
+    reachable(number) {
+        return number >= this.next && number <= this.next + READ_AHEAD;
+    }
+
+    file(number) {
+        return join(this.dir, number === 0 ? 'init.mp4' : `${number}.m4s`);
+    }
+
+    /** Resolves once a segment is on disk, fetching it from elsewhere in the file if need be. */
+    reach(number) {
+        if (this.have.has(number)) return Promise.resolve();
+        if (this.failure) return Promise.reject(this.failure);
+
+        // Behind the stream, or so far ahead that waiting for it to arrive in order would
+        // be a stall rather than a wait.
+        if (number > 0 && this.index && !this.reachable(number)) this.seekTo(number);
+
+        return new Promise((resolve, reject) => {
+            const waiters = this.waiting.get(number) || [];
+            const timer = setTimeout(() => {
+                this.waiting.delete(number);
+                reject(new Error(`${this.kind} segment ${number} did not arrive in time`));
+            }, SEGMENT_WAIT);
+
+            waiters.push({ resolve, reject, timer });
+            this.waiting.set(number, waiters);
+        });
+    }
+
+    arrived(number) {
+        this.have.add(number);
+
+        (this.waiting.get(number) || []).forEach((waiter) => {
+            clearTimeout(waiter.timer);
+            waiter.resolve();
+        });
+        this.waiting.delete(number);
+    }
+
+    /** Nothing more is coming; everyone still waiting is told rather than left to time out. */
+    broke(error) {
+        this.failure = error;
+
+        this.waiting.forEach((waiters) => waiters.forEach((waiter) => {
+            clearTimeout(waiter.timer);
+            waiter.reject(error);
+        }));
+        this.waiting.clear();
+    }
+
+    /**
+     * Where the player has reached, which decides what is fetched next and what is dropped.
+     * It follows the player rather than only rising: a seek backwards moves it back, and a
+     * mark that only went up would have everything ahead of the old position deleted as
+     * fast as it was written.
+     */
+    want(number) {
+        this.wanted = number;
+    }
+
+    /**
+     * Where read-ahead is measured from: the player's position, or the point the stream was
+     * started at while the player has yet to ask for anything.
+     *
+     * Without the second, a stream that begins partway through a video looks like it is
+     * already far ahead of a player sitting at zero, and stops before it has fetched the
+     * segment that player is waiting for.
+     */
+    get behind() {
+        return Math.max(this.wanted, this.from ? this.from - 1 : 0);
+    }
+
+    /** Whether the download is far enough ahead to stop for a while. */
+    get satisfied() {
+        // Measured from where the download has reached, not from the highest segment ever
+        // held: after a seek backwards the old high numbers are still on disk and would say
+        // the download is far ahead of a player that has gone back behind it.
+        const allowed = Math.min(READ_AHEAD, READ_AHEAD_AT_FIRST + this.behind);
+        return this.next - this.behind >= allowed;
+    }
+
+    /**
+     * Keeps a window around the player and drops the rest. Behind it is what has been
+     * watched; beyond it is what a seek left stranded, downloaded for a position the player
+     * has since moved away from. The initialization segment always stays.
+     */
+    forgetBehind() {
+        const oldest = this.wanted - KEEP_BEHIND;
+
+        const gone = [...this.have].filter((number) =>
+            number > 0 && (number < oldest || number > this.next));
+
+        gone.forEach((number) => this.have.delete(number));
+
+        return Promise.all(gone.map((number) => rm(this.file(number), { force: true })
+            .catch(() => { /* already gone */ })));
+    }
+}
+
+/**
+ * The MP4 track to fetch: the tallest picture at or below a ceiling, and for sound whatever
+ * the page's own player chose.
+ *
+ * Sound is not ours to choose. The same itag appears more than once — a dubbed track, or
+ * the same audio with its dynamic range compressed — and which one the viewer is meant to
+ * hear was decided by YouTube, not by which has the higher bitrate.
+ */
+function pick(formats, kind, maxHeight, chosen, xtags) {
+    const wanted = formats
+        .filter((format) => MP4.test(format.mimeType || ''))
+        .filter((format) => (kind === 'video' ? !!format.height : !format.height));
+
+    // Sound is never ours to choose. The player says which track it is playing — the
+    // language, and whether the dynamic range is compressed — and `xtags` names it exactly.
+    // An empty one is the default track, so "not told" and "the default" are different
+    // answers and cannot share a test.
+    if (kind === 'audio') {
+        if (typeof xtags === 'string') {
+            const said = wanted.filter((format) => (format.xtags || '') === xtags);
+            if (said.length) return said[0];
+        }
+
+        // Falling back on what the player last asked the servers for, then on the best.
+        const asChosen = wanted.filter((format) => (chosen || []).some((one) =>
+            one.itag === format.itag && (one.xtags || '') === (format.xtags || '')));
+
+        return asChosen[0] || wanted.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0] || null;
+    }
+
+    // Picture is chosen by a ceiling, never by what the player last asked for. Before it has
+    // buffered anything it asks for a low rung and works upwards, so following that would
+    // take a viewer who chose 2160p straight back down.
+    return wanted
+        .filter((format) => !maxHeight || format.height <= maxHeight)
+        .sort((a, b) => (b.height - a.height) || ((b.fps || 30) - (a.fps || 30)))[0] || null;
+}
+
+/** Reads the file's own segment index, once enough of the head has arrived to hold it. */
+function readIndex(carry) {
+    const sidx = mp4.boxes(carry).filter((box) => box.type === 'sidx')[0];
+    if (!sidx) return null;
+
+    const index = mp4.segmentIndex(carry);
+    if (!index) return null;
+
+    return { init: { start: 0, end: sidx.end - 1 }, segments: index.segments };
+}
+
+/**
+ * What the stream has to be told it already holds for the server to continue from a given
+ * segment rather than from the beginning.
+ *
+ * The library only offers a position through a state meant for restoring an interrupted
+ * download, and its loop works the position out from the durations of the segments that
+ * state says are already there. The file's own index supplies them exactly, which is what
+ * makes the claim agree with the server's own idea of the same file.
+ */
+function stateFor(track, records, number, durationMs) {
+    const before = (track.index || []).filter((segment) => segment.number < number);
+    if (!before.length || records.size < 2) return null;
+
+    const headers = before.map((segment) => ({
+        sequenceNumber: segment.number,
+        durationMs: String(segment.durationMs),
+        startMs: String(segment.startMs),
+        timeRange: {
+            timescale: 1000,
+            startTicks: String(segment.startMs),
+            durationTicks: String(segment.durationMs)
+        }
+    }));
+
+    const mine = `${track.format.itag}:${track.format.xtags || ''}`;
+
+    return {
+        durationMs,
+        requestNumber: 0,
+        playerTimeMs: headers.reduce((total, header) => total + Number(header.durationMs), 0),
+        activeSabrContexts: [],
+        sabrContextUpdates: [],
+        cachedBufferedRanges: [],
+        initializedFormats: [...records.entries()].map(([key, metadata]) => ({
+            formatKey: key,
+            formatInitializationMetadata: metadata,
+            downloadedSegments: key === mine
+                ? headers.map((header) => [Number(header.sequenceNumber), {
+                    formatIdKey: key,
+                    segmentNumber: Number(header.sequenceNumber),
+                    durationMs: header.durationMs,
+                    mediaHeader: header,
+                    bufferedChunks: []
+                }])
+                : [],
+            lastMediaHeaders: key === mine ? headers : []
+        }))
+    };
+}
+
+/**
+ * Fills a track, cutting what SABR delivers back into the segments the file's index says it
+ * is made of. Only what has not been played and not yet been reached is on disk.
+ */
+async function fill(track, params, chosen, using) {
+    // Holds the download between requests. The stream reads one request fully before asking
+    // for the next, so waiting here is where read-ahead is decided.
+    const gate = () => new Promise((go) => {
+        const look = () => {
+            if (track.stopped || track.restartAt || !track.satisfied) return go();
+            setTimeout(look, 250);
+        };
+        look();
+    });
+
+    const follow = (using && using.follow) || sabr.follow;
+    const records = params.records || new Map();
+
+    for (;;) {
+        const from = track.restartAt || 0;
+        track.restartAt = null;
+
+        await run(from);
+
+        if (track.stopped || track.failure) break;
+
+        // Reaching the end of the file is not the end of the work. What was fetched is
+        // deleted as the viewer passes it, so watching the same video again — or seeking
+        // back into it — asks for parts of the file that are no longer here, and there has
+        // to be something left running to go and get them.
+        if (!track.restartAt) await asked(track);
+        if (track.stopped || track.failure) break;
+    }
+
+    if (!track.index) track.broke(new Error(`${track.kind} arrived without a segment index`));
+
+    /** One stream, from the beginning or from a segment, until it ends or is moved. */
+    async function run(from) {
+        const at = (track.index || []).filter((segment) => segment.number === from)[0];
+
+        // The first segment needs no state: there is nothing before it to claim, and a
+        // stream with no position given starts there anyway. Asking for one and finding it
+        // impossible to build is how seeking back to the start used to give up and leave
+        // the beginning of the video permanently unfetchable.
+        const first = track.index ? track.index[0].number : 1;
+        const positioned = Boolean(from && from > first);
+        const state = positioned ? stateFor(track, records, from, Number(params.durationMs)) : null;
+
+        // Naming a position takes both formats, and the other track may not have said what
+        // it is yet. Asked again in a moment rather than given up on: abandoning the seek
+        // leaves the player waiting for a segment that will now never be fetched.
+        if (positioned && !state) {
+            await new Promise((again) => setTimeout(again, 250));
+            track.restartAt = from;
+            return;
+        }
+
+        const following = await follow(Object.assign({}, params, { gate }), {
+            kind: track.kind,
+            videoFormat: chosen.video,
+            audioFormat: chosen.audio,
+            state,
+            onFormat: (key, metadata) => records.set(key, metadata)
+        });
+
+        track.abort = following.abort;
+
+        // Bytes that have arrived but do not yet complete a segment, kept as the pieces they
+        // arrived in. Joining on every chunk would copy a whole 4K segment hundreds of times.
+        let parts = [];
+        let held = 0;
+        let base = at ? at.start : 0;
+
+        track.next = from || 0;
+        track.from = from || 0;
+
+        // A stream that begins partway through still opens with the file's header. It is
+        // already on disk, and taking it for media would put every segment after it at the
+        // wrong offset.
+        let skipping = Boolean(from);
+
+        const take = (upTo) => {
+            const joined = Buffer.concat(parts, held);
+            const wanted = joined.subarray(0, upTo);
+
+            parts = joined.length > upTo ? [joined.subarray(upTo)] : [];
+            held = joined.length - wanted.length;
+
+            return wanted;
+        };
+
+        const cut = async () => {
+            while (track.index) {
+                if (skipping) {
+                    const boxes = mp4.boxes(Buffer.concat(parts, held));
+                    if (!boxes.length) return;
+                    if (boxes[0].type !== 'ftyp') { skipping = false; continue; }
+
+                    const header = track.init.end + 1;
+                    if (held < header) return;
+
+                    take(header);
+                    skipping = false;
+                    continue;
+                }
+
+                const segment = track.next === 0
+                    ? track.init
+                    : track.index.filter((entry) => entry.number === track.next)[0];
+
+                // Either past the end of the file, or the segment is not all here yet.
+                if (!segment || segment.end - base >= held) return;
+
+                if (segment.start !== base) {
+                    throw new Error(`${track.kind} segment ${track.next} starts at ${segment.start} but the stream is at ${base}`);
+                }
+
+                await writeFile(track.file(track.next), take(segment.end - base + 1));
+                track.arrived(track.next);
+
+                base = segment.end + 1;
+                track.next = track.next === 0 ? track.index[0].number : track.next + 1;
+
+                await track.forgetBehind();
+            }
+        };
+
+        try {
+            for (;;) {
+                const { done, value } = await following.reader.read();
+                if (done || track.stopped || track.restartAt) break;
+
+                parts.push(Buffer.from(value));
+                held += value.byteLength;
+
+                if (!track.index) {
+                    // Bounded rather than conditional: a first chunk larger than this would
+                    // mean the index is never looked for, and an unbounded search would
+                    // re-join a growing buffer on every chunk of a stream that has none.
+                    const read = readIndex(Buffer.concat(parts, held).subarray(0, HEAD_BYTES));
+                    if (read) {
+                        track.init = read.init;
+                        track.index = read.segments;
+                    } else if (held >= HEAD_BYTES) {
+                        throw new Error(`${track.kind} has no segment index in its first ${HEAD_BYTES} bytes`);
+                    }
+                }
+
+                if (track.index) await cut();
+            }
+        } catch (error) {
+            if (!track.stopped && !track.restartAt) track.broke(error);
+        }
+
+        if (track.abort) {
+            try { track.abort(); } catch (e) { /* already stopped */ }
+        }
+    }
+}
+
+/** Waits until something asks this track to fetch from somewhere, or it is shut down. */
+function asked(track) {
+    return new Promise((resolve) => {
+        const look = () => {
+            if (track.stopped || track.failure || track.restartAt) return resolve();
+            setTimeout(look, 250);
+        };
+
+        look();
+    });
+}
+
+/** Waits for a track to have read its own index, which is all playback needs to start. */
+function indexed(track) {
+    return new Promise((resolve, reject) => {
+        const started = Date.now();
+
+        const look = () => {
+            if (track.index) return resolve(track);
+            if (track.failure) return reject(track.failure);
+            if (Date.now() - started > SEGMENT_WAIT) {
+                return reject(new Error(`${track.kind} never sent its segment index`));
+            }
+            setTimeout(look, 50);
+        };
+
+        look();
+    });
+}
+
+const span = (index) => index[index.length - 1].startMs + index[index.length - 1].durationMs;
+
+/**
+ * Starts both tracks and waits only for their indexes — a few kilobytes each — so playback
+ * can begin against a manifest that already describes the whole video.
+ */
+async function open(params) {
+    if (!Array.isArray(params.formats) || !params.formats.length) throw new Error('no formats');
+
+    // The page's own request is where the streaming url and the PO token come from, and it
+    // has not necessarily been made yet. Held onto rather than looked up again per track:
+    // the page goes on making requests for other videos while this one opens.
+    //
+    // `fresh` is set only when the viewer changed something: what they chose is in the
+    // request the player has yet to make, and the one before it names the old choice and
+    // would match just as well. Waiting for a new one on an ordinary open would mean
+    // waiting for a request the player has no reason to send.
+    const since = params.fresh ? [...sessions.values()]
+        .filter((one) => one.videoId === params.videoId && one.ready)
+        .reduce((latest, one) => Math.max(latest, one.at), 0) : 0;
+
+    const taken = await sabr.awaitSession(params.ustreamerConfig, null, since || undefined);
+
+    const chosen = {
+        video: pick(params.formats, 'video', params.maxHeight),
+        audio: pick(params.formats, 'audio', null, taken.selected, params.audioXtags)
+    };
+
+    if (!chosen.video) throw new Error('this response offers no MP4 video track');
+    if (!chosen.audio) throw new Error('this response offers no MP4 audio track');
+
+    // Unique per stream rather than per video: changing quality or audio track opens
+    // another one for the same video, and the one being replaced has to stay servable until
+    // the page has moved across to its successor.
+    const id = [params.videoId || 'video', chosen.video.itag, Date.now().toString(36)].join('-');
+
+    const tracks = {};
+
+    for (const kind of ['video', 'audio']) {
+        const dir = join(MEDIA_DIR, id, kind);
+        await mkdir(dir, { recursive: true });
+        tracks[kind] = new Track(kind, chosen[kind], dir);
+    }
+
+    // Registered before it can be served: the page is already waiting on a URL for this
+    // video, and `ready` is what tells that wait when there is something behind it.
+    const session = {
+        id,
+        videoId: params.videoId || null,
+        tracks,
+        chosen,
+        ready: false,
+        at: Date.now(),
+        read: Date.now()
+    };
+
+    sessions.set(id, session);
+
+    // Shared: a stream that carries one track only learns about that one, and naming a
+    // position takes both.
+    const taking = Object.assign({}, params, { session: taken, records: new Map() });
+
+    // Deliberately not awaited: the download runs for as long as the video does.
+    Object.values(tracks).forEach((track) => {
+        fill(track, taking, chosen).catch((error) => track.broke(error));
+    });
+
+    try {
+        await Promise.all(Object.values(tracks).map(indexed));
+    } catch (failure) {
+        // Registered but never usable: without this it goes on downloading, and nothing
+        // will ever ask it for a segment or close it.
+        await close(id);
+        throw failure;
+    }
+
+    session.durationMs = Math.min(span(tracks.video.index), span(tracks.audio.index));
+    session.ready = true;
+
+    return session;
+}
+
+/** Everything needed to send one segment, once it is on disk. */
+function locate(track, number) {
+    if (number === 0) return track.init;
+    return (track.index || []).filter((segment) => segment.number === number)[0] || null;
+}
+
+/**
+ * The session for a video, once there is one. The page asks the player for a URL before it
+ * has finished asking us for a session, so the request waits here rather than failing.
+ */
+function awaitVideo(videoId, timeout) {
+    const deadline = Date.now() + (timeout || SEGMENT_WAIT);
+
+    return new Promise((resolve, reject) => {
+        const look = () => {
+            // Ready, not merely present: a session exists from the moment it is asked for,
+            // and its manifest cannot be written until both indexes have been read.
+            const found = [...sessions.values()]
+                .filter((session) => session.videoId === videoId && session.ready);
+
+            if (found.length) return resolve(found[found.length - 1]);
+
+            if (Date.now() > deadline) return reject(new Error(`no session for ${videoId}`));
+            setTimeout(look, 50);
+        };
+
+        look();
+    });
+}
+
+/** Sessions nobody is reading from any more, and the files behind them. */
+function sweep() {
+    const now = Date.now();
+
+    return Promise.all([...sessions.values()]
+        .filter((session) => now - session.read > IDLE_TIMEOUT)
+        .map((session) => {
+            console.log(`[stream] ${session.id} unread for ${Math.round((now - session.read) / 1000)}s; dropping it`);
+            return close(session.id);
+        }));
+}
+
+/** Stops a session and takes its files with it. */
+async function close(id) {
+    const session = sessions.get(id);
+    if (!session) return false;
+
+    sessions.delete(id);
+
+    for (const track of Object.values(session.tracks)) {
+        track.stopped = true;
+        if (track.abort) {
+            try { track.abort(); } catch (e) { /* already stopped */ }
+        }
+    }
+
+    await rm(join(MEDIA_DIR, id), { recursive: true, force: true }).catch(() => { /* already gone */ });
+    return true;
+}
+
+/**
+ * Anything left in the media directory outlived the process that was writing it. Nothing
+ * refers to it any more, so a restart is where it goes.
+ */
+async function clean() {
+    await rm(MEDIA_DIR, { recursive: true, force: true }).catch(() => { /* not there */ });
+    await mkdir(MEDIA_DIR, { recursive: true }).catch(() => { /* made on open */ });
+}
+
+module.exports = {
+    HEAD_BYTES, IDLE_TIMEOUT, KEEP_BEHIND, MEDIA_DIR, READ_AHEAD, READ_AHEAD_AT_FIRST,
+    SEGMENT_WAIT, SWEEP_INTERVAL, Track,
+    awaitVideo, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
+};

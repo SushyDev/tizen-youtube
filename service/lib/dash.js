@@ -1,0 +1,237 @@
+'use strict';
+
+// Serves YouTube's media back to the page as DASH on localhost, because a video element
+// fed a URL plays 2160p60 here without dropping frames and the same media through
+// MediaSource does not. The manifest covers the whole video from the first moment; a
+// segment the player reaches before the download does is waited for, not refused.
+
+const express = require('express');
+const { createReadStream } = require('fs');
+
+const sabr = require('./sabr.js');
+const stream = require('./stream.js');
+
+function codecsOf(mimeType) {
+    const match = /codecs="([^"]+)"/.exec(mimeType || '');
+    return match ? match[1] : '';
+}
+
+const typeOf = (mimeType) => String(mimeType || '').split(';')[0];
+
+/** ISO 8601 duration, which is the only form a manifest takes. */
+const iso = (ms) => `PT${(ms / 1000).toFixed(3)}S`;
+
+const escape = (text) => String(text)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * The manifest, describing every segment of both tracks. It is written once and does not
+ * change: the file's own index says how long each segment runs, so nothing about it depends
+ * on how much has been downloaded.
+ */
+function manifest(session) {
+    const set = (track, attributes, extra) => {
+        const format = track.format;
+        const timeline = track.index
+            .map((segment, at) => (at === 0 ? `<S t="${segment.startMs}" d="${segment.durationMs}"/>` : `<S d="${segment.durationMs}"/>`))
+            .join('');
+
+        return `
+        <AdaptationSet contentType="${track.kind}" mimeType="${escape(typeOf(format.mimeType))}" startWithSAP="1" segmentAlignment="true">
+            <Representation id="${track.kind}" codecs="${escape(codecsOf(format.mimeType))}" bandwidth="${format.bitrate || 0}"${attributes}>${extra}
+                <SegmentTemplate timescale="1000" startNumber="${track.index[0].number}"
+                                 initialization="${track.kind}/init.mp4" media="${track.kind}/$Number$.m4s">
+                    <SegmentTimeline>${timeline}</SegmentTimeline>
+                </SegmentTemplate>
+            </Representation>
+        </AdaptationSet>`;
+    };
+
+    const video = session.tracks.video;
+    const audio = session.tracks.audio;
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011"
+     type="static" mediaPresentationDuration="${iso(session.durationMs)}" minBufferTime="PT2.0S">
+    <Period id="0" duration="${iso(session.durationMs)}">${set(
+        video,
+        ` width="${video.format.width}" height="${video.format.height}" frameRate="${video.format.fps || 30}"`,
+        ''
+    )}${set(
+        audio,
+        audio.format.audioSampleRate ? ` audioSamplingRate="${audio.format.audioSampleRate}"` : '',
+        audio.format.audioChannels
+            ? `\n                <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="${audio.format.audioChannels}"/>`
+            : ''
+    )}
+    </Period>
+</MPD>
+`;
+}
+
+/** A session as the page should see it: what is playing, not where it is kept. */
+function describe(session) {
+    const track = ({ kind, format, index }) => ({
+        kind,
+        itag: format.itag,
+        // The itag does not name a format on its own — dubbed tracks and compressed dynamic
+        // range share one — so what the page compares against has to carry this too.
+        xtags: format.xtags || '',
+        codecs: codecsOf(format.mimeType),
+        width: format.width,
+        height: format.height,
+        fps: format.fps,
+        segments: index.length
+    });
+
+    return {
+        id: session.id,
+        videoId: session.videoId,
+        durationMs: session.durationMs,
+        video: track(session.tracks.video),
+        audio: track(session.tracks.audio)
+    };
+}
+
+/** Everything the page needs, on the service's own origin. */
+function attach(app) {
+    // The page asks: it holds the formats, and the SABR session this uses came off its own
+    // traffic through the proxy.
+    app.post('/dash/open', express.json({ limit: '4mb' }), (req, res) => {
+        stream.open(req.body || {}).then(
+            (session) => res.json({ ok: true, session: describe(session) }),
+            (error) => res.status(500).json({ ok: false, error: error.message })
+        );
+    });
+
+    // What the page's own player is asking the servers for. It changes when the viewer
+    // changes quality, audio track, stable volume or voice boost — every one of which is a
+    // different format — so this is how the page sees that its stream no longer matches.
+    app.get('/dash/selection', (_, res) => {
+        const session = sabr.observed.session;
+        res.json({ selected: (session && session.selected) || [] });
+    });
+
+    app.post('/dash/close', express.json({ limit: '8kb' }), (req, res) => {
+        stream.close((req.body || {}).id).then(
+            (closed) => res.json({ ok: true, closed }),
+            (error) => res.status(500).json({ ok: false, error: error.message })
+        );
+    });
+
+    // The page hands the player a URL for a video before the session for it exists — it
+    // has to, because the player asks for one the moment the response lands. This waits,
+    // then points at the real thing, so every relative URL inside the manifest resolves
+    // against the session that answered.
+    app.get('/dash/by-video/:videoId/manifest.mpd', (req, res) => {
+        stream.awaitVideo(req.params.videoId).then(
+            (session) => res.redirect(302, `/dash/${session.id}/manifest.mpd`),
+            // Not found rather than timed out, and said plainly: the page reads this as
+            // "there is no stream here", drops back to its own player and carries on. A
+            // video that cannot be served this way still plays.
+            (error) => res.status(404).send(error.message)
+        );
+    });
+
+    const find = (req, res) => {
+        const session = stream.sessions.get(req.params.id);
+        if (!session) res.status(404).send('no such session');
+        else session.read = Date.now();
+        return session || null;
+    };
+
+    app.get('/dash/:id/manifest.mpd', (req, res) => {
+        const session = find(req, res);
+        if (!session) return;
+
+        // A session exists from the moment it is asked for; its manifest cannot be written
+        // until both indexes have been read.
+        if (!session.ready) return res.status(503).send('the stream is still opening');
+
+        res.setHeader('Content-Type', 'application/dash+xml');
+        res.send(manifest(session));
+    });
+
+    // One track as a plain file, for a browser that will not parse a manifest. Desktop
+    // Chrome plays fragmented MP4 from a URL but has no DASH of its own, so this is what
+    // makes the page testable anywhere other than the television it is written for.
+    app.get('/dash/:id/:kind.mp4', (req, res) => {
+        const session = find(req, res);
+        if (!session) return;
+
+        const track = session.tracks[req.params.kind];
+        if (!track || !track.index) return res.status(404).end();
+
+        res.setHeader('Content-Type', typeOf(track.format.mimeType));
+        res.setHeader('Accept-Ranges', 'none');
+
+        // Written as it arrives, in order, for as long as the player keeps reading.
+        const pour = async (number) => {
+            if (res.writableEnded || number > track.index[track.index.length - 1].number) return res.end();
+
+            try {
+                await track.reach(number);
+            } catch (error) {
+                return res.end();
+            }
+
+            track.want(number);
+            createReadStream(track.file(number))
+                .on('end', () => pour(number + 1))
+                .on('error', () => res.end())
+                .pipe(res, { end: false });
+
+            return undefined;
+        };
+
+        return track.reach(0).then(
+            () => createReadStream(track.file(0))
+                .on('end', () => pour(track.index[0].number))
+                .pipe(res, { end: false }),
+            () => res.status(503).end()
+        );
+    });
+
+    app.get('/dash/:id/:kind/init.mp4', (req, res) => {
+        const session = find(req, res);
+        if (!session) return;
+
+        send(session, req.params.kind, 0, res);
+    });
+
+    app.get('/dash/:id/:kind/:number.m4s', (req, res) => {
+        const session = find(req, res);
+        if (!session) return;
+
+        send(session, req.params.kind, Number(req.params.number), res);
+    });
+}
+
+/** Waits for a segment to be on disk, then sends it. */
+function send(session, kind, number, res) {
+    const track = session.tracks[kind];
+    if (!track) return res.status(404).end();
+    if (!stream.locate(track, number)) return res.status(404).end();
+
+    // Where the player has reached decides what is fetched next and what is deleted, so
+    // asking for a segment is what moves the window along.
+    track.want(number);
+
+    return track.reach(number).then(
+        () => {
+            const at = stream.locate(track, number);
+
+            res.setHeader('Content-Type', typeOf(track.format.mimeType));
+            res.setHeader('Content-Length', at.end - at.start + 1);
+            res.setHeader('Accept-Ranges', 'none');
+
+            createReadStream(track.file(number)).pipe(res);
+        },
+        (error) => {
+            console.error(`[dash] ${session.id} ${kind} ${number}: ${error.message}`);
+            if (!res.headersSent) res.status(503).end();
+        }
+    );
+}
+
+module.exports = { attach, describe, manifest, send };

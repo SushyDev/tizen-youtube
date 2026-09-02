@@ -2,12 +2,36 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="0.3.1" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="2.3"/>
+    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
     <content src="ui/dist/index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
     <feature name="http://tizen.org/feature/web.service"/>
     <icon src="icon.png"/>
+
+    <!-- Undocumented, and none of them changed playback when removed or restored. Kept for
+         now only because they came with the app. use.game.mode is deliberately absent:
+         that one dropped frames. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.uwe" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
+
+    <!-- From Samsung's own NativePlayer sample: a video app declares it does not
+         multitask, which is the closest thing found to a rendering-priority hint. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="false"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
+
+    <!-- Jellyfin sets this on Tizen; a different namespace from the samsung.com keys. -->
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
+
+    <!-- Declaring no API generation may be what gets this app the platform's legacy
+         defaults on a Tizen 9 set. The page is served over http and pulls media over
+         https, which is the mixed content this asks to be allowed. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="5.5"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/allow.mixedcontent" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/runningtype" value="MAIN"/>
 
     <name>YouTube</name>
 

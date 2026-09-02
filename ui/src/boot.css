@@ -70,6 +70,7 @@ body {
 .bad  { color: var(--bad); }
 .note { color: var(--note); }
 
-/* Handing over: the log is simply not there any more, on the frame before YouTube
-   paints. */
-body.done > * { display: none; }
+/* Handing over: the log is simply not there any more, on the frame before YouTube paints.
+   Only the log — this page keeps everything else it owns, because it no longer goes away
+   when YouTube appears. */
+body.done > #log { display: none; }

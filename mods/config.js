@@ -47,6 +47,15 @@ const defaultConfig = {
   // The platform player counts nothing, so the stats line shows a dash. Derived from
   // playback continuity and marked as such, but a dash is no more honest.
   reportPlaybackStats: true,
+  // Plays the picture from a local stream rather than through MediaSource. Same decoder,
+  // same element, same media: through MediaSource this hardware drops frames at 2160p60,
+  // and from a plain URL it drops none.
+  //
+  // Off by default while the player's own interface is still upset by it — a television
+  // that plays everything and judders beats one that does not play.
+  bypassMediaSource: false,
+  // Publishes readings on the network and runs evaluate requests, while debugging.
+  enableDevBridge: true,
   videoSpeed: 1,
   speedSettingsIncrement: 0.25,
 

@@ -187,7 +187,11 @@ const GROUPS = [
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step')
+        SKIPPING, INCREMENTS, 'Step'),
+      Switch('bypassMediaSource', 'Smooth 4K playback',
+        'Plays through the set\u2019s own decoder instead of the browser\u2019s. Much smoother at '
+        + '2160p60, but changing quality or audio track will not take effect until the video is reopened',
+        SCREEN)
     ]
   },
   {

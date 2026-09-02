@@ -3,10 +3,19 @@
 // tube service: CDP injection when Developer Mode is on, a local proxy when it is off.
 // The shell asks which is available and goes straight there.
 
+// First, before anything that could fail. A television shows a service that died as a boot
+// screen that times out and nothing else — no console, no stack, no way to ask. This is
+// where it says what happened, and it is the first thing to read when the app will not
+// start. Kept small and best-effort: a logger that throws would be the worst of all.
+require('./lib/postmortem.js').watch();
+
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const injector = require('./lib/injector.js');
 const proxy = require('./lib/proxy.js');
+const devbridge = require('./lib/devbridge.js');
+const dash = require('./lib/dash.js');
+const stream = require('./lib/stream.js');
 const dial = require('./lib/dial.js');
 
 // Off-TV the proxy, loader and rewrite rules still work; only DIAL and injection need
@@ -136,10 +145,28 @@ app.get('/__tube/inject', (req, res) => {
 // The page's half of the diagnostics bridge. The reading port only opens when the
 // app asks for it, and serves readings the page chose to push — never the reverse.
 
+devbridge.attach(app);
+
+// Where the page's video element reads its media from.
+dash.attach(app);
+
+// Whatever a previous run left is gone before this one writes, and sessions nobody is
+// watching are dropped while it runs. The set has little room for them.
+stream.clean();
+
+// `unref` is a Node convenience and not every runtime this service has to start on has it.
+// Losing the timer would be a slow leak; failing to start is a black screen.
+const sweeping = setInterval(() => stream.sweep(), stream.SWEEP_INTERVAL);
+if (sweeping && typeof sweeping.unref === 'function') sweeping.unref();
+
 // Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);
 
-app.listen(ports.PROXY, '127.0.0.1', () => {
+// Loopback on the set. Serving another machine's television means binding the network,
+// which only happens when a host has been named for it.
+const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
+
+app.listen(ports.PROXY, BIND, () => {
     console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
     if (!isTV) {
         console.log('Running off-TV: proxy and userscript are live; DIAL and injection are disabled.');

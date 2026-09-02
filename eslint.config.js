@@ -46,7 +46,9 @@ const BROWSER_GLOBALS = {
     localStorage: 'readonly',
     Element: 'readonly',
     Event: 'readonly',
+    EventTarget: 'readonly',
     CustomEvent: 'readonly',
+    MediaSource: 'readonly',
     MutationObserver: 'readonly',
     IntersectionObserver: 'readonly',
     KeyboardEvent: 'readonly',
@@ -95,8 +97,9 @@ module.exports = [
             '**/release/**',
             '**/.ncc/**',
             '**/.package/**',
-            // Vendored upstream polyfills are not ours to lint.
-            'mods/tiny-sha256.js'
+            // Vendored upstream code is not ours to lint.
+            'mods/tiny-sha256.js',
+            'service/vendor/**'
         ]
     },
     {

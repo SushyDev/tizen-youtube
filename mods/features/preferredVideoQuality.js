@@ -36,6 +36,11 @@ class PreferredQualityHandler {
     #attempts = 0;
     #askedAt = 0;
 
+    // Set once the preference has been applied to this video. A preference is what to
+    // start on, not a rung to hold: without this, choosing another quality from the
+    // player's own menu was overridden again within the tick.
+    #settled = false;
+
     constructor() {
         this.init();
     }
@@ -74,6 +79,7 @@ class PreferredQualityHandler {
         this.#target = null;
         this.#attempts = 0;
         this.#askedAt = 0;
+        this.#settled = false;
     }
 
     // A new id or a jump back to the start: autoplay, play next, replay and repeat all
@@ -113,9 +119,12 @@ class PreferredQualityHandler {
             const chosen = chooseQuality(preference, this.#player.getAvailableQualityData());
             if (!chosen) return;
 
+            if (this.#settled) return;
+
             const current = this.#player.getPlaybackQuality();
             if (current === chosen.quality) {
                 this.#attempts = 0;
+                this.#settled = true;
                 return;
             }
 

@@ -20,6 +20,8 @@ import './features/guide.js';          // the sidebar, trimmed
 import './features/moreSubtitles.js';
 import './features/preferredVideoQuality.js';
 import './features/playbackStats.js';  // frame counts where the renderer keeps none
+import './features/devBridge.js';      // readings out and evaluate in, while debugging
+import './features/nativePlayback.js';    // the picture, off MediaSource
 import './features/videoQueuing.js';
 import './features/enableFeatures.js';
 import './features/pictureInPicture.js';

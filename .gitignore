@@ -15,3 +15,6 @@ release/
 
 # macOS finder metadata
 .DS_Store
+
+# Rolled up from googlevideo at build time.
+service/vendor/

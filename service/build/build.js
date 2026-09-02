@@ -1,7 +1,7 @@
 'use strict';
 
 // Same two-stage build as Tizen Homebrew: bundle with ncc, then lower the whole bundle
-// — dependencies included — so it parses on Tizen 3's Node v4.4.3. The userscript
+// — dependencies included — to the syntax the oldest set this installs on can parse. The userscript
 // bundles are copied in alongside so the app never needs the network for a script.
 
 const { execFileSync } = require('child_process');
@@ -23,10 +23,13 @@ function run(cmd, args) {
     execFileSync(cmd, args, { cwd: root, stdio: 'inherit' });
 }
 
-console.log('[1/4] bundling with ncc');
+console.log('[1/5] vendoring googlevideo as CommonJS');
+run('node', [join(__dirname, 'vendor.js')]);
+
+console.log('[2/5] bundling with ncc');
 run('npx', ['ncc', 'build', 'index.js', '-o', staging, '--no-source-map-register']);
 
-console.log('[2/4] lowering the bundle for Node 4.4.3');
+console.log('[3/5] lowering the bundle to the syntax floor');
 const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8'), {
     configFile: join(root, 'babel.config.json'),
     // ncc emits CommonJS, and some dependencies use `await` as an ordinary identifier
@@ -40,8 +43,11 @@ const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8
 
 let code = result.code;
 
-// Bake the origin in so the running app needs no environment.
-code = injectTokens(code, { __TUBE_ORIGIN__: config.origin }).code;
+// Bake these in so the running app needs no environment. A debug build supplies a token
+// it can be driven with; anything else gets a random one nobody knows.
+const devToken = process.env.TUBE_DEV_TOKEN || require('crypto').randomBytes(8).toString('hex');
+
+code = injectTokens(code, { __TUBE_ORIGIN__: config.origin, __TUBE_DEV_TOKEN__: devToken }).code;
 console.log(`      origin: ${config.origin}`);
 
 if (code.indexOf('regeneratorRuntime') !== -1) {
@@ -78,7 +84,7 @@ readdirSync(staging).forEach((entry) => {
 
 rmSync(staging, { recursive: true, force: true });
 
-console.log('[3/4] embedding the userscript bundle');
+console.log('[4/5] embedding the userscript bundle');
 if (!existsSync(assetsDir)) mkdirSync(assetsDir);
 const bundle = join(modsDist, 'userScript.modern.js');
 
@@ -91,5 +97,5 @@ if (!existsSync(bundle)) {
 copyFileSync(bundle, join(assetsDir, 'userScript.modern.js'));
 console.log(`      dist/assets/userScript.modern.js  ${Math.round(readFileSync(bundle).length / 1024)}kB`);
 
-console.log('[4/4] verifying Node 4.4.3 compatibility');
-run('node', [join(__dirname, 'check-node4.js'), join(outDir, 'index.js')]);
+console.log('[5/5] verifying the syntax floor');
+run('node', [join(__dirname, 'check-syntax.js'), join(outDir, 'index.js')]);

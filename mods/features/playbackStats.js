@@ -45,10 +45,68 @@ const tallies = new WeakMap();
 function tallyFor(video) {
     let tally = tallies.get(video);
     if (!tally) {
-        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null };
+        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null, rate: 0, rateFrames: 0, rateAt: 0, node: null, label: null, lookedAt: 0 };
         tallies.set(video, tally);
     }
     return tally;
+}
+
+// How fast frames are actually arriving, smoothed, so a rung claiming 60 that delivers 48
+// says so.
+const EMA = 0.3;
+const MAX_PLAUSIBLE_FPS = 200;
+
+function measureRate(video, tally, wall) {
+    const quality = video.getVideoPlaybackQuality && video.getVideoPlaybackQuality();
+    if (!quality) return;
+
+    const frames = quality.totalVideoFrames;
+    const elapsed = wall - tally.rateAt;
+
+    if (tally.rateAt && elapsed > 0) {
+        const perSecond = (frames - tally.rateFrames) * 1000 / elapsed;
+        if (perSecond >= 0 && perSecond < MAX_PLAUSIBLE_FPS) {
+            tally.rate = tally.rate ? tally.rate * (1 - EMA) + perSecond * EMA : perSecond;
+        }
+    }
+
+    tally.rateFrames = frames;
+    tally.rateAt = wall;
+}
+
+// The panel composes its frames line itself rather than calling getStatsForNerds, so the
+// rate is shown beside it. Writing into the panel's own text made it blink: the panel
+// rewrites that line on its refresh and we put it back a quarter second later. Our own
+// element next to it is never rewritten, so there is nothing to lose the race to.
+const FIND_EVERY = 2000;
+
+function framesNode() {
+    const all = document.querySelectorAll('div, span, pre');
+    for (let i = 0; i < all.length; i++) {
+        const node = all[i];
+        if (node.children.length === 0 && node.textContent.indexOf('dropped of') !== -1) return node;
+    }
+    return null;
+}
+
+function showRate(tally, wall) {
+    if (!tally.rate) return;
+
+    if (!tally.node || !tally.node.isConnected) {
+        if (wall - tally.lookedAt < FIND_EVERY) return;
+        tally.lookedAt = wall;
+        tally.node = framesNode();
+        if (!tally.node) return;
+    }
+
+    // Re-inserted whenever the panel rebuilds the row around it.
+    if (!tally.label || !tally.label.isConnected) {
+        tally.label = document.createElement('span');
+        tally.label.style.cssText = 'display:inline;white-space:pre';
+        tally.node.parentNode.insertBefore(tally.label, tally.node.nextSibling);
+    }
+
+    tally.label.textContent = `  @ ${tally.rate.toFixed(2)} fps`;
 }
 
 /** The reported frame rate, re-read only on a size change: it moves with the rung. */
@@ -59,6 +117,7 @@ function frameRate(video, tally) {
     tally.height = video.videoHeight;
 
     const player = document.querySelector('#movie_player, .html5-video-player');
+
     try {
         const match = /@(\d+(?:\.\d+)?)/.exec(player.getStatsForNerds().resolution || '');
         if (match) tally.fps = parseFloat(match[1]) || tally.fps;
@@ -91,6 +150,8 @@ export function sample(video) {
     tally.played += step.played;
     tally.lost += step.lost;
     frameRate(video, tally);
+    measureRate(video, tally, current.wall);
+    showRate(tally, current.wall);
 
     tally.previous = step.reseed ? null : current;
 }
@@ -117,10 +178,26 @@ function watch(video) {
         tally.timer = setInterval(() => sample(video), TICK);
     };
 
+    // The player loads the next video into the same element, so without this the totals
+    // are cumulative for the session where the stats line means them per video.
+    const restart = () => {
+        stop();
+        tally.played = 0;
+        tally.lost = 0;
+        tally.width = -1;
+        tally.height = -1;
+        tally.rate = 0;
+        tally.rateAt = 0;
+        tally.node = null;
+        if (tally.label && tally.label.parentNode) tally.label.parentNode.removeChild(tally.label);
+        tally.label = null;
+    };
+
     video.addEventListener('playing', start);
     video.addEventListener('pause', stop);
     video.addEventListener('ended', stop);
-    video.addEventListener('emptied', stop);
+    video.addEventListener('loadstart', restart);
+    video.addEventListener('emptied', restart);
     video.addEventListener('seeking', () => { tally.previous = null; });
     video.addEventListener('ratechange', () => { tally.previous = null; });
 

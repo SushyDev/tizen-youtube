@@ -579,3 +579,29 @@ makes the renderer count and stops the platform playing a *URL* — and a MediaS
 a URL. Available as Playback › Stream description › "Fed by the app", in a build made with
 `TUBE_GAME_MODE=1`. For measuring. Not for watching.
 
+### And the platform does not report it either
+
+The page cannot see the frames, but the platform might have been able to. It is worth
+saying that this was searched properly rather than assumed.
+
+`webapis` is empty on the proxy origin because `$WEBAPIS` is a path the webview resolves
+internally — there is no file on disk to serve, so it cannot be proxied in. The app's own
+boot page runs on the app origin, where it does resolve, and there the platform offers
+**forty-seven modules**: `adinfo, airplay, aisound, allshare, appcommon, audiocapture,
+avinfo, avplay, avplaystore, billing, bixby, broadcast, …`.
+
+Every member of every one of them, prototype chains included, was matched against
+`frame|drop|render|decod|statistic|perf`. Two hits:
+
+```
+systeminfo.ndecoder      names a decoder
+unipicture.useSWDecoder  turns software decoding on
+```
+
+Neither counts anything. `avplay` reports on its own playback and nothing else, and it is
+not what plays here.
+
+So there is no instrument, at any level of this television, that will say how many frames a
+natively-played URL dropped. The clock and the buffer are what can be measured, and neither
+can see a dropped frame; the only thing that can is a person watching.
+

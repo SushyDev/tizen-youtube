@@ -183,15 +183,13 @@ const GROUPS = [
       Switch('rememberPlaybackSpeed', 'Remember playback speed',
         'Carry the speed you chose into the next video. YouTube starts each one at normal '
         + 'speed', SKIPPING),
-      Switch('bypassMediaSource', 'Smooth 4K playback',
-        'Plays through the set\u2019s own decoder instead of the browser\u2019s. Much smoother at '
-        + '2160p60. The set decodes it silently at anything but normal speed, so playback at '
-        + 'another speed goes back to the ordinary player until it is set to normal again',
+      Switch('bypassMediaSource', 'Enhanced player',
+        'Plays through the set\u2019s own decoder instead of the browser\u2019s, which is much '
+        + 'smoother at 2160p60. Anything but normal speed goes back to the ordinary player',
         SCREEN),
       Choice('nativePlaybackContainer', 'Stream description',
-        'How smooth 4K playback describes the stream to the set. The same picture either '
-        + 'way \u2014 sets differ in which one they play most evenly. A plain file has no '
-        + 'description at all, and cannot be seeked',
+        'Enhanced player only. How it describes the stream to the set \u2014 the same picture '
+        + 'either way, but sets differ in which one they play most evenly',
         SCREEN, CONTAINERS, 'Format')
     ]
   },

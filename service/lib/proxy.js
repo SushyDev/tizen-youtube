@@ -271,6 +271,55 @@ function keepCredentials(headers) {
     });
 }
 
+/**
+ * Takes the maker's name off a player request.
+ *
+ * `context.client.deviceMake` is what YouTube keys the encrypted-ladder experiment to on
+ * this client. Measured on the set, the app's own request body with the app's own
+ * credentials, the same video in the same minute:
+ *
+ *     as the app sends it        →  21 formats, every one encrypted and transcoded as
+ *                                   it is served, no HDR among them
+ *     with deviceMake removed    →  44 formats, none encrypted, none transcoded, HDR
+ *
+ * Ten times out of ten either way, on more than one video. The value makes no difference —
+ * empty, "Generic", "Google" and "LG" are all answered the same as "Samsung". It is the
+ * presence of the field that is read.
+ *
+ * Nothing else is touched: the request is still signed in as the viewer, still the TV
+ * client, still the same device model and version. Only the player call is rewritten, so
+ * the guide, search and history are exactly as they were.
+ */
+function askUnbranded(headers, buffer) {
+    notePlayerCall(headers, buffer);
+
+    let body;
+    try {
+        body = JSON.parse(buffer.toString('utf8'));
+    } catch (e) {
+        return buffer;
+    }
+
+    const client = (body.context || {}).client;
+    if (!client || client.deviceMake === undefined || body.licenseRequest) return buffer;
+
+    delete client.deviceMake;
+
+    const plain = Buffer.from(JSON.stringify(body), 'utf8');
+    headers['content-length'] = String(plain.length);
+
+    if (!unbranded) {
+        unbranded = true;
+        journal.service('innertube', 'asking without deviceMake — that field is what the '
+            + 'encrypted ladder is keyed to');
+    }
+
+    return plain;
+}
+
+// Said once; every player call goes through the rewrite.
+let unbranded = false;
+
 function notePlayerCall(headers, buffer) {
     keepCredentials(headers);
 
@@ -373,7 +422,7 @@ function attachFallback(app) {
         const body = hasBody && sabr.observed.wants(req.method, targetUrl)
             ? collect(req).then((buffer) => { sabr.observed.note(targetUrl, buffer); return buffer; })
             : (hasBody && isPlayerCall
-                ? collect(req).then((buffer) => { notePlayerCall(headers, buffer); return buffer; })
+                ? collect(req).then((buffer) => askUnbranded(headers, buffer))
                 : Promise.resolve(hasBody ? req : undefined));
 
         body.then((payload) => fetch(targetUrl, {
@@ -438,13 +487,19 @@ function attachFallback(app) {
  * at all — a request made from the page carries cookies but no bearer, which is a different
  * client as far as YouTube is concerned and is answered differently.
  */
-function asPlayer(path, body) {
+function asPlayer(path, body, overrides) {
     if (!credentials.headers) return Promise.resolve({ error: 'no player call seen yet — open a video first' });
 
     const headers = Object.assign({}, credentials.headers, {
         'content-type': 'application/json',
         host: 'www.youtube.com',
         'accept-encoding': 'gzip, deflate'
+    }, overrides || {});
+
+    // A header set to null is one the caller wants gone, which is a different question
+    // from one it wants changed.
+    Object.keys(overrides || {}).forEach((name) => {
+        if (overrides[name] === null) delete headers[name];
     });
 
     return fetch(`https://www.youtube.com${path}`, {

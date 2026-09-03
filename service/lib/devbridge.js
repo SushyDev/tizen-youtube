@@ -214,7 +214,7 @@ function start() {
         const body = (req.body || {}).body;
         if (!body) return res.status(400).json({ error: 'no body' });
 
-        return proxy.asPlayer(path, body).then((answer) => res.json(
+        return proxy.asPlayer(path, body, (req.body || {}).headers).then((answer) => res.json(
             Object.assign({ credentialsAgeMs: proxy.credentialsAge() }, answer)
         ));
     });

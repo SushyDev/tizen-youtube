@@ -407,3 +407,53 @@ the element is still fetching the manifest.
 Seeking during playback still costs about twenty seconds to settle at 2160p60, for the same
 reason: one segment is large and the stream has to be restarted to reach it. It recovers
 rather than wedging, which it did not before, but it is not yet good.
+
+## What a release build does not carry
+
+Everything written for reading it back is development tooling, and none of it belongs on a
+television somebody is watching. It was all shipping: the bridge polling the service five
+times a second and pushing a reading every second, a port open on every interface that
+evaluates whatever is posted to it, a probe reading apart every player request and every
+response naming formats, and a line built once per video naming the bearer token and every
+cookie the request carried.
+
+`TUBE_DEV=1` bakes a constant into the userscript and everything hangs off that rather than
+off a setting, so a minifier drops it rather than skipping it:
+
+```
+with the tooling     117.2 kB
+without it            97.6 kB     no reference left to any dev endpoint
+```
+
+The service half follows: its journal is written only while the bridge is open, and the
+bridge opens only when the page asks for it — which a build without the tooling never does,
+so the port stays closed and the journal stays empty.
+
+Two things follow for anyone debugging. A release build cannot be driven from `.dev/`, so
+build one with `TUBE_DEV=1 npm run package -- --unsigned` when you need to. And a release
+build cannot be inspected from another machine at all: its loopback is inside the app
+sandbox, and Tizen Homebrew's own service — which can be evaluated in remotely — cannot
+reach it either. What it can answer is whether the app and the service are running, which
+is `tizen.application.getAppsContext` filtered to the package id.
+
+## Starting up
+
+The shell that opens is not YouTube: it is a page that waits for the service and then goes
+somewhere. Where it goes decides what the whole app costs afterwards.
+
+**The proxy path** navigates the same app instance to `localhost:8099/tv`, where the HTML is
+rewritten to carry the userscript. One navigation, no restart. The cost is that the proxy
+stands between the page and youtube.com for everything that is not media — media never
+touches it, since the service fetches googlevideo directly and serves `/dash/` locally.
+
+**The debugger path** relaunches the app in debug mode and attaches to it, so the page is a
+real `https://www.youtube.com` with no proxy in the request path at all. Relaunching means
+the open window has to close first, which is why the shell calls `application.exit()`. That
+exit is the restart, and it is paid *before* anything is known — the window must be gone for
+the relaunch to replace it, so a set where attaching does not work pays the whole cost and
+lands on the proxy anyway.
+
+Which is this one: it reports a reachable daemon, exits, never attaches, and comes back on
+the proxy. So the debugger is not offered, and a launch is one navigation. `OFFER_DEBUGGER`
+in the service turns it back on for developing against a real origin.
+

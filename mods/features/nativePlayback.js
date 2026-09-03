@@ -319,41 +319,24 @@ function reconcileAudio(videoId) {
 
 /** Everything but this one is media nobody is watching, still being fetched. */
 /**
- * Makes the element let go of a stream that is no longer being served.
+ * Closes what the viewer has moved on from.
  *
- * The player is handed a URL once and keeps it. Close the session behind that URL — which
- * is what leaving a video does — and the element goes on asking for segments nobody is
- * fetching any more: it sat at `readyState 4` on a dead address, the picture black behind
- * the player's own controls, and the service refused a segment thirty seconds later to an
- * element that had already given up. The player never asked for another URL because
- * nothing told it the one it had was finished.
+ * Every one of these is a stream running at the full rate of a 2160p60 encode, so leaving
+ * one behind is not merely untidy: measured on the set, a download for a video already left
+ * ran fifteen seconds into the next one and finished sixty-two megabytes later, and the
+ * video actually on screen juddered and dropped the whole time it was sharing the line.
  *
- * Emptying the element is what tells it. The player treats that as the source going away
- * and attaches again, which is the moment we can hand it a live one.
+ * Sparing the one the element still points at was tried, because closing it used to leave
+ * the player holding an address nobody served — black picture behind its own controls,
+ * never asking again. That is fixed where it belongs: the service now refuses at once for
+ * a track it has stopped fetching, rather than making the element wait out the segment
+ * timeout, so the player learns the source is finished and attaches again.
  */
-function letGo(videoId) {
-    const video = document.querySelector('video');
-    if (!video) return;
-
-    const mine = `/by-video/${encodeURIComponent(videoId)}/`;
-    if (String(video.currentSrc || video.src).indexOf(mine) === -1) return;
-
-    note('element', `${videoId} is no longer being served; letting the element go of it`);
-
-    video.removeAttribute('src');
-    try {
-        video.load();
-    } catch (e) {
-        // The element is mid-teardown; the player will attach again regardless.
-    }
-}
-
 function keepOnly(videoId) {
     opened.forEach((id, held) => {
         if (held === videoId) return;
 
         opened.delete(held);
-        letGo(held);
         if (id) closeSession(id);
     });
 }

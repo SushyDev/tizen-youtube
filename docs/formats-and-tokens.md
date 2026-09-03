@@ -216,6 +216,37 @@ Measured on the set while the enhanced player was playing: `getVideoPlaybackQual
 playing video. Stock YouTube would print a dash here for the same reason we do: the media
 never passes through the web engine's decoder, so the web engine has nothing to count.
 
+### Why nothing can count on the enhanced path
+
+Every instrument was tried, on the set, while a 2160p60 stream played from our own address:
+
+| Asked | Answer |
+|---|---|
+| `getVideoPlaybackQuality()` | `{total: 0, dropped: 0, corrupted: 0}` |
+| `webkitDecodedFrameCount` / `webkitDroppedFrameCount` | `0` |
+| `webkitVideoDecodedByteCount` | `0` |
+| `requestVideoFrameCallback` | exists, fires zero times in five seconds |
+| canvas `drawImage` + `getImageData` | **tainted**, on a same-origin stream |
+| `captureStream()` | **hangs the page**; readings stop and only a restart recovers it |
+| `webapis` | one key, the ad framework — `$WEBAPIS/…/webapis.js` cannot resolve from an http origin |
+| every vendor-prefixed member of the element | nothing but the two zeroed counters above |
+| `use.game.mode` | counts for real, and stops the platform playing a URL at all |
+
+They all fail for one reason. On this path the picture never enters the web engine: the
+platform decodes to a hardware overlay and scans it out to the panel. There are no frames
+in the engine to count, no pixels for a canvas to read, and no callback to fire.
+
+The canvas is the proof. The same probe, on the same page, against the *default* player —
+where MediaSource makes the engine do the decoding — captures happily at 60.2 Hz and taints
+nothing. Point it at the enhanced player and it is refused as cross-origin data on a stream
+served from `http://localhost:8099` to a page on `http://localhost:8099`. It is not
+CORS; it is that the picture is not the engine's to give.
+
+So on the enhanced path there is no count to be had from inside the page, and the honest
+instruments are the media clock — which cannot see a dropped frame, since the clock does not
+stop for one — and a person watching. That is not a gap to be closed by trying harder; it
+is what the hardware path costs.
+
 ### Game mode counts, and turns the enhanced player off
 
 `use.game.mode="true"` in config.xml does make the renderer count, and the counts are real:
@@ -299,6 +330,27 @@ buy almost nothing, because the wait is the download and not the local read. The
 app appears faster because it starts on a low rung and climbs, where this commits to the
 top rung immediately. Closing that gap means offering more than one representation and
 letting the platform adapt, which is a real feature rather than a tuning change.
+
+## DASH and HLS
+
+The same segments, described two ways, both handed over as a plain URL and both played by
+the set's own pipeline. Judged on the television:
+
+| | Startup, warm | Watching it |
+|---|---|---|
+| DASH | 6–14 s | smooth |
+| HLS | **0.8 s** | juddery, dropping frames |
+
+HLS commits far faster — a VOD playlist can be read end to end, where an MPD leaves the set
+working out what it has — and it presents worse. So DASH is what ships and HLS is offered
+beside it under Playback › Stream description, for the next set, and for whoever wants to
+measure the trade rather than take this on trust.
+
+Two things about HLS confuse a measurement taken on it. It reports the whole remaining
+playlist as buffered — two hundred seconds at the start of a five-minute video — so the
+buffer figure is not comparable with DASH's. And `video.buffered` on the DASH path is not
+trustworthy either: it read dry, and negative, through forty seconds a viewer called
+perfectly smooth. Neither figure survives contact with what is actually on screen.
 
 ## Two ways the enhanced player was being lost
 

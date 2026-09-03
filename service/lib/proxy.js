@@ -226,25 +226,6 @@ const TELLING = [
     'content-type', 'user-agent', 'cookie'
 ];
 
-// TODO: remove before release.
-// The credentials the app's own player calls carry, held so a question can be asked with
-// exactly the identity the app has. Never sent anywhere but back to YouTube, and never
-// read out over the bridge.
-const credentials = { at: 0, headers: null };
-
-function keepCredentials(headers) {
-    if (!headers.authorization) return;
-
-    credentials.at = Date.now();
-    credentials.headers = {};
-
-    ['authorization', 'cookie', 'x-goog-authuser', 'x-goog-pageid', 'x-goog-visitor-id',
-        'x-youtube-client-name', 'x-youtube-client-version', 'x-youtube-bootstrap-logged-in',
-        'user-agent', 'origin', 'referer', 'content-type'].forEach((name) => {
-        if (headers[name] !== undefined) credentials.headers[name] = headers[name];
-    });
-}
-
 // `context.client.deviceMake` is what YouTube keys the encrypted-ladder experiment to on
 // this client.
 function askUnbranded(headers, buffer) {
@@ -278,8 +259,6 @@ let unbranded = false;
 
 function notePlayerCall(headers, buffer) {
     if (!journal.wanted()) return;
-
-    keepCredentials(headers);
 
     try {
         const body = JSON.parse(buffer.toString('utf8'));
@@ -341,7 +320,6 @@ function attachFallback(app) {
         const isMedia = targetUrl.indexOf('videoplayback') !== -1;
 
         const isPlayerCall = req.path.indexOf('/youtubei/v1/player') === 0;
-        const isNextCall = req.path.indexOf('/youtubei/v1/next') === 0;
 
         headers.origin = 'https://www.youtube.com';
         if (headers.referer) headers.referer = 'https://www.youtube.com/tv';
@@ -423,34 +401,6 @@ function attachFallback(app) {
     return app;
 }
 
-function asPlayer(path, body, overrides) {
-    if (!credentials.headers) return Promise.resolve({ error: 'no player call seen yet — open a video first' });
-
-    const headers = Object.assign({}, credentials.headers, {
-        'content-type': 'application/json',
-        host: 'www.youtube.com',
-        'accept-encoding': 'gzip, deflate'
-    }, overrides || {});
-
-    // A header set to null is one the caller wants gone, which is a different question from
-    // one it wants changed.
-    Object.keys(overrides || {}).forEach((name) => {
-        if (overrides[name] === null) delete headers[name];
-    });
-
-    return fetch(`https://www.youtube.com${path}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        agent: agentFor('https://www.youtube.com')
-    })
-        .then((response) => response.text().then((text) => ({ status: response.status, text })))
-        .catch((error) => ({ error: error.message }));
-}
-
-const credentialsAge = () => (credentials.headers ? Date.now() - credentials.at : null);
-
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
-    asPlayer, credentialsAge
+    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes
 };

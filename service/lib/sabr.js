@@ -196,145 +196,6 @@ function open(input) {
     return stream;
 }
 
-// TODO: remove before release. A SABR stream that returns nothing returns it silently:
-// the library reports byte counts and swallows everything else into a console nobody can
-// read from the television.
-
-// The part numbers the protocol uses, by the name that makes a trace readable.
-const PART_NAMES = {
-    20: 'MEDIA_HEADER', 21: 'MEDIA', 22: 'MEDIA_END', 35: 'NEXT_REQUEST_POLICY',
-    42: 'FORMAT_INITIALIZATION_METADATA', 43: 'SABR_REDIRECT', 44: 'SABR_ERROR',
-    45: 'SABR_SEEK', 46: 'RELOAD_PLAYER_RESPONSE', 47: 'PLAYBACK_START_POLICY',
-    48: 'ALLOWED_CACHED_FORMATS', 49: 'START_BW_SAMPLING_HINT', 51: 'SELECTABLE_FORMATS',
-    52: 'REQUEST_IDENTIFIER', 53: 'REQUEST_CANCELLATION_POLICY', 55: 'TIMELINE_CONTEXT',
-    56: 'REQUEST_PIPELINING', 57: 'SABR_CONTEXT_UPDATE', 58: 'STREAM_PROTECTION_STATUS',
-    59: 'SABR_CONTEXT_SENDING_POLICY', 61: 'SABR_ACK', 62: 'END_OF_TRACK',
-    63: 'CACHE_LOAD_POLICY', 65: 'PREWARM_CONNECTION', 66: 'PLAYBACK_DEBUG_INFO'
-};
-
-const partName = (id) => PART_NAMES[id] || `part ${id}`;
-
-function trace(stream) {
-    const lines = [];
-    const started = Date.now();
-
-    const say = (text) => {
-        const at = ((Date.now() - started) / 1000).toFixed(2);
-        lines.push(`${at}s ${text}`);
-        journal.service('sabr', `${at}s ${text}`);
-    };
-
-    stream.logger = {
-        setLogLevels() { },
-        getLogLevels() { return new Set(); },
-        log(level, tag, ...rest) { say(`log ${rest.join(' ')}`); },
-        error(tag, ...rest) { say(`ERROR ${rest.join(' ')}`); },
-        warn(tag, ...rest) { say(`warn ${rest.join(' ')}`); },
-        info(tag, ...rest) { say(`info ${rest.join(' ')}`); },
-        debug(tag, ...rest) { say(`debug ${rest.join(' ')}`); }
-    };
-
-    const request = stream.makeStreamingRequest.bind(stream);
-    const process = stream.processStreamingResponse.bind(stream);
-
-    stream.makeStreamingRequest = async (body) => {
-        say(`POST #${stream.requestNumber} body ${body ? body.length : 0}b`);
-
-        try {
-            const response = await request(body);
-            say(`  ${response.status} ${response.headers.get('content-type') || 'no type'}`
-                + ` len ${response.headers.get('content-length') || '?'}`);
-            return response;
-        } catch (error) {
-            say(`  request failed: ${error.message}`);
-            throw error;
-        }
-    };
-
-    stream.processStreamingResponse = async (response) => {
-        try {
-            const parts = await process(response);
-            const counts = new Map();
-            parts.forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
-
-            say(`  parts: ${[...counts].map(([id, n]) => `${partName(id)}${n > 1 ? `×${n}` : ''}`).join(', ') || 'none'}`);
-            return parts;
-        } catch (error) {
-            say(`  reading failed: ${error.message}`);
-            throw error;
-        }
-    };
-
-    ['error', 'sabrError', 'streamProtectionStatusUpdate', 'reloadPlayerResponse',
-        'formatInitialization', 'snackbarMessage', 'finish'].forEach((name) => {
-        stream.on(name, (value) => {
-            try {
-                say(`event ${name}: ${JSON.stringify(value).slice(0, 240)}`);
-            } catch (e) {
-                say(`event ${name}`);
-            }
-        });
-    });
-
-    return lines;
-}
-
-async function measure(params, seconds) {
-    const stream = open(params);
-
-    const lines = params.trace ? trace(stream) : null;
-
-    const protection = [];
-    stream.on('streamProtectionStatusUpdate', (status) => protection.push(status && status.status));
-
-    const started = Date.now();
-    const { videoStream, audioStream, selectedFormats } = await stream.start({
-        videoQuality: params.videoQuality || '1080p',
-        audioQuality: params.audioQuality || 'AUDIO_QUALITY_MEDIUM',
-        enabledTrackTypes: EnabledTrackTypes.VIDEO_AND_AUDIO,
-        preferWebM: false,
-        preferOpus: false
-    });
-
-    const counts = { video: 0, audio: 0 };
-
-    // Reading stops by aborting the stream, not by cancelling the readers: googlevideo keeps
-    // enqueuing what is already in flight, and a cancelled reader closes the controller.
-    const timer = setTimeout(() => stream.abort(), seconds * 1000);
-
-    // Both tracks are read: SABR interleaves them in one response, so draining only one
-    // stalls the other and measures backpressure rather than throughput.
-    const drain = async (readable, name) => {
-        const reader = readable.getReader();
-        try {
-            for (;;) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                counts[name] += value.byteLength;
-            }
-        } catch (e) {
-            if (!/abort/i.test(e.message)) throw e;
-        }
-    };
-
-    await Promise.all([drain(videoStream, 'video'), drain(audioStream, 'audio')]);
-    clearTimeout(timer);
-    stream.abort();
-
-    const elapsed = (Date.now() - started) / 1000;
-
-    return {
-        seconds: +elapsed.toFixed(2),
-        videoBytes: counts.video,
-        audioBytes: counts.audio,
-        megabitsPerSecond: +(((counts.video + counts.audio) * 8) / elapsed / 1e6).toFixed(2),
-        protection,
-        videoFormat: describe(selectedFormats && selectedFormats.videoFormat),
-        audioFormat: describe(selectedFormats && selectedFormats.audioFormat),
-        trace: lines || undefined
-    };
-}
-
 async function follow(input, options) {
     const stream = open(input);
 
@@ -366,18 +227,6 @@ async function follow(input, options) {
     };
 }
 
-function describe(format) {
-    if (!format) return null;
-    return {
-        itag: format.itag,
-        mime: format.mimeType,
-        width: format.width,
-        height: format.height,
-        fps: format.fps,
-        bitrate: format.bitrate
-    };
-}
-
 function sweep() {
     const now = Date.now();
     sessions.forEach((session, id) => {
@@ -387,4 +236,4 @@ function sweep() {
     });
 }
 
-module.exports = { awaitSession, follow, measure, observed, open, sessions, sweep };
+module.exports = { awaitSession, follow, observed, open, sweep };

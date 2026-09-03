@@ -10,7 +10,6 @@ const cors = require('cors');
 const ports = require('./ports.js');
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
-const proxy = require('./proxy.js');
 const sabr = require('./sabr.js');
 
 const STALE_AFTER = 10000;
@@ -119,15 +118,6 @@ function start() {
 
     app.get('/health', (_, res) => res.json({ ok: true, port: ports.DEV, hasReading: !!latest }));
 
-    app.post('/sabr/measure', express.json({ limit: '1mb' }), (req, res) => {
-        const seconds = Math.min(Number(req.body && req.body.seconds) || 5, 20);
-
-        sabr.measure(req.body || {}, seconds).then(
-            (result) => res.json({ ok: true, result }),
-            (error) => res.status(500).json({ ok: false, error: error.message })
-        );
-    });
-
     // The PO token comes with it only for a caller holding the token, so the session cannot
     // be lifted off this port by anything else on the network.
     app.get('/sabr/session', (req, res) => {
@@ -146,43 +136,6 @@ function start() {
         });
     });
 
-    app.get('/runtime', (_, res) => {
-        const has = (name) => typeof globalThis[name] !== 'undefined';
-        const compiles = (source) => {
-            try {
-                new Function(source);
-                return true;
-            } catch (e) {
-                return false;
-            }
-        };
-
-        res.json({
-            node: process.version,
-            engine: process.versions,
-            globals: {
-                ReadableStream: has('ReadableStream'),
-                WritableStream: has('WritableStream'),
-                TransformStream: has('TransformStream'),
-                TextDecoder: has('TextDecoder'),
-                TextEncoder: has('TextEncoder'),
-                fetch: has('fetch'),
-                structuredClone: has('structuredClone'),
-                BigInt: has('BigInt'),
-                WeakRef: has('WeakRef'),
-                Proxy: has('Proxy'),
-                globalThis: typeof globalThis !== 'undefined'
-            },
-            syntax: {
-                asyncAwait: compiles('return (async () => 1)'),
-                asyncGenerators: compiles('return (async function* () { yield 1; })'),
-                optionalChaining: compiles('return (o) => o?.a?.b'),
-                nullishCoalescing: compiles('return (a) => a ?? 1'),
-                classFields: compiles('return class { #x = 1; get x() { return this.#x; } }')
-            }
-        });
-    });
-
     app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), (req, res) => {
         if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
 
@@ -190,18 +143,6 @@ function start() {
         if (!source) return res.status(400).json({ error: 'nothing to evaluate' });
 
         return ask(source, req.query.seconds).then((answer) => res.json(answer));
-    });
-
-    app.post('/asplayer', express.json({ limit: '1mb' }), (req, res) => {
-        if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
-
-        const path = String((req.body || {}).path || '/youtubei/v1/player?prettyPrint=false');
-        const body = (req.body || {}).body;
-        if (!body) return res.status(400).json({ error: 'no body' });
-
-        return proxy.asPlayer(path, body, (req.body || {}).headers).then((answer) => res.json(
-            Object.assign({ credentialsAgeMs: proxy.credentialsAge() }, answer)
-        ));
     });
 
     app.get('/stats', (_, res) => res.json(snapshot()));
@@ -246,4 +187,4 @@ function stop() {
     console.log('[devbridge] reading port closed.');
 }
 
-module.exports = { attach, start, stop, isOpen: () => !!server };
+module.exports = { attach, start, stop };

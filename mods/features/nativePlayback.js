@@ -217,6 +217,7 @@ function clockStopsOnPlay(videoId) {
         if (!handedAt.delete(videoId)) return;
 
         note('element', `${videoId} is playing ours`);
+        correctReportedRung();
     };
 
     video.addEventListener('timeupdate', playing);
@@ -478,6 +479,53 @@ function reconcileAudio(videoId) {
  * a track it has stopped fetching, rather than making the element wait out the segment
  * timeout, so the player learns the source is finished and attaches again.
  */
+// Players whose reported rung has been corrected, so it is done once each.
+const correctedPlayer = new WeakSet();
+
+/** The rung name for a height, from the ladder the player is offering. */
+function rungFor(height) {
+    try {
+        const ladder = player().getAvailableQualityData() || [];
+
+        // The lowest rung at least as tall as what is being served. Labels carry the frame
+        // rate too — `2160p60` — so the number is read off the front.
+        const match = ladder
+            .filter((entry) => (parseInt(entry.qualityLabel, 10) || 0) >= height)
+            .sort((a, b) => (parseInt(a.qualityLabel, 10) || 0) - (parseInt(b.qualityLabel, 10) || 0))[0];
+
+        return match ? match.quality : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Makes the player report the rung that is on screen rather than its own.
+ *
+ * Its own pipeline is fed into a buffer that discards everything, so what rung it settled
+ * on describes nothing anybody is watching — and it is what the quality menu ticks and what
+ * the panel reads. Caught on the television: two hundred and forty lines on screen, itag
+ * 395, and the menu saying 2160p. A wrong picture is a bug; a wrong picture reported as the
+ * right one is a bug nobody can find.
+ */
+function correctReportedRung() {
+    const showing = player();
+    if (!showing || correctedPlayer.has(showing)) return;
+
+    const real = showing.getPlaybackQuality;
+    if (typeof real !== 'function') return;
+
+    correctedPlayer.add(showing);
+
+    showing.getPlaybackQuality = function () {
+        const said = real.apply(this, arguments);
+
+        if (!serving || !serving.video || !playingOurs()) return said;
+
+        return rungFor(serving.video.height) || said;
+    };
+}
+
 /** Whether this app is feeding the element through a MediaSource of its own. */
 export function fedByUs() {
     return feeders.size > 0;

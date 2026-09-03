@@ -736,8 +736,7 @@ async function open(params) {
     // Moved here instead, while the element is still fetching and parsing the manifest, so
     // the restart is already under way by the time it asks. Not before the indexes are
     // read: naming a position takes a segment index to name it in.
-    // Not for a stream that will be read as one file: see `wholeFile` where the page asks.
-    if (!params.wholeFile) beginAt(session, Number(params.startMs) || 0);
+    beginAt(session, Number(params.startMs) || 0);
 
     journal.service('open', `${id}: video ${chosen.video.itag} ${chosen.video.height}p, `
         + `audio ${chosen.audio.itag} xtags ${JSON.stringify(chosen.audio.xtags || '')}, `

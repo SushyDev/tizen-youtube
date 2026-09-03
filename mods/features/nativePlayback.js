@@ -262,52 +262,6 @@ const DISCARDED_RUNG = 'tiny';
 // Elements already being watched, so the watcher is attached once each.
 const watchingElement = new WeakSet();
 
-// Players whose reported rung has been corrected, so it is done once each.
-const correctedPlayer = new WeakSet();
-
-/** The rung name for a height, from the ladder the player is offering. */
-function rungFor(height) {
-    try {
-        const ladder = player().getAvailableQualityData() || [];
-
-        // The lowest rung that is at least as tall as what is being served. The labels
-        // carry the frame rate too — `2160p60` — so the number is read off the front.
-        const match = ladder
-            .filter((entry) => (parseInt(entry.qualityLabel, 10) || 0) >= height)
-            .sort((a, b) => (parseInt(a.qualityLabel, 10) || 0) - (parseInt(b.qualityLabel, 10) || 0))[0];
-
-        return match ? match.quality : null;
-    } catch (e) {
-        return null;
-    }
-}
-
-/**
- * Makes the player report the rung that is on screen rather than the one it fetches.
- *
- * Its own is held at the smallest while this app feeds the element, and its own is what
- * the quality menu ticks and what the panel reads — so without this a viewer watching
- * 2160p60 is told they are watching 240p. The list of rungs it offers is untouched: only
- * which of them it calls current is corrected, and only while this app is serving.
- */
-function correctReportedRung() {
-    const showing = player();
-    if (!showing || correctedPlayer.has(showing)) return;
-
-    const real = showing.getPlaybackQuality;
-    if (typeof real !== 'function') return;
-
-    correctedPlayer.add(showing);
-
-    showing.getPlaybackQuality = function () {
-        const said = real.apply(this, arguments);
-
-        if (!restrained || !serving || !serving.video) return said;
-
-        return rungFor(serving.video.height) || said;
-    };
-}
-
 // Whether the cap is on, so it can be put back after anything lifts it. The player asks
 // YouTube for a response more than once per video, and each of those releases the cap —
 // which, applied once when playback started, meant the restraint lasted until the second
@@ -319,9 +273,6 @@ function restrainPlayer() {
     if (restrained) return;
     restrained = true;
     standBack(true);
-
-    // Before the rung is moved, so nothing reads the capped one in between.
-    correctReportedRung();
 
     try {
         player().setPlaybackQualityRange(DISCARDED_RUNG, DISCARDED_RUNG);

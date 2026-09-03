@@ -185,6 +185,44 @@ graded for it, then eight bits on a tie, then MP4 on a tie. Nothing is refused f
 
 ## Reading the numbers
 
+**Nothing counts frames on the enhanced player.** Verified by calling the pristine
+`getVideoPlaybackQuality` — taken from a fresh iframe our patch never touched — on a video
+playing at 264 seconds: `totalVideoFrames 0, droppedVideoFrames 0`. The platform pipeline
+decodes and the browser counts nothing, so every figure in the panel is ours, fed back into
+YouTube's own row. `use.game.mode="true"` in config.xml would make the renderer count, and
+is deliberately absent because it *causes* dropped frames.
+
+So what is reported is **time the picture was trying to advance and did not**, over the last
+thirty seconds. Two mistakes were made getting there and both looked convincing:
+
+- charging each 250 ms sample's shortfall as it happened. Sampling jitter is zero-mean, so
+  summing the shortfalls of a signal whose total shortfall is zero gave a large positive
+  number — 0.694s over thirty seconds of playback where the media clock kept up *exactly*.
+  The deficit of the totals is the honest measure, and it cancels.
+- reporting it cumulatively. A startup stall then haunts the whole video: six hundred
+  "dropped frames" displayed for four minutes while nothing at all was being lost.
+
+A viewer watching a clean picture while a number climbs is right to stop believing the
+number, and did.
+
+The buffer figure came from `getStatsForNerds`, which is the *player's* buffer — a buffer
+nothing plays from once this app feeds the element. It read `0.00 s` for half a minute
+while the video played on. It comes from the element now.
+
+## Startup
+
+About **3.8 seconds** to the first frame at 2160p60 HDR, measured end to end: the request
+goes out, first bytes arrive in ~50 ms, and video segment one — roughly eighteen megabytes,
+five seconds of a 26–30 Mbit/s stream — lands 3.8 s later at about 38 Mbit/s.
+
+The download is not slow; the segment is big. Serving it progressively as it arrives would
+buy almost nothing, because the wait is the download and not the local read. The set's own
+app appears faster because it starts on a low rung and climbs, where this commits to the
+top rung immediately. Closing that gap means offering more than one representation and
+letting the platform adapt, which is a real feature rather than a tuning change.
+
+## How the numbers used to mislead
+
 `playbackStats` derives its counts when the renderer reports none: `dropped = lost × fps`.
 A stall therefore prints as hundreds of dropped frames. A drop count also says nothing about
 how the picture *looks* — a stream can hold zero drops and still artifact badly.

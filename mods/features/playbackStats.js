@@ -47,14 +47,37 @@ export function account(previous, current) {
     return { played: Math.min(advanced, expected), expected, advanced, reseed: false };
 }
 
+// How much of the recent past the reported figure covers. Long enough that a real stall
+// stays visible while it matters, short enough that it stops being reported once playback
+// has been fine for a while.
+export const WINDOW = 30;
+
 /**
- * Time the picture was trying to advance and did not.
+ * Time the picture was trying to advance and did not, over the recent past.
  *
  * The deficit of the totals: exact, and self-correcting, because a sample that lags and a
  * sample that catches up cancel — which is what jitter does and what a stall does not.
+ *
+ * Over the *recent* totals, not the whole session. A cumulative figure is dominated for
+ * ever by whatever happened at startup: measured here, a video reported six hundred
+ * dropped frames for four minutes while losing nothing at all after the first few seconds.
+ * A viewer reading that sees a number climbing against a picture that is plainly fine, and
+ * correctly stops believing it.
  */
 export function lostBy(tally) {
-    return Math.max(0, tally.expected - tally.advanced);
+    if (!tally.recent || !tally.recent.length) {
+        return Math.max(0, (tally.expected || 0) - (tally.advanced || 0));
+    }
+
+    let expected = 0;
+    let advanced = 0;
+
+    for (let at = 0; at < tally.recent.length; at++) {
+        expected += tally.recent[at].expected;
+        advanced += tally.recent[at].advanced;
+    }
+
+    return Math.max(0, expected - advanced);
 }
 
 // One tally per element, or the start page's preview lands on the watch player's line.
@@ -63,7 +86,7 @@ const tallies = new WeakMap();
 function tallyFor(video) {
     let tally = tallies.get(video);
     if (!tally) {
-        tally = { played: 0, expected: 0, advanced: 0, fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null, rate: 0, rateFrames: 0, rateAt: 0, node: null, label: null, lookedAt: 0 };
+        tally = { played: 0, expected: 0, advanced: 0, recent: [], fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null, rate: 0, rateFrames: 0, rateAt: 0, node: null, label: null, lookedAt: 0 };
         tallies.set(video, tally);
     }
     return tally;
@@ -280,6 +303,11 @@ export function sample(video) {
     tally.played += step.played;
     tally.expected += step.expected;
     tally.advanced += step.advanced;
+
+    // Kept as a window rather than a running total, so a stall ages out of the report the
+    // way it ages out of what the viewer can see.
+    tally.recent.push({ expected: step.expected, advanced: step.advanced });
+    while (tally.recent.length > (WINDOW * 1000) / TICK) tally.recent.shift();
     frameRate(video, tally);
     measureRate(video, tally, current.wall);
     showRate(video, tally, current.wall);
@@ -316,6 +344,7 @@ function watch(video) {
         tally.played = 0;
         tally.expected = 0;
         tally.advanced = 0;
+        tally.recent = [];
         tally.width = -1;
         tally.height = -1;
         tally.rate = 0;

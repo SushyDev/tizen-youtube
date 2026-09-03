@@ -1,5 +1,6 @@
 // What the derived frame counts actually detect, since they are the only ones reported
 // on a set whose renderer counts nothing.
+import * as stats from '../features/playbackStats.js';
 import { account, lostBy, TOLERANCE, install, sample } from '../features/playbackStats.js';
 
 // A step reports what was expected of it and what arrived; the loss is the difference, and
@@ -198,6 +199,42 @@ const stall = (() => {
 })();
 
 check('a stall is still counted in full', Math.abs(stall - 1) < 0.01, `${stall.toFixed(3)}s`);
+
+
+// A cumulative figure is dominated for ever by whatever happened at startup: measured on
+// the set, a video reported six hundred dropped frames for four minutes while losing
+// nothing after the first few seconds. The report covers the recent past instead.
+const overTime = (stallSeconds, thenSmoothSeconds) => {
+    const tally = { played: 0, expected: 0, advanced: 0, recent: [] };
+    let wall = 0;
+    let media = 0;
+    let previous = null;
+
+    const tick = (advancing) => {
+        wall += 0.25;
+        if (advancing) media += 0.25;
+
+        const current = { wall: wall * 1000, media, rate: 1, paused: false, seeking: false };
+        const step = account(previous, current);
+
+        tally.expected += step.expected;
+        tally.advanced += step.advanced;
+        tally.recent.push({ expected: step.expected, advanced: step.advanced });
+        while (tally.recent.length > (stats.WINDOW * 1000) / 250) tally.recent.shift();
+
+        previous = step.reseed ? null : current;
+    };
+
+    for (let at = 0; at < stallSeconds * 4; at++) tick(false);
+    for (let at = 0; at < thenSmoothSeconds * 4; at++) tick(true);
+
+    return lostBy(tally);
+};
+
+check('a stall is reported while it is recent',
+    Math.abs(overTime(5, 2) - 5) < 0.3, `${overTime(5, 2).toFixed(2)}s`);
+check('and ages out once playback has been fine for the window',
+    overTime(5, stats.WINDOW + 5) < 0.3, `${overTime(5, stats.WINDOW + 5).toFixed(2)}s`);
 
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

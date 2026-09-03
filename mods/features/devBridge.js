@@ -41,7 +41,18 @@ function reading() {
         resolution: stats.resolution || null,
         codecs: stats.codecs || null,
         colour: stats.color || null,
-        buffer: stats.buffer_health_seconds || null,
+        // From the element, not the player. `getStatsForNerds` reports the player's own
+        // buffer, which once the picture comes from this app is a buffer nothing is
+        // playing from — it read 0.00s for half a minute while the video played on.
+        buffer: (function () {
+            try {
+                const ranges = video.buffered;
+                if (!ranges || !ranges.length) return '0.00 s';
+                return `${(ranges.end(ranges.length - 1) - video.currentTime).toFixed(2)} s`;
+            } catch (e) {
+                return stats.buffer_health_seconds || null;
+            }
+        }()),
 
         // Which rung it settled on, against the rungs it was actually offered. A player
         // sitting below the best on a healthy buffer has been capped, not starved, and

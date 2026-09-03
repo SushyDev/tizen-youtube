@@ -12,9 +12,9 @@ and PlayReady, every format `FORMAT_STREAM_TYPE_OTF`, transcoded as it is served
 here can serve that twice over: there is no `sidx` to write a manifest from, and a video
 element fed a plain URL cannot decrypt it.
 
-The **same request without the account's bearer token** comes back with the ordinary ladder:
-indexed, unencrypted, server-side ABR offered. Reproduced many times, same video, same
-second, request body and headers otherwise identical.
+The **same request without the account's bearer token** also comes back with the ordinary
+ladder. That was the first thing found and it is a red herring — removing `deviceMake`
+reaches the same ladder without costing the account, which is what this app does.
 
 ```
 signed   → 19–33 formats, all OTF, all DRM
@@ -31,17 +31,15 @@ Matching stock is therefore not the goal — beating it is, and we have: the enh
 has run 2160p60 VP9 with zero dropped frames, and put the panel into genuine HDR on a video
 where stock would not.
 
-## Why we cannot simply stop signing in
+## Why not to stop signing in
 
-Stripping the bearer token from the page's own player calls does produce the good ladder,
-and it is how every enhanced-player measurement in this repository was taken. It also makes
-the app believe nobody is signed in: it reaches guest mode and an account-picker loop with
-no way out. It is off by default. Build with `TUBE_ANON_PLAYER=1` to measure with it on.
+Stripping the bearer token also produces the good ladder, and much of this file was written
+while doing it. **Do not.** It makes the app believe nobody is signed in: it reaches guest
+mode and an account-picker loop with no way out, and the account has to be signed in again
+to recover. `TUBE_ANON_PLAYER=1` still builds it that way, for measurement only.
 
-Every "anonymous" request tested so far was issued from the page and therefore carried the
-page's cookies — signed-in cookies with no bearer, an inconsistent state that invites a bot
-check. **A request made by the service, with no cookies at all, is a different thing and has
-never been evaluated.** That is the first thing to try.
+Removing `deviceMake` gets the same ladder with the account intact, so there is no reason
+to touch authentication at all.
 
 ## PO tokens
 

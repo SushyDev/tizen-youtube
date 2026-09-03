@@ -338,9 +338,13 @@ the set's own pipeline rather than through MediaSource. Judged on the television
 
 | | Startup, cold | Watching it | Seeking |
 |---|---|---|---|
-| DASH | 7.1 s | smooth on some videos, not on others | ~20 s, recovers |
-| HLS | **0.8 s** warm | juddery, dropping frames | untested |
-| Plain file | 9.0 s | **clean on the video that shows drops most plainly** | exact, instant |
+| DASH | 7.1 s | **judders** | ~20 s, recovers |
+| HLS | **0.8 s** warm | judders, dropping frames | untested |
+| Plain file | 9.0 s | **smooth and judder free** | exact, instant |
+
+All three serve byte-identical segments, so the difference is entirely in what the set does
+with the description. Judged by eye on the judder test, the plain file is the only one of
+the three that plays it cleanly — which is the whole reason it exists.
 
 HLS commits far faster — a VOD playlist can be read end to end, where an MPD leaves the set
 working out what it has — and it presents worse.
@@ -493,4 +497,31 @@ throw away. Nothing in what this app serves depends on that choice: the picture 
 by height and the sound by the tags the page asks for, and neither reads the player's own
 selection. What it would cost is the quality menu, which shows what the player selected and
 would then show the wrong thing.
+
+## What order the fragments go in
+
+A muxed file is read from its beginning, so what is written where is what the decoder gets
+when. YouTube's audio fragments here are longer than its video ones — ten seconds against
+six — and the two boundaries do not line up.
+
+Writing each video segment's audio in front of it seems right: a reader that has got that
+far then has both. It is not. An audio fragment that merely *begins* inside a video
+segment's span can cover the whole of the next one, and where it begins near the end of
+that span the reader is handed ten seconds of sound it has no picture for. On the judder
+test the audio beginning at 39.94 was written ahead of the picture covering 34.03 to 40.04
+— a tenth of a second before it ends, the largest such jump in the file:
+
+```
+v2 ends 11.01, audio at  9.98    1.03 s ahead
+v4 ends 22.02, audio at 19.97    2.05 s ahead
+v6 ends 34.03, audio at 29.95    4.08 s ahead
+v7 ends 40.04, audio at 39.94    0.10 s ahead   ← the hiccup, at 34.03
+```
+
+A viewer saw a hiccup at exactly 34, on every pass, while the media clock lost nothing at
+all. Frames rather than a stall — which is the one thing no instrument on this hardware can
+see, and why it took an eye to find and arithmetic to explain.
+
+Written in the order the moments happen, it reads as it plays. Sound still goes first where
+the two begin together, which is where it is wanted.
 

@@ -50,9 +50,18 @@ const READ_AHEAD_AT_FIRST = 8;
 // changed nothing about the frames lost, because what is actually short is throughput
 // rather than the head start.
 
-// Segments this far behind the player are deleted. It only returns to them by seeking, and
-// seeking fetches again.
-const KEEP_BEHIND = 3;
+// Segments this far behind the player are deleted.
+//
+// Three was too few, and the cost of being wrong is not what it looks like. A player does
+// not only move forwards: it asks for a segment again after a stall, or after its own
+// buffer is evicted, and one that has been deleted cannot be handed over — so the download
+// is sent backwards to fetch it, throwing away everything it had read ahead. Caught on the
+// television: the download stood at segment 14 holding twelve, the element asked for
+// segment 1, and the whole read-ahead went. Then it stalled, and asked again, and so on.
+//
+// Fifteen is enough that a player which has fallen a little behind is answered from what is
+// already here. It is bounded, and a stream nobody is reading is dropped whole soon after.
+const KEEP_BEHIND = 15;
 
 // Nothing has asked this session for a segment in this long, so nobody is watching it.
 // How long a stream nobody is reading is kept before it is dropped.

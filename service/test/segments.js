@@ -232,10 +232,17 @@ back.want(20);
 check('the position follows a seek backwards', back.wanted === 20, `wanted ${back.wanted}`);
 check('and the download does not think it is ahead', !back.satisfied, 'held off');
 
-back.have = new Set([0, 12, 18, 19, 20, 100, 101]);
+// Either side of the window, which reaches KEEP_BEHIND back from where the player is: at
+// twenty that is everything from five. Segment 2 is outside it and 18 is inside, and the
+// one inside has to stay — a player that asks again for something it has just watched, after
+// a stall or an eviction of its own, is answered from here rather than sending the download
+// backwards for it.
+back.have = new Set([0, 2, 18, 19, 20, 100, 101]);
 back.forgetBehind().then(function () {
     check('the initialization segment is never dropped', back.have.has(0), 'dropped it');
-    check('what is watched and behind the window goes', !back.have.has(12), 'kept it');
+    check('what is watched and behind the window goes', !back.have.has(2), 'kept it');
+    check('and what is just behind the player is kept, so it is not fetched twice',
+        back.have.has(18), 'dropped something the player may ask for again');
     check('the window around the player stays', back.have.has(18) && back.have.has(20), 'dropped the window');
     check('what a seek stranded ahead goes too', !back.have.has(100) && !back.have.has(101), 'kept stale segments');
 });

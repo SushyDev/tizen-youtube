@@ -1,15 +1,6 @@
 import { configRead, configChangeEmitter } from "../config.js";
 import { chooseQuality, shouldAsk } from './quality.js';
 
-// Set by whatever is feeding the element instead of the player. Told rather than asked,
-// so this module stays something `nativePlayback` depends on and not the other way about —
-// the two importing each other builds, and is one edit away from not.
-let standingBack = false;
-
-export function standBack(yes) {
-    standingBack = !!yes;
-}
-
 const SELECTORS = {
     PLAYER: '.html5-video-player',
 };
@@ -142,12 +133,6 @@ class PreferredQualityHandler {
                     this.#forget();
                 }
             }
-
-            // While this app feeds the element, the player's own rung decides only what
-            // it fetches and discards — and that is deliberately held at the smallest one.
-            // Asking for the preference here would put it back to the top and fetch a
-            // whole second copy of the video nobody will see.
-            if (standingBack) return;
 
             const preference = configRead(CONFIG_KEYS.QUALITY);
             if (!preference || preference === 'auto') return;

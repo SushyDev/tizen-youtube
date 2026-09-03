@@ -1,7 +1,7 @@
 import { configRead } from '../config.js';
 import { note } from '../dev/journal.js';
 import { onResponse } from '../youtube/json.js';
-import { keepCurrentChoice, standBack } from './preferredVideoQuality.js';
+import { keepCurrentChoice } from './preferredVideoQuality.js';
 import { replaceMediaSource } from '../youtube/mediaSource.js';
 
 // Points the player at a stream the service serves rather than at its own MediaSource.
@@ -145,24 +145,13 @@ function clockStopsOnPlay(videoId) {
     const video = document.querySelector('video');
     if (!video) return;
 
-    // One per element. This used to take itself off after reporting, so attaching it again
-    // per hand-out cost nothing; now that it stays for the life of the element, attaching
-    // it again would stack another copy on every hand-out.
-    if (watchingElement.has(video)) return;
-    watchingElement.add(video);
-
-    // Stays attached, rather than reporting once and going away. What it is watching for
-    // is not a moment but a state: this app feeding the element, which the player can be
-    // knocked out of and back into by its own reloads.
     const playing = () => {
-        if (!playingOurs()) return releasePlayer();
+        if (handedAt.has(videoId) && !playingOurs()) return;
 
-        restrainPlayer();
-
-        if (!handedAt.delete(videoId)) return undefined;
+        video.removeEventListener('timeupdate', playing);
+        if (!handedAt.delete(videoId)) return;
 
         note('element', `${videoId} is playing ours`);
-        return undefined;
     };
 
     video.addEventListener('timeupdate', playing);
@@ -241,64 +230,6 @@ function closeSession(id) {
 }
 
 const player = () => document.querySelector('#movie_player, .html5-video-player');
-
-// The rung the page's own player fetches once this app is the one feeding the element.
-//
-// Its source buffer discards everything appended to it, so everything it fetches is thrown
-// away — measured on the set at fifty-three megabytes of a sixty-three megabyte video,
-// arriving over the same line as the copy actually being watched, and competing with it.
-//
-// It cannot simply be stopped. A player that has appended nothing decides its pipeline has
-// died and reloads the whole video every fifteen seconds, and a media response cut short is
-// worse still: the page's script thread stops answering altogether. What it can be is
-// small. The smallest rung keeps it appending, keeps the watchdog quiet, and throws away
-// some forty times less.
-//
-// Nothing this app serves follows from it: the picture is chosen by height from the
-// setting, and the sound by the tags the page asks for. Neither reads what the player
-// selected for itself.
-const DISCARDED_RUNG = 'tiny';
-
-// Elements already being watched, so the watcher is attached once each.
-const watchingElement = new WeakSet();
-
-// Whether the cap is on, so it can be put back after anything lifts it. The player asks
-// YouTube for a response more than once per video, and each of those releases the cap —
-// which, applied once when playback started, meant the restraint lasted until the second
-// response and then stopped. Measured: three hundred and thirty-nine megabytes fetched and
-// discarded on a video where the cap was applied and then quietly lost.
-let restrained = false;
-
-function restrainPlayer() {
-    if (restrained) return;
-    restrained = true;
-    standBack(true);
-
-    try {
-        player().setPlaybackQualityRange(DISCARDED_RUNG, DISCARDED_RUNG);
-    } catch (e) {
-        // Not this build, or the player is between videos; it is asked again on the next.
-    }
-}
-
-/**
- * The player's own rung is its business again: this app is no longer feeding the element.
- *
- * The cap is lifted rather than merely left alone. `preferredVideoQuality` asks for the
- * viewer's rung only when what it wants differs from what the player reports, so a player
- * left pinned at the smallest one would be asked once and then believed.
- */
-function releasePlayer() {
-    if (!restrained) return;
-    restrained = false;
-    standBack(false);
-
-    try {
-        player().setPlaybackQualityRange('tiny', 'highres');
-    } catch (e) {
-        // Nothing to lift it on yet; the preference is applied to the next one regardless.
-    }
-}
 
 /** Whether the element is playing what the service is serving. */
 function playingOurs() {
@@ -733,12 +664,6 @@ if (typeof window !== 'undefined') {
         opened.set(request.videoId, null);
         handedAt.delete(request.videoId);
 
-        // The rung the last video was held down to was held down because this app was
-        // feeding the element. Nothing is being fed yet, and a player left pinned to the
-        // smallest rung for a video this app then fails to serve would play that video at
-        // 144p. It is restrained again the moment ours is on screen.
-        releasePlayer();
-
         noteSize(request);
 
         note('player', `response for ${request.videoId}: ${request.formats.length} formats, `
@@ -782,10 +707,7 @@ if (typeof window !== 'undefined') {
     // intervention: the player attaches to a source that never feeds it, and the element
     // plays what the service is serving.
     replaceMediaSource(() => {
-        if (!wanted()) {
-            releasePlayer();
-            return null;
-        }
+        if (!wanted()) return null;
 
         const videoId = attachingTo();
         if (!videoId || !opened.has(videoId)) return null;
@@ -812,9 +734,6 @@ if (typeof window !== 'undefined') {
             handedAt.delete(videoId);
             if (serving && serving.videoId === videoId) serving = null;
             if (held) closeSession(held);
-
-            // Its own rung matters again: what it fetches now is what is on screen.
-            releasePlayer();
 
             return null;
         }

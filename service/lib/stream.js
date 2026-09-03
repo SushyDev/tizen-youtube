@@ -68,6 +68,10 @@ const KEEP_BEHIND = 15;
 // report its format, short enough that a viewer is told rather than left waiting.
 const POSITION_TRIES = 40;
 
+// How many segments before a resume position to begin at, so the element's own first
+// request is already being fetched rather than costing a second restart.
+const LEAD_IN = 2;
+
 // Nothing has asked this session for a segment in this long, so nobody is watching it.
 // How long a stream nobody is reading is kept before it is dropped.
 //
@@ -858,8 +862,20 @@ function beginAt(session, startMs) {
         const track = session.tracks[kind];
         if (!track.index) return;
 
-        const at = track.index.filter((segment) => segment.startMs + segment.durationMs > startMs)[0];
-        if (!at || at.number === track.index[0].number) return;
+        const holding = track.index.filter((segment) => segment.startMs + segment.durationMs > startMs)[0];
+        if (!holding) return;
+
+        // A little before the moment, not exactly on it. The element asks for a segment or
+        // two ahead of where it means to start — measured resuming at seventy-nine seconds,
+        // this landed on segment sixteen and the element then asked for fourteen, which
+        // threw the positioned stream away and paid another restart: 2.3s to first bytes,
+        // for nothing. Starting earlier costs a couple of segments already fetched, which
+        // is what read-ahead is for.
+        const first = track.index[0].number;
+        const wanted = Math.max(first, holding.number - LEAD_IN);
+        const at = track.index.filter((segment) => segment.number === wanted)[0];
+
+        if (!at || at.number === first) return;
 
         // So read-ahead is measured from where the picture is wanted rather than from the
         // start of the video, which would have the download stop before reaching it.

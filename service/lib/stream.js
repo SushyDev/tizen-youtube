@@ -63,6 +63,11 @@ const READ_AHEAD_AT_FIRST = 8;
 // already here. It is bounded, and a stream nobody is reading is dropped whole soon after.
 const KEEP_BEHIND = 15;
 
+// How long to keep trying to name a position before saying it cannot be done. Each try is
+// a quarter of a second, so this is a few seconds — long enough for the other track to
+// report its format, short enough that a viewer is told rather than left waiting.
+const POSITION_TRIES = 40;
+
 // Nothing has asked this session for a segment in this long, so nobody is watching it.
 // How long a stream nobody is reading is kept before it is dropped.
 //
@@ -143,6 +148,7 @@ class Track {
         this.have = new Set();   // segment numbers currently on disk
         this.waiting = new Map();
 
+        this.running = false;    // whether a stream is fetching for this track right now
         this.wanted = 0;         // the furthest segment the player has asked for
         this.next = 0;           // the segment being cut out of the stream
         this.from = 0;           // where the stream running now began
@@ -167,8 +173,18 @@ class Track {
         }
     }
 
-    /** Whether a segment will arrive on its own before long, or needs the stream moved. */
+    /**
+     * Whether a segment will arrive on its own before long, or needs the stream moved.
+     *
+     * Being within read-ahead of where the download stands is not enough on its own: it has
+     * to be *fetching*. A stream that has ended, or is parked waiting to be told where to
+     * go, will never reach anything however close it is — and answering "it is coming"
+     * about a segment nobody is fetching is how a seek turned into a thirty-second wait and
+     * then a refusal, with nothing in the journal because no restart was ever asked for.
+     */
     reachable(number) {
+        if (!this.running) return false;
+
         return number >= this.next && number <= this.next + READ_AHEAD;
     }
 
@@ -470,13 +486,33 @@ async function fill(track, params, chosen, using) {
         // it is yet. Asked again in a moment rather than given up on: abandoning the seek
         // leaves the player waiting for a segment that will now never be fetched.
         if (positioned && !state) {
+            // Both tracks have to have said what format they are before a position can be
+            // named, and the other one may not have got there yet. Asked again in a moment
+            // rather than given up on — but not for ever: this used to retry silently and
+            // without limit, which from the sofa is a seek that loads and never arrives,
+            // and in the journal is nothing at all.
+            track.positioning = (track.positioning || 0) + 1;
+
+            if (track.positioning > POSITION_TRIES) {
+                track.positioning = 0;
+                return track.broke(new Error(`${track.kind} could not be positioned at segment ${from}`));
+            }
+
+            if (track.positioning === 1) {
+                journal.service('seek', `${track.kind} waiting to name segment ${from}`);
+            }
+
             await new Promise((again) => setTimeout(again, 250));
             track.restartAt = from;
-            return;
+            return undefined;
         }
+
+        track.positioning = 0;
 
         journal.service('run', `${track.kind} ${track.format.itag} from ${from || 'the start'}`
             + `${positioned ? ` claiming ${(state.initializedFormats.find((one) => one.downloadedSegments.length) || { downloadedSegments: [] }).downloadedSegments.length} segments` : ''}`);
+
+        track.running = true;
 
         const following = await follow(Object.assign({}, params, { gate }), {
             kind: track.kind,
@@ -619,6 +655,8 @@ async function fill(track, params, chosen, using) {
         } catch (error) {
             if (!track.stopped && !track.restartAt) track.broke(error);
         }
+
+        track.running = false;
 
         if (track.abort) {
             try { track.abort(); } catch (e) { /* already stopped */ }

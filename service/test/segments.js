@@ -153,7 +153,15 @@ seeking.index = index.segments;
 seeking.init = { start: 0, end: init.length - 1 };
 seeking.next = 1;
 
+// A stream is actually fetching. Said outright, because it is now half of what "reachable"
+// means: a segment close to where the download stands only arrives if the download is
+// moving, and a parked one will never reach anything however near it is.
+seeking.running = true;
+
 check('a segment just ahead is waited for', seeking.reachable(2), 'would restart');
+check('and the same segment is not waited for once nothing is fetching',
+    !Object.assign(Object.create(Object.getPrototypeOf(seeking)), seeking, { running: false }).reachable(2),
+    'waited for a segment nobody is fetching');
 check('a segment far ahead is not', !seeking.reachable(400), 'would wait');
 
 seeking.reach(3).catch(function () { /* the restart is what is being checked */ });
@@ -600,9 +608,11 @@ check('sound is moved to where the picture went',
 check('and the download is sent there rather than crawling',
     far.tracks.audio.restartAt === 181, `restartAt ${far.tracks.audio.restartAt}`);
 
-// A step of one segment is ordinary playback and must not restart anything.
+// A step of one segment is ordinary playback and must not restart anything — as long as
+// something is fetching, which is what makes the next segment something to wait for.
 const near = paired();
 near.tracks.audio.next = 3;
+near.tracks.audio.running = true;
 stream.align(near, 'video', 5);
 check('ordinary playback does not move the other track',
     near.tracks.audio.restartAt === null, `restartAt ${near.tracks.audio.restartAt}`);

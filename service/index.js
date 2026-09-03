@@ -51,18 +51,25 @@ function maybeCheckForUpdate() {
     );
 }
 
-// A failed injection, remembered just long enough. The shell has already exited by the
-// time one fails, so the service brings the app back and leaves this behind — the next
-// launch takes the proxy instead of looping. Expires: developer mode gets turned back on.
-const FAILURE_MEMORY = 60 * 1000;
-
-let injectionFailedAt = 0;
-
-const injectionRecentlyFailed = () => Date.now() - injectionFailedAt < FAILURE_MEMORY;
+// A failed injection, remembered for as long as this service runs.
+//
+// The shell has already exited by the time one fails, so the service brings the app back
+// and leaves this behind — and the next launch takes the proxy instead of looping.
+//
+// This used to be remembered for a minute. The service outlives app launches, so on a set
+// where the debugger cannot be attached to at all the memory had always expired by the next
+// launch: the shell exited, injection failed, the app was reopened on the proxy, and the
+// launch after that did the same again. Every start of the app paid for an exit and a
+// relaunch that never bought anything, which is what it looked like from the sofa — the app
+// restarting itself before YouTube appeared.
+//
+// Once per lifetime is enough. A developer turning the daemon on restarts this service to
+// install what they built, and that is what clears it.
+let injectionFailed = false;
 
 // Without this the television is left on the home row with nothing having happened.
 function relaunchApp(reason) {
-    injectionFailedAt = Date.now();
+    injectionFailed = true;
     injector.stopConnecting();
     console.error(`Injection failed (${reason}); reopening the app on the proxy path.`);
 
@@ -93,7 +100,7 @@ app.get('/__tube/state', (_, res) => {
         res.json({
             canInject: state.canConnectToDaemon,
             isConnecting: state.isConnecting,
-            injectionFailed: injectionRecentlyFailed(),
+            injectionFailed,
             ip: state.ip,
             platformVersion,
             variant: loader.variantFor(platformVersion),

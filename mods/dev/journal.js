@@ -1,4 +1,5 @@
 import { configRead } from '../config.js';
+import { DEV_TOOLS } from './tools.js';
 
 // The page's half of the journal. What the player decided and what was done about it, sent
 // to the service so both halves of a playback can be read on one timeline.
@@ -14,7 +15,12 @@ const MOST_HELD = 200;
 const held = [];
 let flushing = null;
 
+// The constant first, so a release build drops the sending of these rather than merely
+// declining to send them: with it false every call site folds to nothing and `flush` goes
+// with them.
 const wanted = () => {
+    if (!DEV_TOOLS) return false;
+
     try {
         return typeof window !== 'undefined' && configRead('enableDevBridge');
     } catch (e) {

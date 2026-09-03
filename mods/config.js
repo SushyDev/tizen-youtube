@@ -1,3 +1,5 @@
+import { DEV_TOOLS } from './dev/tools.js';
+
 // Deliberately not the key the reference used: stored settings win over defaults, and
 // localStorage on youtube.com is shared with every other modification on the TV.
 const CONFIG_KEY = 'tube.settings';
@@ -62,7 +64,13 @@ const defaultConfig = {
   // seeking either, which is why it is a measurement rather than a default.
   nativePlaybackContainer: 'dash',
   // Publishes readings on the network and runs evaluate requests, while debugging.
-  enableDevBridge: true,
+  //
+  // On only in a build that carries the tooling. It polls the service five times a second,
+  // pushes a reading every second, and opens a port that evaluates whatever is posted to
+  // it — the right set of trade-offs while working on this app and the wrong one on a
+  // television somebody is watching. Everything it feeds is gated with it: the journal on
+  // both sides, and the record the proxy keeps of what each player call carried.
+  enableDevBridge: DEV_TOOLS,
   videoSpeed: 1,
   // Carrying a speed from one video to the next is this app's doing, not YouTube's, which
   // starts every video at normal speed. Off to match it.

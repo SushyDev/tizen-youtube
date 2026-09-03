@@ -125,6 +125,17 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
+        // The bundler's own configuration sits among the modification's files but runs in
+        // Node, so it reads the environment the way a build script does.
+        files: ['mods/rollup.config.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: NODE_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
+    {
         // Its tests, which run in Node rather than in a television.
         files: ['mods/test/**/*.js'],
         languageOptions: {

@@ -1,4 +1,5 @@
 import { configRead, configChangeEmitter } from '../config.js';
+import { DEV_TOOLS } from '../dev/tools.js';
 import { measured } from './playbackStats.js';
 import { servingNow } from './nativePlayback.js';
 
@@ -198,9 +199,15 @@ function apply(enabled) {
     listener = enabled ? setInterval(collect, LISTEN_EVERY) : null;
 }
 
-apply(configRead('enableDevBridge'));
+// Hung off the baked constant rather than off the setting, so a release build does not
+// merely leave this switched off — nothing above is referenced, and the minifier drops the
+// lot. Read from the setting it would otherwise be, so a build that does carry the tooling
+// can still be turned off from the menu.
+if (DEV_TOOLS) {
+    apply(configRead('enableDevBridge'));
 
-configChangeEmitter.addEventListener('configChange', (event) => {
-    if (event.detail.key !== 'enableDevBridge') return;
-    apply(event.detail.value);
-});
+    configChangeEmitter.addEventListener('configChange', (event) => {
+        if (event.detail.key !== 'enableDevBridge') return;
+        apply(event.detail.value);
+    });
+}

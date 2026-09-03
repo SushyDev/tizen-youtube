@@ -111,6 +111,9 @@ function attach(app) {
 function start() {
     if (server) return server;
 
+    // Everything written for reading is written from here on, and not before.
+    journal.open(true);
+
     const app = express();
     app.use(cors());
 
@@ -255,6 +258,7 @@ function start() {
 
 function stop() {
     if (!server) return;
+    journal.open(false);
     try { server.close(); } catch (e) { /* already closing */ }
     server = null;
     latest = null;

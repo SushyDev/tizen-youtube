@@ -34,6 +34,8 @@ function bundle({ name, input, target, ecma }) {
             replace({
                 preventAssignment: true,
                 values: {
+                    // A release carries no development tooling: see mods/dev/tools.js.
+                    __TUBE_DEV_TOOLS__: process.env.TUBE_DEV === '1' ? 'on' : 'off',
                     __TUBE_ORIGIN__: config.origin,
                     __TUBE_VERSION__: version,
                     __TUBE_BUNDLE__: name

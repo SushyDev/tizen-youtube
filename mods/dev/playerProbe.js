@@ -1,3 +1,4 @@
+import { DEV_TOOLS } from './tools.js';
 import { note } from './journal.js';
 import { onRequest, onResponse } from '../youtube/json.js';
 
@@ -14,8 +15,14 @@ import { onRequest, onResponse } from '../youtube/json.js';
 // licence and carries no media — so the two halves are only worth a line together.
 const asked = new Map();
 
+// Read once, at load. `note` costs nothing when the journal is off, but this reads apart
+// every player request and every response that names formats, and holds what it found until
+// the pair can be written — work done for a reader that is not there. Nothing is registered
+// at all unless somebody is going to read it.
+const watching = DEV_TOOLS && typeof window !== 'undefined';
+
 /** A player request, told apart from every other object with a `videoId` in it. */
-onRequest('playerProbe', ['videoId', 'context'], (body) => {
+if (watching) onRequest('playerProbe', ['videoId', 'context'], (body) => {
     if (!body.context || !body.videoId) return undefined;
 
     const integrity = body.serviceIntegrityDimensions || {};
@@ -48,7 +55,7 @@ onRequest('playerProbe', ['videoId', 'context'], (body) => {
     return undefined;
 });
 
-onResponse('playerProbe', ['streamingData'], (response) => {
+if (watching) onResponse('playerProbe', ['streamingData'], (response) => {
     const streaming = response.streamingData || {};
     const formats = streaming.adaptiveFormats || [];
     if (!formats.length) return;

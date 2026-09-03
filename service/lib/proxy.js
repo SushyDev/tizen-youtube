@@ -321,6 +321,10 @@ function askUnbranded(headers, buffer) {
 let unbranded = false;
 
 function notePlayerCall(headers, buffer) {
+    // Naming every header and cookie of a signed-in request is not free, and it is written
+    // for a reader that is usually not there.
+    if (!journal.wanted()) return;
+
     keepCredentials(headers);
 
     try {

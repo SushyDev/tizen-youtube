@@ -542,3 +542,40 @@ see, and why it took an eye to find and arithmetic to explain.
 Written in the order the moments happen, it reads as it plays. Sound still goes first where
 the two begin together, which is where it is wanted.
 
+## The picture and the count cannot be had together
+
+Feeding a MediaSource from this app was the last idea left for counting frames. It works —
+the engine decodes, so every counter reports — and what it reports settles the question.
+
+```
+YouTube's own MediaSource     590 dropped of 14386     4.10%
+this app feeding one itself    27 dropped of   664     4.07%
+```
+
+The same, within noise. Whole segments appended into a twenty-second buffer, no format
+change, no adaptive logic, no eviction ahead of the player — none of it mattered. So the
+four per cent was never YouTube's handling of MediaSource. It is the engine's decode path,
+and there is nothing to tune out of it.
+
+Which makes the trade a fixed one rather than a bug still to be found:
+
+| | Picture | Frames counted |
+|---|---|---|
+| a URL, played by the platform | smooth | never — they are not in the engine |
+| MediaSource, whoever feeds it | ~4% dropped | exactly |
+
+Both halves have one cause. The platform decodes a URL to a hardware overlay and scans it
+to the panel, which is why it is smooth and why nothing in the page can see it. Ask the
+engine to decode instead and every counter works, because now the frames are its own — and
+it drops one in twenty-five.
+
+So a counter reading zero on the enhanced player is not a gap in the instruments. It is the
+signature of the frames going where they should. The honest reading of that line is
+"nothing here is counting, and that is why it looks like that" — and the only instrument
+left for the smooth path is a person watching it.
+
+Getting the count at all needed two things that had never been put together: `use.game.mode`
+makes the renderer count and stops the platform playing a *URL* — and a MediaSource is not
+a URL. Available as Playback › Stream description › "Fed by the app", in a build made with
+`TUBE_GAME_MODE=1`. For measuring. Not for watching.
+

@@ -64,7 +64,8 @@ const QUALITIES = ['highest', 'auto', '2160p', '1440p', '1080p', '720p', '480p',
 const CONTAINERS = [
   { label: 'DASH', value: 'dash' },
   { label: 'HLS', value: 'hls' },
-  { label: 'Plain file', value: 'mp4' }
+  { label: 'Plain file', value: 'mp4' },
+  { label: 'Fed by the app', value: 'mse' }
 ];
 
 const CODECS = [

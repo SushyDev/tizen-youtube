@@ -1,5 +1,5 @@
 import { configRead } from '../config.js';
-import { servingNow } from './nativePlayback.js';
+import { fedByUs, servingNow } from './nativePlayback.js';
 
 // The platform player counts no frames, so getVideoPlaybackQuality() reads zero and the
 // stats line shows a dash. Time the video failed to advance converts to frames at the
@@ -221,7 +221,16 @@ function framesNode() {
  * identical until you count frames.
  */
 function pipelineOf(video) {
-    return String(video.currentSrc || '').indexOf('/dash/') !== -1 ? 'enhanced' : 'default';
+    const source = String(video.currentSrc || '');
+
+    // Three of them now, and the third looks exactly like the player's own from here: when
+    // this app feeds a MediaSource itself the element holds a blob address, the same as
+    // YouTube's own pipeline. Saying "default" for it made the two indistinguishable on the
+    // one line meant to tell them apart.
+    if (source.indexOf('/dash/') !== -1) return 'enhanced';
+    if (fedByUs()) return 'fed by the app';
+
+    return 'default';
 }
 
 /**

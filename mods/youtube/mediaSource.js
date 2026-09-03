@@ -144,10 +144,20 @@ function puppet(source) {
  * returns nothing when there is nothing to play, and then everything behaves as it always
  * did — which is what happens off this television.
  */
+// The browser's own, kept before it is replaced. Anything of ours that needs a real object
+// URL — a MediaSource this app drives itself, say — has to ask for it here, or it would be
+// handed back its own answer and recurse.
+let realObjectURL = typeof URL !== 'undefined' && URL.createObjectURL
+    ? URL.createObjectURL.bind(URL)
+    : null;
+
+export const objectURLFor = (value) => (realObjectURL ? realObjectURL(value) : null);
+
 export function replaceMediaSource(urlFor) {
     if (!Real || typeof URL === 'undefined' || !URL.createObjectURL) return false;
 
     const createObjectURL = URL.createObjectURL.bind(URL);
+    realObjectURL = createObjectURL;
     const revokeObjectURL = URL.revokeObjectURL.bind(URL);
     const ours = new Set();
 

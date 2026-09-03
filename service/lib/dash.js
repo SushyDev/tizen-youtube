@@ -167,7 +167,14 @@ function describe(session) {
         width: format.width,
         height: format.height,
         fps: format.fps,
-        segments: index.length
+        mimeType: typeOf(format.mimeType),
+        segments: index.length,
+
+        // Which number the first one carries, and how long each runs. A page feeding these
+        // to a source buffer itself has to ask for them by number and know when it has
+        // enough — neither of which follows from the count alone.
+        first: index[0].number,
+        durationsMs: index.map((segment) => segment.durationMs)
     });
 
     return {

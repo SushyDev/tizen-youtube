@@ -3,6 +3,7 @@ import { note } from '../dev/journal.js';
 import { onResponse } from '../youtube/json.js';
 import { keepCurrentChoice } from './preferredVideoQuality.js';
 import { replaceMediaSource } from '../youtube/mediaSource.js';
+import { feed } from './mediaFeeder.js';
 
 // Points the player at a stream the service serves rather than at its own MediaSource.
 // Same decoder, same element, same media: through MediaSource this hardware drops frames at
@@ -21,7 +22,12 @@ const service = () => `${window.location.origin}/dash`;
 const DESCRIPTIONS = {
     hls: 'master.m3u8',
     mp4: 'progressive.mp4',
-    dash: 'manifest.mpd'
+    dash: 'manifest.mpd',
+
+    // Not an address on the service at all: the page builds a MediaSource and feeds it the
+    // same segments itself. The only pipeline on this television where the engine does the
+    // decoding, and so the only one where frames can be counted.
+    mse: null
 };
 
 // Beyond this the set will not play a plain file at all — it asks for the first chunk and
@@ -61,13 +67,19 @@ function noteSize(request) {
 }
 
 function describedAs(videoId) {
-    let wanted;
+    let chosen;
     try {
-        wanted = DESCRIPTIONS[configRead('nativePlaybackContainer')] || DESCRIPTIONS.dash;
+        chosen = configRead('nativePlaybackContainer');
     } catch (e) {
         return DESCRIPTIONS.dash;
     }
 
+    // Named rather than looked up, because what this one answers with is `null` — the page
+    // feeds the element itself and there is no address — and a lookup that falls back on
+    // anything falsy would quietly turn it into a manifest.
+    if (chosen === 'mse') return null;
+
+    const wanted = DESCRIPTIONS[chosen] || DESCRIPTIONS.dash;
     if (wanted !== DESCRIPTIONS.mp4) return wanted;
 
     const bytes = plainFileBytes.get(videoId) || 0;
@@ -112,6 +124,23 @@ function startsFrom(videoId) {
 }
 
 function addressFor(videoId) {
+    // Fed from the page rather than fetched from an address. One feeder per video: the
+    // player asks for a source more than once and each one would otherwise start another,
+    // all appending the same segments into different buffers.
+    if (describedAs(videoId) === null) {
+        const running = feeders.get(videoId);
+        if (running) return running.address;
+
+        const session = described.get(videoId);
+        if (!session) return null;
+
+        const started = feed(session, service().replace(/\/dash$/, ''));
+        if (!started) return null;
+
+        feeders.set(videoId, started);
+        return started.address;
+    }
+
     const address = manifestFor(videoId);
     const at = startsFrom(videoId);
 
@@ -130,6 +159,13 @@ const AFTER_CHOOSING = 400;
 // Measured in time rather than in attempts: the player re-attaches in bursts, and counting
 // those gives up seconds into a stream that was only slow to start.
 const GIVE_UP_AFTER = 25000;
+
+// What the service said about each open session — itags, codecs, how many segments and
+// which number they start at. The feeder needs all of it; the address paths do not.
+const described = new Map();
+
+// The feeder running for a video, so it can be stopped when the video is left.
+const feeders = new Map();
 
 // Streams the service is holding for us, by video. The page asks about more than one — it
 // loads responses for what it might play next — and which one the player is actually
@@ -420,11 +456,31 @@ function reconcileAudio(videoId) {
  * a track it has stopped fetching, rather than making the element wait out the segment
  * timeout, so the player learns the source is finished and attaches again.
  */
+/** Whether this app is feeding the element through a MediaSource of its own. */
+export function fedByUs() {
+    return feeders.size > 0;
+}
+
+/** Stops the page feeding a video, where it was the one feeding it. */
+function stopFeeding(videoId) {
+    const running = feeders.get(videoId);
+    if (!running) return;
+
+    feeders.delete(videoId);
+    try {
+        running.stop();
+    } catch (e) {
+        // Already finished; nothing to wind down.
+    }
+}
+
 function keepOnly(videoId) {
     opened.forEach((id, held) => {
         if (held === videoId) return;
 
         opened.delete(held);
+        described.delete(held);
+        stopFeeding(held);
         if (id) closeSession(id);
     });
 }
@@ -716,6 +772,7 @@ if (typeof window !== 'undefined') {
                 if (!opened.has(request.videoId)) return closeSession(session.id);
 
                 opened.set(request.videoId, session.id);
+                described.set(request.videoId, session);
                 serving = { videoId: request.videoId, video: session.video, audio: session.audio };
                 reconcileAudio(request.videoId);
                 return null;

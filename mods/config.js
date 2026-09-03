@@ -62,6 +62,9 @@ const defaultConfig = {
   // ship, and is here to be measured against it rather than assumed better. A plain file
   // is neither: no manifest, no playlist, nothing for the set to decide — and so no
   // seeking either, which is why it is a measurement rather than a default.
+  // 'mse' is the odd one: the page feeds a MediaSource itself rather than pointing the
+  // element at an address. It is the only pipeline here where the engine decodes, and so
+  // the only one where dropped frames can be counted rather than guessed at.
   nativePlaybackContainer: 'dash',
   // Publishes readings on the network and runs evaluate requests, while debugging.
   //

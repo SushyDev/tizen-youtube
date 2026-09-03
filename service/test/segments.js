@@ -456,9 +456,11 @@ check('the head carries a segment index, so a seek can name a moment',
 
 // The sound belonging to a stretch of picture goes in front of it, and sound that outlasts
 // the last picture joins the last group rather than claiming a span of time of its own.
-check('each picture is preceded by the sound that belongs with it',
+// Ordered by when each moment happens. a2 begins at 4s, inside v1's 0-5s span but after
+// v1 begins, so it follows the picture rather than being written in front of it.
+check('fragments are written in the order their moments happen',
     shape.groups.map((one) => one.parts.map((part) => part.kind[0] + part.number).join('')).join(' ')
-        === 'a1a2v1 a3v2', 'grouped wrongly');
+        === 'a1v1a2 v2a3', 'ordered wrongly');
 check('the file knows its own length before anything is fetched',
     shape.total === shape.head.length + 1000 + 2000 + 100 + 200 + 50, 'wrong total');
 check('and where every fragment lands in it',

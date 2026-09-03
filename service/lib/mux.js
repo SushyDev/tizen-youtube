@@ -180,15 +180,38 @@ function group(videoIndex, audioIndex) {
         const parts = [];
         const until = video.startMs + video.durationMs;
 
-        // The sound goes in front of the picture it belongs with, so a set that has read
-        // this far has both before it needs either.
         while (audioAt < audioIndex.length && audioIndex[audioAt].startMs < until) {
             const audio = audioIndex[audioAt];
-            parts.push({ kind: 'audio', number: audio.number, size: audio.end - audio.start + 1 });
+            parts.push({
+                kind: 'audio',
+                number: audio.number,
+                size: audio.end - audio.start + 1,
+                startMs: audio.startMs
+            });
             audioAt += 1;
         }
 
-        parts.push({ kind: 'video', number: video.number, size: video.end - video.start + 1 });
+        parts.push({
+            kind: 'video',
+            number: video.number,
+            size: video.end - video.start + 1,
+            startMs: video.startMs
+        });
+
+        // In the order the moments happen, not sound first.
+        //
+        // The sound was put in front of the picture it belongs with, so that a reader that
+        // had got this far had both. But an audio fragment is longer than a video one here
+        // — ten seconds against six — so one that merely *starts* inside a video segment's
+        // span can cover the whole of the next one. Where it starts near that span's end
+        // the reader is handed sound for ten seconds it has no picture for yet.
+        //
+        // Measured on the television, on the video that shows this most plainly: audio
+        // beginning at 39.94 was written in front of the picture covering 34.03 to 40.04 —
+        // a tenth of a second before that picture ends, the largest such jump in the file —
+        // and a viewer saw a hiccup at exactly 34. Ordered by time it reads as it plays.
+        // Sound still goes first where the two begin together, which is where it is wanted.
+        parts.sort((a, b) => (a.startMs - b.startMs) || (a.kind === 'audio' ? -1 : 1));
 
         groups.push({ parts, startMs: video.startMs, durationMs: video.durationMs });
     });
@@ -198,7 +221,12 @@ function group(videoIndex, audioIndex) {
     if (groups.length) {
         while (audioAt < audioIndex.length) {
             const audio = audioIndex[audioAt];
-            groups[groups.length - 1].parts.push({ kind: 'audio', number: audio.number, size: audio.end - audio.start + 1 });
+            groups[groups.length - 1].parts.push({
+                kind: 'audio',
+                number: audio.number,
+                size: audio.end - audio.start + 1,
+                startMs: audio.startMs
+            });
             audioAt += 1;
         }
     }

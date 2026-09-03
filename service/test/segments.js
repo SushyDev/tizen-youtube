@@ -1,10 +1,5 @@
 'use strict';
 
-// The segment index and the cutting that depends on it. SABR delivers one byte stream and
-// the file's own index says where each segment begins and ends inside it, so getting these
-// offsets wrong means either nothing is written or the wrong bytes are served — both of
-// which have happened, and neither of which shows up as an error anywhere.
-
 const { mkdtempSync, readFileSync, existsSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
@@ -21,7 +16,6 @@ process.env.TUBE_MEDIA_DIR = join(dir, 'media');
 const mp4 = require('../lib/mp4.js');
 const stream = require('../lib/stream.js');
 
-/** A box with a four-character type and a body. */
 function box(type, body) {
     const head = Buffer.alloc(8);
     head.writeUInt32BE(body.length + 8, 0);
@@ -29,24 +23,23 @@ function box(type, body) {
     return Buffer.concat([head, body]);
 }
 
-/** An initialization segment shaped like YouTube's: ftyp, moov, then the index. */
 function initSegment(segments, timescale) {
     const references = Buffer.concat(segments.map(({ size, duration }) => {
         const entry = Buffer.alloc(12);
-        entry.writeUInt32BE(size, 0);                       // reference type 0, size
+        entry.writeUInt32BE(size, 0);
         entry.writeUInt32BE(duration * timescale / 1000, 4);
-        entry.writeUInt32BE(0x90000000, 8);                 // starts with SAP
+        entry.writeUInt32BE(0x90000000, 8);
         return entry;
     }));
 
     const header = Buffer.alloc(20);
-    header.writeUInt32BE(0, 0);              // version 0, flags
-    header.writeUInt32BE(1, 4);              // reference id
+    header.writeUInt32BE(0, 0);
+    header.writeUInt32BE(1, 4);
     header.writeUInt32BE(timescale, 8);
-    header.writeUInt32BE(0, 12);             // earliest presentation time
-    header.writeUInt32BE(0, 16);             // first offset
+    header.writeUInt32BE(0, 12);
+    header.writeUInt32BE(0, 16);
     const counted = Buffer.alloc(4);
-    counted.writeUInt16BE(0, 0);             // reserved
+    counted.writeUInt16BE(0, 0);
     counted.writeUInt16BE(segments.length, 2);
 
     return Buffer.concat([
@@ -59,7 +52,6 @@ function initSegment(segments, timescale) {
 const SHAPE = [{ size: 1000, duration: 5000 }, { size: 2000, duration: 6000 }, { size: 1500, duration: 5000 }];
 const init = initSegment(SHAPE, 1000);
 
-// The whole file: the initialization segment, then each media segment in order.
 const media = SHAPE.map((segment, at) => Buffer.alloc(segment.size, 100 + at));
 const file = Buffer.concat([init, ...media]);
 
@@ -81,9 +73,6 @@ check('the second follows the first exactly', second && second.start === first.e
 check('durations come through in milliseconds', second && second.durationMs === 6000,
     second && `${second.durationMs}`);
 
-// Choosing formats. The same itag appears more than once — the same audio with its dynamic
-// range compressed, or a dubbed track — so an itag does not name a format, and picking the
-// louder of two by bitrate is picking at random.
 const AUDIO = [
     { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130301, xtags: '' },
     { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130313, xtags: 'CggKA2RyYxIBMQ' },
@@ -96,7 +85,6 @@ const VIDEO = [
     { itag: 315, mimeType: 'video/webm; codecs="vp9"', height: 2160, fps: 60 }
 ];
 
-// A track named for a language is fetched as that language, not as the loudest on offer.
 const DUBBED = [
     { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130000, xtags: 'lang-ja' },
     { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 129000, xtags: 'lang-en' }
@@ -106,7 +94,6 @@ const english = stream.pick(DUBBED, 'audio', null, [], 'lang-en');
 check('the language the player names is the one fetched',
     english && english.xtags === 'lang-en', english && `xtags ${english.xtags}`);
 
-// What the player says it is playing wins over anything inferred from its requests.
 const said = stream.pick(AUDIO.concat(VIDEO), 'audio', null, [{ itag: 140, xtags: '' }], 'CggKA2RyYxIBMQ');
 check('the track the player names is the one fetched',
     said && said.xtags === 'CggKA2RyYxIBMQ', said && `xtags ${said.xtags}`);
@@ -131,9 +118,6 @@ check('the tallest mp4 picture is chosen',
 check('a ceiling is respected',
     stream.pick(VIDEO.concat(AUDIO), 'video', 1440).itag === 400, 'ignored the ceiling');
 
-// The same video is sometimes offered only as transcoded-on-the-fly formats, which carry
-// no segment index. Every manifest here is written from that index, so one of those is not
-// a format this can serve at any height.
 const OTF = [
     { itag: 146, mimeType: 'video/mp4; codecs="avc1.640028"', height: 1080, fps: 30, type: 'FORMAT_STREAM_TYPE_OTF' },
     { itag: 148, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130000, xtags: '', type: 'FORMAT_STREAM_TYPE_OTF' }
@@ -146,16 +130,11 @@ check('transcoded-on-the-fly sound is not chosen',
 check('an indexed format is still chosen beside them',
     stream.pick(OTF.concat(VIDEO), 'video', 2160).itag === 401, 'wrong format');
 
-// Seeking. Playback resumes where the viewer left off, so the very first segment asked for
-// is routinely one the stream has not reached — which has to move the stream, not wait.
 const seeking = new stream.Track('video', { itag: 401, xtags: '' }, dir);
 seeking.index = index.segments;
 seeking.init = { start: 0, end: init.length - 1 };
 seeking.next = 1;
 
-// A stream is actually fetching. Said outright, because it is now half of what "reachable"
-// means: a segment close to where the download stands only arrives if the download is
-// moving, and a parked one will never reach anything however near it is.
 seeking.running = true;
 
 check('a segment just ahead is waited for', seeking.reachable(2), 'would restart');
@@ -164,15 +143,14 @@ check('and the same segment is not waited for once nothing is fetching',
     'waited for a segment nobody is fetching');
 check('a segment far ahead is not', !seeking.reachable(400), 'would wait');
 
-seeking.reach(3).catch(function () { /* the restart is what is being checked */ });
+seeking.reach(3).catch(function () { });
 check('asking for one nearby does not move the stream', seeking.restartAt === null,
     `restartAt ${seeking.restartAt}`);
 
-seeking.reach(400).catch(function () { /* no stream is running in this test */ });
+seeking.reach(400).catch(function () { });
 check('asking for one far off moves the stream there', seeking.restartAt === 400,
     `restartAt ${seeking.restartAt}`);
 
-// What the server has to be told, for it to answer from a segment rather than the start.
 const records = new Map([
     ['401:', { formatId: { itag: 401, xtags: '' }, mimeType: 'video/mp4' }],
     ['140:', { formatId: { itag: 140, xtags: '' }, mimeType: 'audio/mp4' }]
@@ -196,13 +174,11 @@ check('both formats are named, which the restore requires',
 check('a claim cannot be made before both formats are known',
     stream.stateFor(seeking, new Map(), 3, 60000) === null, 'made one anyway');
 
-// Read-ahead opens up rather than running flat out from the first second. Written against
-// the constants rather than the numbers they happen to hold: the opening allowance is a
-// tuning decision — it was raised once already, to stop the decoder starting into an empty
-// pipe — and a test that pins the number fails on every such change without finding a bug.
+// Written against the constants rather than the numbers they happen to hold: the opening
+// allowance is a tuning decision, and a test that pins it fails on every such change
+// without finding a bug.
 const ahead = new stream.Track('video', { itag: 1 }, dir);
 
-// The allowance while starting is the opening figure plus whatever is already behind.
 ahead.wanted = 1;
 ahead.next = ahead.wanted + stream.READ_AHEAD_AT_FIRST + 1;
 check('the download holds back while playback is starting', ahead.satisfied, 'kept fetching');
@@ -214,13 +190,9 @@ ahead.wanted = stream.READ_AHEAD + 4;
 ahead.next = ahead.wanted + stream.READ_AHEAD - 1;
 check('and opens up to the full window once it is under way', !ahead.satisfied, 'stopped too early');
 
-// Seeking to the very start has nothing before it to claim, and must not be mistaken for a
-// position that cannot be named.
 check('no claim can be built for the first segment',
     stream.stateFor(seeking, records, index.segments[0].number, 60000) === null, 'built one');
 
-// A stream that begins partway through has fetched nothing the player has asked for yet,
-// and must not read that as being far ahead of it.
 const jumped = new stream.Track('video', { itag: 1 }, dir);
 jumped.from = 8;
 jumped.next = 10;
@@ -230,8 +202,6 @@ check('a stream started partway through keeps fetching', !jumped.satisfied, 'sto
 jumped.next = 25;
 check('and stops once it is properly ahead', jumped.satisfied, 'never stopped');
 
-// Seeking backwards leaves the segments from before it on disk. Measuring from those, or
-// deleting relative to them, stops the download dead exactly when it is needed.
 const back = new stream.Track('video', { itag: 1 }, dir);
 back.have = new Set([0, 100, 101, 102, 103, 104]);
 back.next = 21;
@@ -241,10 +211,9 @@ check('the position follows a seek backwards', back.wanted === 20, `wanted ${bac
 check('and the download does not think it is ahead', !back.satisfied, 'held off');
 
 // Either side of the window, which reaches KEEP_BEHIND back from where the player is: at
-// twenty that is everything from five. Segment 2 is outside it and 18 is inside, and the
-// one inside has to stay — a player that asks again for something it has just watched, after
-// a stall or an eviction of its own, is answered from here rather than sending the download
-// backwards for it.
+// twenty that is everything from five. The one inside has to stay, so a player asking
+// again for something it has just watched is answered from here rather than sending the
+// download backwards.
 back.have = new Set([0, 2, 18, 19, 20, 100, 101]);
 back.forgetBehind().then(function () {
     check('the initialization segment is never dropped', back.have.has(0), 'dropped it');
@@ -255,14 +224,11 @@ back.forgetBehind().then(function () {
     check('what a seek stranded ahead goes too', !back.have.has(100) && !back.have.has(101), 'kept stale segments');
 });
 
-// A truncated head has no index in it yet, and must not be read as if it had one.
 check('a partial initialization segment yields nothing',
     mp4.segmentIndex(init.subarray(0, init.length - 4)) === null, 'parsed anyway');
 check('bytes that are not an initialization segment yield nothing',
     mp4.segmentIndex(Buffer.alloc(64)) === null, 'parsed anyway');
 
-// Cutting: the stream arrives in chunks that do not line up with segments, and the first
-// one can be larger than the head the index is looked for in.
 async function cutting(name, chunks) {
     const track = new stream.Track('video', { itag: 1, mimeType: 'video/mp4' }, join(dir, name));
     require('fs').mkdirSync(track.dir, { recursive: true });
@@ -271,8 +237,6 @@ async function cutting(name, chunks) {
 
     const formats = { video: { itag: 1, mimeType: 'video/mp4' }, audio: { itag: 2, mimeType: 'audio/mp4' } };
 
-    // Filling outlives the download: it stays up waiting to be sent somewhere else in the
-    // file. Nothing will ask here, so the track is shut down as the chunks run out.
     await stream.fill(track, {}, formats, {
         follow: () => Promise.resolve({
             reader: {
@@ -319,10 +283,6 @@ const sliced = (buffer, at) => {
     process.exit(results.every(Boolean) ? 0 : 1);
 })();
 
-// The manifest the set has to parse before it can show a frame. YouTube cuts at a constant
-// cadence, so a long video collapses into a couple of runs — and a segment that breaks the
-// cadence has to start its own run rather than be rounded into the last one, or every
-// timestamp after it is wrong.
 const dash = require('../lib/dash.js');
 
 const evenly = Array.from({ length: 500 }, (_, at) => ({
@@ -356,8 +316,6 @@ check('and the odd length is stated exactly',
 check('only the first run carries a start time',
     (mixed.match(/ t="/g) || []).length === 2, 'more than one start time per track');
 
-// Nothing is refused for its bit depth. Ten-bit AV1 was held back here for a while on a
-// measurement taken while seeking was broken for the container it was compared against.
 const TEN_BIT = [
     { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 },
     { itag: 700, mimeType: 'video/mp4; codecs="av01.0.12M.10"', height: 1440, fps: 60 },
@@ -374,7 +332,6 @@ check('depth still breaks a tie at the same size',
         { itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }
     ], 'video', 2160).itag === 401, 'ignored the depth on a tie');
 
-// The real ladder of a 2160p60 HDR video, which is where the interesting choices are.
 const REAL = [
     { itag: 315, mimeType: 'video/webm; codecs="vp9"', height: 2160, fps: 60 },
     { itag: 337, mimeType: 'video/webm; codecs="vp9.2"', height: 2160, fps: 60 },
@@ -383,14 +340,9 @@ const REAL = [
     { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
 ];
 
-// Colour, not depth. A ten-bit encode of BT.709 material is a bigger file of the same
-// picture; ten bits on BT.2020 is the HDR master. The set's own app plays the eight-bit
-// encode on an SDR video at this size, so an SDR ladder should give exactly that.
 const GRADED = { primaries: 'COLOR_PRIMARIES_BT2020', transferCharacteristics: 'COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084' };
 const withHdr = REAL.map((f) => (f.itag === 337 || f.itag === 701 ? Object.assign({}, f, { colorInfo: GRADED }) : f));
 
-// AV1 is what puts this panel into HDR — VP9 profile 2 decodes and the set stays in
-// standard range — and MP4 wins the tie between two equally graded pictures anyway.
 check('the wider colour is taken where the display can show it',
     stream.pick(withHdr, 'video', 2160, null, undefined, true).itag === 701, 'left HDR on the shelf');
 check('and refused where the display cannot',
@@ -402,8 +354,6 @@ check('HDR outranks the container an even tie would have won',
     stream.pick(withHdr.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
         'video', 2160, null, undefined, true).itag === 701, 'took SDR mp4 over HDR');
 
-// Colour has to be stated in the manifest or the set decodes wide-gamut video and shows it
-// as if it were ordinary — which looks worse than not offering HDR at all.
 const HDR_FORMAT = {
     itag: 337, mimeType: 'video/webm; codecs="vp9.2"', width: 3840, height: 2160, fps: 60,
     bitrate: 30206899, colorInfo: GRADED
@@ -426,8 +376,6 @@ check('ordinary colour is left unsaid',
     dash.manifest(shaped(SDR_FORMAT)).indexOf('SupplementalProperty') === -1, 'stated bt709 needlessly');
 check('the page is told the colour so it can correct the panel',
     dash.describe(shaped(HDR_FORMAT)).video.colour.transfer === 'smpte2084 (PQ)', 'colour missing');
-// Two tracks joined into one file. Built from the smallest boxes that carry the fields the
-// join rewrites, because what is being checked is the renumbering and nothing else.
 const mux = require('../lib/mux.js');
 
 const atom = (type, body) => {
@@ -439,7 +387,6 @@ const atom = (type, body) => {
 
 const u32 = (value) => { const b = Buffer.alloc(4); b.writeUInt32BE(value, 0); return b; };
 
-// version 0: creation, modification, track_ID, reserved, duration
 const tkhd = (id) => atom('tkhd', Buffer.concat([u32(0), u32(0), u32(0), u32(id), u32(0), u32(0)]));
 const trex = (id) => atom('trex', Buffer.concat([u32(0), u32(id), u32(1), u32(0), u32(0), u32(0)]));
 const mvhd = () => atom('mvhd', Buffer.concat([u32(0), Buffer.alloc(96)]));
@@ -449,7 +396,6 @@ const initFor = (id) => Buffer.concat([
     atom('moov', Buffer.concat([mvhd(), atom('trak', tkhd(id)), atom('mvex', trex(id))]))
 ]);
 
-// Segments as the index gives them: a byte range and a span of time.
 const seg = (number, startMs, durationMs, start, end) => ({ number, startMs, durationMs, start, end });
 
 const videoIndex = [seg(1, 0, 5000, 0, 999), seg(2, 5000, 5000, 1000, 2999)];
@@ -469,10 +415,8 @@ check('the sound is renumbered so the two do not collide',
 check('the head carries a segment index, so a seek can name a moment',
     require('../lib/mp4.js').boxes(shape.head).some((one) => one.type === 'sidx'), 'no sidx');
 
-// The sound belonging to a stretch of picture goes in front of it, and sound that outlasts
-// the last picture joins the last group rather than claiming a span of time of its own.
-// Ordered by when each moment happens. a2 begins at 4s, inside v1's 0-5s span but after
-// v1 begins, so it follows the picture rather than being written in front of it.
+// a2 begins at 4s, inside v1's 0-5s span but after v1 begins, so it follows the picture
+// rather than being written in front of it.
 check('fragments are written in the order their moments happen',
     shape.groups.map((one) => one.parts.map((part) => part.kind[0] + part.number).join('')).join(' ')
         === 'a1v1a2 v2a3', 'ordered wrongly');
@@ -492,7 +436,6 @@ check('and says it where a fragmented file says it',
         .map((one) => require('../lib/mp4.js').boxes(shape.head.subarray(one.body, one.end)))[0]
         .some((one) => one.type === 'mvex'), 'no mvex to carry it');
 
-// version+flags, then track_ID: what a fragment carries and what has to be rewritten.
 const fragment = Buffer.concat([
     atom('moof', Buffer.concat([
         atom('mfhd', Buffer.concat([u32(0), u32(1)])),
@@ -526,8 +469,6 @@ check('a range past the end is refused rather than served',
 check('no range at all means the whole file',
     mux.rangeOf(undefined, 1000) === null && mux.rangeOf('bytes=-', 1000) === null, 'invented a range');
 
-// The same session, described the other way. Both descriptions point at the same files, so
-// what is checked here is that the description is well-formed and says the same things.
 const hlsMaster = require('../lib/hls.js').master(shaped(HDR_FORMAT));
 const hlsMedia = require('../lib/hls.js').media(shaped(HDR_FORMAT), 'video');
 
@@ -550,8 +491,6 @@ check('the target duration covers the longest segment',
 check('an eight-bit mp4 still wins an even tie',
     stream.pick(REAL.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
         'video', 2160).itag === 401, 'preferred webm needlessly');
-// Depth only ever breaks a tie now — ten-bit VP9 plays cleanly here, so it is no reason to
-// step down a rung. The long form of the codec string has to be read for it all the same.
 check('the long form of vp9 is read for depth',
     stream.pick([
         { itag: 1, mimeType: 'video/webm; codecs="vp09.02.51.10"', height: 2160, fps: 60 },
@@ -565,8 +504,7 @@ check('and depth never costs a rung of picture',
 check('sound is still never taken from webm',
     stream.pick(AUDIO.concat(REAL), 'audio', null, [{ itag: 251, xtags: '' }]).itag === 140, 'took the webm');
 
-// A stream that begins partway through opens with the file's header again, and that header
-// is already on disk. Recognising it used to mean reading MP4 boxes whatever the container
+// Recognising the re-sent header used to mean reading MP4 boxes whatever the container
 // was — which, fed WebM, found nothing and cut no segments at all, so every part-watched
 // video on VP9 downloaded for ever and never played.
 const EBML_HEADER = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81]);
@@ -579,9 +517,6 @@ check('and the EBML signature is what marks it',
 check('an MP4 header is still recognised by its first box',
     mp4.boxes(FTYP)[0].type === 'ftyp', 'ftyp not found');
 
-// Both tracks belong to one position. The player asks for one segment at a time, so a
-// resumed video moves the picture and says nothing about the sound — which then grinds
-// forward from the start while the player waits for audio it will not have for minutes.
 const longVideo = Array.from({ length: 720 }, (_, at) => ({
     number: at + 1, startMs: at * 5000, durationMs: 5000, start: 0, end: 1
 }));
@@ -608,8 +543,6 @@ check('sound is moved to where the picture went',
 check('and the download is sent there rather than crawling',
     far.tracks.audio.restartAt === 181, `restartAt ${far.tracks.audio.restartAt}`);
 
-// A step of one segment is ordinary playback and must not restart anything — as long as
-// something is fetching, which is what makes the next segment something to wait for.
 const near = paired();
 near.tracks.audio.next = 3;
 near.tracks.audio.running = true;
@@ -617,7 +550,6 @@ stream.align(near, 'video', 5);
 check('ordinary playback does not move the other track',
     near.tracks.audio.restartAt === null, `restartAt ${near.tracks.audio.restartAt}`);
 
-// Nor should a segment already on disk.
 const held = paired();
 held.tracks.audio.next = 400;
 held.tracks.audio.have.add(181);

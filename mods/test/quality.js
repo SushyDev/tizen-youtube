@@ -1,5 +1,3 @@
-// Which rung the preferred-quality setting resolves to, for a given list of offers.
-
 import { chooseQuality, shouldAsk } from '../features/quality.js';
 
 const results = [];
@@ -17,7 +15,6 @@ const LADDER = [
     rung('720p', 'hd720'), rung('480p', 'large'), rung('240p', 'small')
 ];
 
-// 'highest' is an instruction: the top of whatever is on offer, whatever that is today.
 {
     const top = chooseQuality('highest', LADDER);
     check('highest takes the top rung', top.quality === 'hd2160', JSON.stringify(top));
@@ -27,7 +24,6 @@ const LADDER = [
     check('highest on a short ladder takes its top', short.quality === 'hd720', JSON.stringify(short));
 }
 
-// A named resolution is a cap, and the reason the climbing must not overshoot it.
 {
     const exact = chooseQuality('1080p', LADDER);
     check('a named rung is taken exactly', exact.quality === 'hd1080', JSON.stringify(exact));
@@ -42,7 +38,6 @@ const LADDER = [
         nearest.quality === 'hd1080', JSON.stringify(nearest));
 }
 
-// A rung the player has said it cannot play is not an answer.
 {
     const filtered = chooseQuality('highest', [
         rung('2160p', 'hd2160', false),
@@ -55,7 +50,6 @@ const LADDER = [
     check('a ladder of unplayable rungs answers nothing', allBad === null, JSON.stringify(allBad));
 }
 
-// The lists that turn up before a stream has been explored.
 {
     check('an empty ladder answers nothing', chooseQuality('highest', []) === null, 'expected null');
     check('a missing ladder answers nothing', chooseQuality('highest', null) === null, 'expected null');
@@ -63,16 +57,12 @@ const LADDER = [
         chooseQuality('1080p', undefined) === null, 'expected null');
 }
 
-// Heights are what the handler compares to decide whether a new list beats the old one,
-// so a label it cannot read must not come back as a large number.
 {
     const odd = chooseQuality('highest', [rung('auto', 'auto'), rung('1080p', 'hd1080')]);
     check('a label with no number does not outrank a real rung',
         odd.quality === 'hd1080', JSON.stringify(odd));
 }
 
-// The growth that the whole fix exists for: the same call, made again on a longer list,
-// has to answer higher — otherwise there is nothing for the handler to climb to.
 {
     const early = chooseQuality('highest', [rung('720p', 'hd720')]);
     const later = chooseQuality('highest', [rung('1080p', 'hd1080'), rung('720p', 'hd720')]);
@@ -82,9 +72,6 @@ const LADDER = [
         `${early.pixels} ${later.pixels} ${latest.pixels}`);
 }
 
-// When to ask the player for a rung. Asking restarts the stream, so this is what keeps
-// a video that loops from being left on whatever rung the loop reset it to, without
-// pestering a player that will not take the answer.
 {
     const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
     const at = (over) => Object.assign(
@@ -100,8 +87,6 @@ const LADDER = [
     check('nothing to want asks nothing',
         shouldAsk(at({ wanted: null }), 10000, LIMITS) === false, 'expected false');
 
-    // The loop case: same video, player reset itself to a lower rung, and the previous
-    // target is still remembered from before the loop.
     check('a video that looped back below its rung is asked again',
         shouldAsk(at({ current: 'hd1440', target: 'hd2160', attempts: 1, askedAt: 0 }), 10000, LIMITS) === true,
         'expected true');

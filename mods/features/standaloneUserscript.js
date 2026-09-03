@@ -7,8 +7,8 @@ function redirectUrl(originalUrl) {
         const hostname = url.hostname;
 
         if (hostname === 'youtube.com' || hostname === 'www.youtube.com') {
-            // Wherever this page came from is where the service is; assuming localhost
-            // broke the moment the proxy ran anywhere but the set itself.
+            // Wherever this page came from is where the service is; assuming localhost broke the
+            // moment the proxy ran anywhere but the set itself.
             url.protocol = window.location.protocol;
             url.host = window.location.host;
             return url.toString();
@@ -108,9 +108,7 @@ export default function installProxyPatches() {
 }
 // Self-installing on import. ES module imports are hoisted, so the reference's
 // `if (...) initPatches()` in the entry file ran after every other module's top-level
-// code, and anything capturing window.fetch got the unpatched original. Installing in
-// the first module the entry imports makes the ordering guarantee real.
-// Any origin the service serves from, not just loopback.
+// code, and anything capturing window.fetch got the unpatched original.
 if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
     installProxyPatches();
 }

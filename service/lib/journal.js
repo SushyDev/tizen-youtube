@@ -1,32 +1,19 @@
 'use strict';
 
-// What happened, in one place, so a fault can be read rather than reproduced.
-//
-// A television has no console and no debugger. Everything worth knowing about a playback —
-// what the page decided, what was fetched, where a stream was sent, why one was given up on
-// — is written here from both sides and read back over the diagnostics bridge.
-//
-// Development only, and it costs nothing when nobody is reading. The bridge tells this
-// when it opens and closes, and until it opens every line is dropped where it is written —
-// so the call sites stay where they are and a release does no work for them. The proxy's
-// record of what each player call carried is the one that matters: it builds a line naming
-// the bearer and every cookie, once per video, for nobody.
+// Development only, and it costs nothing when nobody is reading: until the bridge opens
+// every line is dropped where it is written, so a release does no work for these.
 
-// Enough to cover a whole playback and its startup, small enough to leave alone.
 const KEEP = 400;
 
 const lines = [];
 const started = Date.now();
 
-// Whether anything is listening. Set by the bridge as it opens and closes.
 let listening = false;
 
 const open = (yes) => { listening = !!yes; if (!yes) lines.length = 0; };
 
-/** Whether a line is worth building at all, for a caller that would have to work to say it. */
 const wanted = () => listening;
 
-/** One line. `from` is `page` or `service`, `topic` groups them for reading. */
 function note(from, topic, text) {
     if (!listening) return;
 
@@ -34,10 +21,8 @@ function note(from, topic, text) {
     if (lines.length > KEEP) lines.shift();
 }
 
-/** From the service's own side. */
 const service = (topic, text) => note('service', topic, text);
 
-/** From the page, already timestamped there; kept in the order it says. */
 function fromPage(entries) {
     (entries || []).forEach((entry) => {
         lines.push({
@@ -52,7 +37,6 @@ function fromPage(entries) {
     while (lines.length > KEEP) lines.shift();
 }
 
-/** As text, oldest first, seconds since the service started. */
 function read(count) {
     const wanted = count > 0 ? lines.slice(-count) : lines;
 

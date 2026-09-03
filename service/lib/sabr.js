@@ -1,8 +1,8 @@
 'use strict';
 
-// Pulls YouTube's media over SABR. Every adaptive format above 360p is served that way and
-// carries no url of its own, so the media cannot be fetched without the session the page
-// opened — see `observed` for which parts of it can only come from the page.
+// Pulls YouTube's media over SABR. Every adaptive format above 360p is served that way
+// and carries no url of its own, so the media cannot be fetched without the session the
+// page opened.
 
 const crypto = require('crypto');
 
@@ -12,28 +12,23 @@ const {
     SabrStream, EnabledTrackTypes, buildSabrFormat, VideoPlaybackAbrRequest
 } = require('../vendor/googlevideo.cjs');
 
-// A stream nobody has read from in this long is abandoned, not paused.
 const IDLE_TIMEOUT = 120000;
 
-// googlevideo sends none of these, and the endpoint answers 403 to a request that does not
-// look like the client the session was opened for.
+// googlevideo sends none of these, and the endpoint answers 403 to a request that does
+// not look like the client the session was opened for.
 const ORIGIN = 'https://www.youtube.com';
 
-// YouTube's own alphabet for a client playback nonce.
 const NONCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 const sessions = new Map();
 
-// The session, read off the page's own SABR requests as they pass through the proxy.
-//
-// Three things in one cannot be rebuilt here: the streaming url carries an `n` the player
-// descrambles with a function it downloads, the PO token is minted in the page by BotGuard,
-// and the ustreamer config has to be the one that went with them. A request missing any of
-// those is answered 403, or malformed_config, which names nothing.
+// Read off the page's own SABR requests through the proxy, because three things in it
+// cannot be rebuilt here: the `n` in the streaming url, the PO token BotGuard mints, and
+// the ustreamer config that went with them. Missing any one is answered 403, or
+// malformed_config, which names nothing.
 const observed = {
     session: null,
 
-    /** Whether a proxied request is one the session can be read out of. */
     wants(method, url) {
         return method === 'POST' && url.indexOf('videoplayback') !== -1;
     },
@@ -44,21 +39,14 @@ const observed = {
             const context = request.streamerContext || {};
             const streamingUrl = new URL(url);
 
-            // Decoding proves nothing. Protobuf reads almost any bytes as a message with
-            // none of the fields set, and the player also POSTs to this path for a single
-            // format at a time — `itag=314&mime=video/webm` in the URL, nothing in the
-            // body. Letting one of those through replaces a working session with an
-            // address that names one format, and the stream comes back as WebM with no
-            // segment index in it.
-            //
-            // What makes a request one of ours is the ustreamer config it carries, and the
-            // absence of an itag in the address: a SABR endpoint names no format, because
-            // which format it serves is what the body is for.
+            // Decoding proves nothing: protobuf reads almost any bytes as a message with
+            // none of the fields set, and the player also POSTs here for a single format at
+            // a time. What makes a request one of ours is the ustreamer config plus the
+            // absence of an itag in the address, since a SABR endpoint names no format.
             if (!request.videoPlaybackUstreamerConfig
                 || !request.videoPlaybackUstreamerConfig.length
                 || streamingUrl.searchParams.has('itag')) return;
 
-            // The page numbers its own requests; ours are numbered from our own count.
             streamingUrl.searchParams.delete('rn');
 
             const was = observed.session;
@@ -67,10 +55,9 @@ const observed = {
                 at: Date.now(),
                 streamingUrl: streamingUrl.toString(),
 
-                // What the page's own player chose. An itag alone does not name a format:
-                // the same one appears more than once with different `xtags` — a dubbed
-                // track, or the same audio with its dynamic range compressed — and picking
-                // between them by bitrate is picking at random.
+                // An itag alone does not name a format: the same one appears more than once with
+                // different `xtags` — a dubbed track, or the same audio with its dynamic range compressed
+                // — and picking between them by bitrate is picking at random.
                 selected: (request.selectedFormatIds || []).map((format) => ({
                     itag: Number(format.itag),
                     xtags: format.xtags || ''
@@ -89,7 +76,6 @@ const observed = {
                     + `selected format(s), ${observed.session.poToken ? 'with' : 'without'} a token`);
             }
         } catch (e) {
-            // A request shaped differently than expected is not worth failing playback for.
         }
     }
 };
@@ -101,10 +87,6 @@ function sameConfig(a, b) {
     return bytes(a).equals(bytes(b));
 }
 
-/**
- * Waits until the proxy has seen a SABR request for the same video as the config given.
- * Asking before the player has made one is the ordinary case, not an error.
- */
 function awaitSession(ustreamerConfig, timeout, after) {
     const deadline = Date.now() + (timeout || 15000);
 
@@ -114,9 +96,9 @@ function awaitSession(ustreamerConfig, timeout, after) {
         if (ustreamerConfig && session.ustreamerConfig
             && !sameConfig(ustreamerConfig, session.ustreamerConfig)) return null;
 
-        // Opening the same video again means the viewer changed something about it, and
-        // what they chose is in the request the player has yet to make. The one before it
-        // names the old choice and matches just as well.
+        // Opening the same video again means the viewer changed something, and what they chose is
+        // in the request the player has yet to make: the one before it names the old choice and
+        // matches just as well.
         if (after && session.at <= after) return null;
 
         return session;
@@ -137,7 +119,6 @@ function awaitSession(ustreamerConfig, timeout, after) {
     });
 }
 
-/** Everything SABR needs, as the page reads it out of the player response. */
 function validate(params) {
     const missing = ['streamingUrl', 'ustreamerConfig', 'formats', 'durationMs']
         .filter((name) => !params || params[name] === undefined || params[name] === null);
@@ -152,11 +133,8 @@ function validate(params) {
     }
 }
 
-/**
- * A playback nonce of our own, one per stream. The server tracks position against the `cpn`
- * in the url, so sharing the page's would resume where the page is and sharing one between
- * our two tracks would give them a single position. It is not a signed parameter.
- */
+// One per stream: the server tracks position against the `cpn` in the url, so sharing the
+// page's would resume where the page is.
 function ownSession(url) {
     const address = new URL(url);
     if (!address.searchParams.has('cpn')) return url;
@@ -169,11 +147,6 @@ function ownSession(url) {
     return address.toString();
 }
 
-/**
- * Carries the page's identity onto requests made on its behalf, and holds them while the
- * gate says to. The stream reads one request fully before asking for the next, so holding
- * here bounds read-ahead without aborting anything or queueing it up in memory instead.
- */
 function fetcher(userAgent, gate) {
     const headersFor = (init) => {
         const headers = Object.assign({}, init && init.headers, {
@@ -190,12 +163,9 @@ function fetcher(userAgent, gate) {
 }
 
 function open(input) {
-    // What the page reads out of the player response, with the parts only a request in
-    // flight can supply filled in.
-    //
-    // The caller may name the session to use. It should: the page makes requests for videos
-    // it is only considering, so the latest one seen is not necessarily the one a stream was
-    // opened against, and both tracks of a stream have to be built from the same one.
+    // The caller should name the session to use: the page makes requests for videos it is
+    // only considering, so the latest one seen is not necessarily the one a stream was opened
+    // against, and both tracks of a stream have to be built from the same one.
     const session = input.session || observed.session || {};
     const params = Object.assign({}, input, {
         streamingUrl: input.streamingUrl || session.streamingUrl,
@@ -205,8 +175,8 @@ function open(input) {
     });
 
     // Formats belong to one video and the session to another only if the page moved on
-    // between the two being read. The server answers that with malformed_config, which
-    // says nothing about which half is stale.
+    // between the two being read. The server answers that with malformed_config, which says
+    // nothing about which half is stale.
     if (input.ustreamerConfig && session.ustreamerConfig && !sameConfig(input.ustreamerConfig, session.ustreamerConfig)) {
         throw new Error('the page has moved on: its formats and the observed session are for different videos');
     }
@@ -215,9 +185,6 @@ function open(input) {
 
     const stream = new SabrStream({ fetch: fetcher(params.userAgent, params.gate) });
 
-    // DEV: `keepCpn` leaves the page's playback nonce alone, to find out whether the PO
-    // token is bound to it. Normally ours is used, so the server does not resume where the
-    // page is and the two tracks do not share one position.
     stream.setStreamingURL(params.keepCpn ? params.streamingUrl : ownSession(params.streamingUrl));
     stream.setUstreamerConfig(params.ustreamerConfig);
     stream.setServerAbrFormats(params.formats.map(buildSabrFormat));
@@ -229,14 +196,9 @@ function open(input) {
     return stream;
 }
 
-// ---------------------------------------------------------------------------------------
-// DEV INSTRUMENTATION — temporary, remove before release.
-//
-// A SABR stream that returns nothing returns it silently: the library reports byte counts
-// and swallows everything else into a logger that writes to a console nobody can read from
-// the television. This says what actually happened on the wire — every request, every
-// response, and the name of every UMP part that came back.
-// ---------------------------------------------------------------------------------------
+// TODO: remove before release. A SABR stream that returns nothing returns it silently:
+// the library reports byte counts and swallows everything else into a console nobody can
+// read from the television.
 
 // The part numbers the protocol uses, by the name that makes a trace readable.
 const PART_NAMES = {
@@ -252,12 +214,6 @@ const PART_NAMES = {
 
 const partName = (id) => PART_NAMES[id] || `part ${id}`;
 
-/**
- * Watches one stream and writes down what it does. Nothing here changes behaviour: the
- * library's own methods are called through, and only what they said is recorded.
- *
- * Returns the lines, which the caller hands back to whoever asked for the trace.
- */
 function trace(stream) {
     const lines = [];
     const started = Date.now();
@@ -268,9 +224,8 @@ function trace(stream) {
         journal.service('sabr', `${at}s ${text}`);
     };
 
-    // The library's own account of itself, which otherwise goes to a console on the set.
     stream.logger = {
-        setLogLevels() { /* every level is wanted here */ },
+        setLogLevels() { },
         getLogLevels() { return new Set(); },
         log(level, tag, ...rest) { say(`log ${rest.join(' ')}`); },
         error(tag, ...rest) { say(`ERROR ${rest.join(' ')}`); },
@@ -279,7 +234,6 @@ function trace(stream) {
         debug(tag, ...rest) { say(`debug ${rest.join(' ')}`); }
     };
 
-    // Own properties, so the prototype's versions are still what runs.
     const request = stream.makeStreamingRequest.bind(stream);
     const process = stream.processStreamingResponse.bind(stream);
 
@@ -311,8 +265,6 @@ function trace(stream) {
         }
     };
 
-    // Everything the stream announces, in case the answer is in a part that is handled
-    // rather than counted.
     ['error', 'sabrError', 'streamProtectionStatusUpdate', 'reloadPlayerResponse',
         'formatInitialization', 'snackbarMessage', 'finish'].forEach((name) => {
         stream.on(name, (value) => {
@@ -327,15 +279,9 @@ function trace(stream) {
     return lines;
 }
 
-/**
- * Opens a stream and reads from it for a while, reporting what arrived. This is the
- * question the whole approach rests on — whether SABR can be spoken from the television
- * at all — and it is cheaper to answer with a byte count than with a player.
- */
 async function measure(params, seconds) {
     const stream = open(params);
 
-    // Dev only: `trace: true` in the request body asks for a blow-by-blow account.
     const lines = params.trace ? trace(stream) : null;
 
     const protection = [];
@@ -352,9 +298,8 @@ async function measure(params, seconds) {
 
     const counts = { video: 0, audio: 0 };
 
-    // Reading stops by aborting the stream, not by cancelling the readers: googlevideo
-    // keeps enqueuing what is already in flight, and a cancelled reader closes the
-    // controller under it.
+    // Reading stops by aborting the stream, not by cancelling the readers: googlevideo keeps
+    // enqueuing what is already in flight, and a cancelled reader closes the controller.
     const timer = setTimeout(() => stream.abort(), seconds * 1000);
 
     // Both tracks are read: SABR interleaves them in one response, so draining only one
@@ -368,7 +313,6 @@ async function measure(params, seconds) {
                 counts[name] += value.byteLength;
             }
         } catch (e) {
-            // The abort above ends the read; anything else is worth knowing about.
             if (!/abort/i.test(e.message)) throw e;
         }
     };
@@ -391,19 +335,9 @@ async function measure(params, seconds) {
     };
 }
 
-/**
- * One track's bytes, in order, as the server sends them. Nothing is interpreted here: what
- * SABR delivers is exactly what YouTube's own DASH file is made of, and the caller knows
- * from the file's own segment index where each segment begins and ends.
- *
- * One track per stream. Sharing one between both makes the server carry a single position
- * for the pair, and the second track comes back wherever the first left off.
- */
 async function follow(input, options) {
     const stream = open(input);
 
-    // What the server says about each format, which is what a later request needs to name a
-    // position in the same file.
     if (options.onFormat) {
         stream.on('formatInitialization', (initialized) => {
             const metadata = initialized.formatInitializationMetadata || {};
@@ -413,8 +347,8 @@ async function follow(input, options) {
     }
 
     const { videoStream, audioStream } = await stream.start({
-        // As formats rather than itags: an itag can name more than one of them, and asking
-        // by number takes whichever came first.
+        // As formats rather than itags: an itag can name more than one of them, and asking by
+        // number takes whichever came first.
         videoFormat: buildSabrFormat(options.videoFormat),
         audioFormat: buildSabrFormat(options.audioFormat),
         enabledTrackTypes: options.kind === 'video' ? EnabledTrackTypes.VIDEO_ONLY : EnabledTrackTypes.AUDIO_ONLY,
@@ -426,7 +360,7 @@ async function follow(input, options) {
     return {
         reader,
         abort() {
-            reader.cancel().catch(() => { /* already closing */ });
+            reader.cancel().catch(() => { });
             stream.abort();
         }
     };
@@ -444,12 +378,11 @@ function describe(format) {
     };
 }
 
-/** Drops streams that were opened and then forgotten. */
 function sweep() {
     const now = Date.now();
     sessions.forEach((session, id) => {
         if (now - session.touchedAt < IDLE_TIMEOUT) return;
-        try { session.stream.abort(); } catch (e) { /* already gone */ }
+        try { session.stream.abort(); } catch (e) { }
         sessions.delete(id);
     });
 }

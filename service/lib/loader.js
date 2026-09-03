@@ -1,32 +1,24 @@
 'use strict';
 
-// Resolves the userscript to inject. A copy ships inside the .wgt, so the first
-// launch never touches the network. Updates are checked in the background, verified
-// by digest, and only then take precedence — the network is never on the critical path.
-
 const { createHash } = require('crypto');
 const { readFileSync, writeFileSync, existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 const fetch = require('node-fetch');
 
-// Baked in at build time from tizen.config.json so the TV never depends on an env
-// var. TUBE_ORIGIN still overrides, for tests and off-TV development.
+// Baked in at build time from tizen.config.json so the TV never depends on an env var.
+// TUBE_ORIGIN still overrides, for tests and off-TV development.
 const ORIGIN = process.env.TUBE_ORIGIN || '__TUBE_ORIGIN__';
-// On a TV this is the app's own data directory. Overridable so tests never touch it.
 const CACHE_DIR = process.env.TUBE_CACHE_DIR || '/home/owner/share/tube';
 const META_PATH = join(CACHE_DIR, 'update.json');
 const FETCH_TIMEOUT = 8000;
 const MAX_SCRIPT_BYTES = 4 * 1024 * 1024;
 
-// In the packaged app the ncc bundle and its assets sit together in dist/; running
-// from source, assets/ is one level up. Checked in that order so packaged wins.
+// Checked in this order so a packaged install wins over running from source.
 const BUNDLED_DIRS = [
-    // Development only: where `npm run dev` has rollup writing the bundles, so an edit
-    // under mods/ is picked up by the next page load. Unset everywhere else.
     process.env.TUBE_BUNDLE_DIR,
-    join(__dirname, 'assets'),          // packaged: dist/index.js + dist/assets
-    join(__dirname, '..', 'dist', 'assets'), // running from source, after a build
-    join(__dirname, '..', 'assets')     // running from source, assets alongside
+    join(__dirname, 'assets'),
+    join(__dirname, '..', 'dist', 'assets'),
+    join(__dirname, '..', 'assets')
 ].filter(Boolean);
 
 function sha256(buffer) {
@@ -43,12 +35,9 @@ function timed(promise, ms, label) {
     });
 }
 
-// One bundle now that the floor is Tizen 5: every set that can install this runs an
-// engine the modern bundle targets, so there is nothing to choose between.
-//
-// The name is kept. latest.json describes the bundle under `bundles.modern`, the cache
-// file is `userScript.modern.js`, and an app that has not updated yet looks itself up by
-// that key — renaming it would strand those sets on their shipped script forever.
+// One bundle, still named `modern`: latest.json describes it under `bundles.modern` and
+// an app that has not updated yet looks itself up by that key, so renaming it would
+// strand those sets on their shipped script forever.
 const VARIANT = 'modern';
 
 function variantFor() {
@@ -84,11 +73,9 @@ function writeMeta(meta) {
     }
 }
 
-// Prefers a verified cached update over the bundled copy. Never throws: a broken
-// cache falls back to what shipped in the package.
-// A cache written by an older app is a leftover, not an update: the package that has
-// just been installed may carry a newer script than the one last fetched. Without this a
-// set that ever took an update keeps running it through every reinstall.
+// A cache written by an older app is a leftover, not an update: the package just
+// installed may carry a newer script. Without this a set that ever took an update keeps
+// running it through every reinstall.
 function appVersion() {
     try {
         return tizen.application.getAppInfo().version;
@@ -107,8 +94,8 @@ function resolve(platformVersion) {
     if (meta[variant] && meta[variant].sha256 && cacheIsForThisApp && existsSync(cached)) {
         try {
             const source = readFileSync(cached);
-            // Re-verify on every read: a cached file could have been truncated by a
-            // power cut between write and use.
+            // Re-verify on every read: a cached file could have been truncated by a power cut
+            // between write and use.
             if (sha256(source) === meta[variant].sha256) {
                 return { source: source.toString('utf8'), variant, version: meta[variant].version, origin: 'cache' };
             }
@@ -125,8 +112,6 @@ function resolve(platformVersion) {
     return { source: readFileSync(bundled, 'utf8'), variant, version: 'bundled', origin: 'bundled' };
 }
 
-// Background update check. Resolves true only when a new digest-verified script was
-// written; every failure path resolves false and leaves the working script in place.
 function checkForUpdate(platformVersion) {
     const variant = variantFor(platformVersion);
 

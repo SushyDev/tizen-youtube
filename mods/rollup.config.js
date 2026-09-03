@@ -11,16 +11,15 @@ import { load } from '../tools/config.js';
 const config = load();
 const version = config.version;
 
-// One bundle. It is still named `modern`, and latest.json still describes it under that
-// key, because an app already installed looks its own bundle up by that name — renaming
-// it would strand every set that has not updated yet on its shipped script.
+// Still named `modern`, and latest.json still describes it under that key, because an
+// app already installed looks its own bundle up by that name: renaming it strands every
+// set that has not updated yet on its shipped script.
 function bundle({ name, input, target, ecma }) {
     return {
         input,
         output: {
             file: `../dist/userScript.${name}.js`,
             format: 'iife',
-            // A stable banner makes it obvious which bundle a TV actually got.
             banner: `/* tube ${version} (${name}) */`
         },
         plugins: [
@@ -34,7 +33,6 @@ function bundle({ name, input, target, ecma }) {
             replace({
                 preventAssignment: true,
                 values: {
-                    // A release carries no development tooling: see mods/dev/tools.js.
                     __TUBE_DEV_TOOLS__: process.env.TUBE_DEV === '1' ? 'on' : 'off',
                     __TUBE_ORIGIN__: config.origin,
                     __TUBE_VERSION__: version,

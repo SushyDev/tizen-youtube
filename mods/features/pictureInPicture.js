@@ -1,5 +1,3 @@
-// Promoting the player into a corner of the screen, and back out again.
-
 import { resolve as resolveCommand } from "../youtube/internals.js";
 
 window.isPipPlaying = false;
@@ -75,7 +73,6 @@ function enterMiniPlayer() {
 
     observer.observe(ytlrPlayer, { attributes: true });
 
-    // Exit from the current video player
     resolveCommand({
         signalAction: {
             signal: "HISTORY_BACK"
@@ -134,7 +131,6 @@ const observerPipEnter = new MutationObserver(() => {
                         originalClasses.ytlrSearchVoice.classes.push(voiceButton.classList[i]);
 
                     pipButton.classList.add(voiceButton.classList[i]);
-
                 }
                 pipButton.style.left = '10.25em';
                 pipButton.id = 'mini-player-button';

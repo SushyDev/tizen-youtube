@@ -16,21 +16,15 @@ const journal = require('./journal.js');
 const media = require('./stream.js');
 
 // The page's own player fetches a second copy of every video into a source buffer that
-// keeps none of it. It has to keep fetching — one that appends nothing decides its
-// pipeline has died and reloads — but decoding two 2160p60 streams is more than this set
-// can do, and the one nobody watches wins because it is not also writing to disk.
-//
-// Held back only at the start of a response, and never for long. An earlier version paced
-// the whole body at a fixed rate: a twelve-megabyte reply then took over a minute, those
-// connections accumulated, and the proxy and the debug bridge — which share a process with
-// the stream being watched — stopped answering at all.
+// keeps none of it, and decoding two 2160p60 streams is more than this set can do. Only
+// the start of a response: pacing the whole body made a twelve-megabyte reply take over a
+// minute, and those connections accumulated until the proxy stopped answering at all.
 const HOLD_MS = 250;
 const HOLD_FOR_FIRST = 12;
 const MOST_HELD_AT_ONCE = 2;
 
 let holding = 0;
 
-/** Slows the opening of a response, then lets it run. */
 function held(source) {
     if (holding >= MOST_HELD_AT_ONCE) return source;
 
@@ -61,14 +55,9 @@ function held(source) {
     return source;
 }
 
-// Asking for the player response without the account's token is what gets an ordinary,
-// serveable ladder back instead of an encrypted one — and it is also what makes the app
-// believe nobody is signed in. It arrives at guest mode and an account-picker loop with no
-// way out, which is a far worse thing to live with than a video that plays through the
-// page's own player.
-//
-// So: off, until it can be had without costing the account. Set TUBE_ANON_PLAYER=1 at
-// build time to measure with it on.
+// Off, because asking for the player response without the account's token is also what
+// makes the app believe nobody is signed in: it arrives at guest mode and an account
+// picker loop with no way out. Set TUBE_ANON_PLAYER=1 at build time to measure with it on.
 const ANONYMOUS_PLAYER = process.env.TUBE_ANON_PLAYER === '1';
 
 // Without an agent node-fetch reconnects per request, so every segment of a 4K stream
@@ -88,15 +77,10 @@ const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
 const PROXY_PREFIX = `http://${PROXY_HOST}:${ports.PROXY}/cors-bypass/`;
 const LOCAL_ORIGIN = `http://${PROXY_HOST}:${ports.PROXY}`;
 
-// Development only. youtube.com/tv decides from the user agent whether the caller is a
-// TV, so the proxy presents as one upstream and tells the page to report the same.
 const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 
-// Development only. One more script after the userscript, read from disk per request.
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
-
-// Rewritten as text; everything else is streamed through so video is never buffered.
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 
 // Hop-by-hop and security headers. Dropping the CSP is what lets the script run.
@@ -116,16 +100,14 @@ function spoofUserAgent(text) {
 }
 
 function rewriteBody(text, url) {
-    // The TV app shell only, not every page.
     if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1) {
         if (DEV_USER_AGENT) text = spoofUserAgent(text);
         text += `<script src="${LOCAL_ORIGIN}/__tube/userScript.js?v=${Date.now()}"></script>`;
-        // After the userscript, so it can drive what the userscript installed.
         if (DEV_INJECT_PATH) text += `<script src="${LOCAL_ORIGIN}/__tube/dev.js?v=${Date.now()}"></script>`;
     }
 
-    // Routed through the bypass. Three spellings each, because YouTube emits absolute,
-    // escaped and protocol-relative forms.
+    // Three spellings each, because YouTube emits absolute, escaped and protocol-relative
+    // forms.
     text = text.replace(/https:\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `${PROXY_PREFIX}https://$1.googlevideo.com`);
     text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/localhost:${ports.PROXY}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
     text = text.replace(/"\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `"${PROXY_PREFIX}https://$1.googlevideo.com`);
@@ -165,8 +147,8 @@ function rewriteBody(text, url) {
     return text;
 }
 
-// __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are
-// renamed in both directions and the HTTPS-only attributes dropped.
+// __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are renamed
+// in both directions and the HTTPS-only attributes dropped.
 function rewriteSetCookie(values) {
     return values.map((cookie) =>
         cookie
@@ -186,8 +168,8 @@ function restoreCookiePrefixes(cookieHeader) {
         .replace(/__LocalHost-/g, '__Host-');
 }
 
-// Express matches routes in registration order and this catch-all matches everything,
-// so it must be attached after the caller's own routes — otherwise /__tube/state gets
+// Express matches routes in registration order and this catch-all matches everything, so
+// it must be attached after the caller's own routes — otherwise /__tube/state gets
 // YouTube's HTML instead of JSON and the app never launches.
 function create(platformVersion) {
     const app = express();
@@ -211,8 +193,6 @@ function create(platformVersion) {
         }
     });
 
-
-    // Development only, so a packaged service has no such route.
     if (DEV_INJECT_PATH) {
         app.get('/__tube/dev.js', (_, res) => {
             try {
@@ -228,7 +208,6 @@ function create(platformVersion) {
 }
 
 // Must be called after every other route is registered.
-/** Reads a request body into memory. Only used for the requests capture asks for. */
 function collect(req) {
     return new Promise((resolve, reject) => {
         const chunks = [];
@@ -238,10 +217,7 @@ function collect(req) {
     });
 }
 
-// DEV INSTRUMENTATION — temporary, remove before release.
-//
-// Headers that carry who is asking. Everything else on a player request is boilerplate,
-// and printing all of it would bury the one line that matters.
+// TODO: remove before release.
 const TELLING = [
     'authorization', 'x-goog-authuser', 'x-goog-pageid', 'x-goog-visitor-id',
     'x-youtube-client-name', 'x-youtube-client-version', 'x-youtube-bootstrap-logged-in',
@@ -250,12 +226,10 @@ const TELLING = [
     'content-type', 'user-agent', 'cookie'
 ];
 
-// DEV INSTRUMENTATION — temporary, remove before release.
-//
-// The credentials the app's own player calls carry. Held so a question can be asked with
-// exactly the identity the app has, which is the only way to test the authenticated path:
-// the page's transport attaches these from inside the bundle, and nothing in the page can
-// reach it. Never sent anywhere but back to YouTube, and never read out over the bridge.
+// TODO: remove before release.
+// The credentials the app's own player calls carry, held so a question can be asked with
+// exactly the identity the app has. Never sent anywhere but back to YouTube, and never
+// read out over the bridge.
 const credentials = { at: 0, headers: null };
 
 function keepCredentials(headers) {
@@ -271,25 +245,8 @@ function keepCredentials(headers) {
     });
 }
 
-/**
- * Takes the maker's name off a player request.
- *
- * `context.client.deviceMake` is what YouTube keys the encrypted-ladder experiment to on
- * this client. Measured on the set, the app's own request body with the app's own
- * credentials, the same video in the same minute:
- *
- *     as the app sends it        →  21 formats, every one encrypted and transcoded as
- *                                   it is served, no HDR among them
- *     with deviceMake removed    →  44 formats, none encrypted, none transcoded, HDR
- *
- * Ten times out of ten either way, on more than one video. The value makes no difference —
- * empty, "Generic", "Google" and "LG" are all answered the same as "Samsung". It is the
- * presence of the field that is read.
- *
- * Nothing else is touched: the request is still signed in as the viewer, still the TV
- * client, still the same device model and version. Only the player call is rewritten, so
- * the guide, search and history are exactly as they were.
- */
+// `context.client.deviceMake` is what YouTube keys the encrypted-ladder experiment to on
+// this client.
 function askUnbranded(headers, buffer) {
     notePlayerCall(headers, buffer);
 
@@ -317,12 +274,9 @@ function askUnbranded(headers, buffer) {
     return plain;
 }
 
-// Said once; every player call goes through the rewrite.
 let unbranded = false;
 
 function notePlayerCall(headers, buffer) {
-    // Naming every header and cookie of a signed-in request is not free, and it is written
-    // for a reader that is usually not there.
     if (!journal.wanted()) return;
 
     keepCredentials(headers);
@@ -335,7 +289,6 @@ function notePlayerCall(headers, buffer) {
             .filter((name) => headers[name] !== undefined)
             .map((name) => {
                 const value = String(headers[name]);
-                // Long and secret-ish: how much there is says as much as what it is.
                 if (name === 'cookie') return `cookie[${value.split(';').length} names]`;
                 if (name === 'authorization') return `authorization[${value.split(' ')[0]} ${value.length}b]`;
                 return `${name}=${value.length > 40 ? `${value.slice(0, 37)}...` : value}`;
@@ -343,11 +296,10 @@ function notePlayerCall(headers, buffer) {
 
         journal.service('askedwith', `${body.videoId}: ${said.join(' ')}`);
     } catch (e) {
-        // A body shaped differently is not worth failing a request for.
     }
 }
 
-// DEV INSTRUMENTATION — temporary, remove before release.
+// TODO: remove before release.
 let lastAnswer = '';
 
 function noteAnswer(path, how) {
@@ -381,16 +333,13 @@ function attachFallback(app) {
             headers.host = 'www.youtube.com';
         }
 
-        // Any innertube call can carry media in its answer — a watch-next payload embeds
-        // the streams for what it expects to be played, and those arrive with no player
-        // request behind them. Which endpoint an encrypted ladder comes from decides
-        // where the token has to be stripped.
+        // Any innertube call can carry media in its answer — a watch-next payload embeds the
+        // streams for what it expects to be played — so which endpoint an encrypted ladder comes
+        // from decides where the token has to be stripped.
         const isInnertube = req.path.indexOf('/youtubei/v1/') === 0;
 
-        // Media, the only thing large enough to be worth holding back.
         const isMedia = targetUrl.indexOf('videoplayback') !== -1;
 
-        // The two requests whose answers decide what this app can play.
         const isPlayerCall = req.path.indexOf('/youtubei/v1/player') === 0;
         const isNextCall = req.path.indexOf('/youtubei/v1/next') === 0;
 
@@ -400,18 +349,10 @@ function attachFallback(app) {
         // Brotli is not decoded downstream, so ask for encodings we can rewrite.
         headers['accept-encoding'] = 'gzip, deflate';
 
-        // The account is what YouTube applies the encrypted-ladder experiment to: the same
-        // request signed with the player's bearer token comes back with formats that are
-        // transcoded as they are served and encrypted, and unsigned comes back with the
-        // ordinary indexed ladder this app can serve.
-        //
-        // Only the player call is stripped. Everything else — the guide, subscriptions,
-        // history, search — keeps the token, so the app stays signed in.
-        // Only the player call. `next` also carries streams, and signing that out too was
-        // tried — but a session whose browsing is signed in and whose watch-next calls are
-        // not reads as a client worth challenging, and the account picker starts appearing
-        // in a loop that cannot be escaped. Dropping the formats it cannot serve already
-        // sends the app back to the player call, which is the one that matters.
+        // Signed with the player's bearer token the response carries formats transcoded as
+        // they are served and encrypted; unsigned it carries the ordinary indexed ladder.
+        // Only the player call: signing `next` out too reads as a client worth challenging,
+        // and starts the account picker looping with no way out.
         if (isPlayerCall && ANONYMOUS_PLAYER) {
             delete headers.authorization;
             delete headers['x-goog-authuser'];
@@ -420,9 +361,8 @@ function attachFallback(app) {
 
         const hasBody = ['POST', 'PUT', 'PATCH'].indexOf(req.method) !== -1;
 
-
-        // Held rather than streamed: a SABR request is a couple of kilobytes, and reading
-        // it is how this service learns the session the page opened.
+        // Held rather than streamed: a SABR request is a couple of kilobytes, and reading it is
+        // how this service learns the session the page opened.
         const body = hasBody && sabr.observed.wants(req.method, targetUrl)
             ? collect(req).then((buffer) => { sabr.observed.note(targetUrl, buffer); return buffer; })
             : (hasBody && isPlayerCall
@@ -483,14 +423,6 @@ function attachFallback(app) {
     return app;
 }
 
-/**
- * Asks YouTube something as the app itself.
- *
- * DEV only. `path` is an innertube path and `body` the request; the credentials the app's
- * own player last used are attached. Without this the authenticated path cannot be varied
- * at all — a request made from the page carries cookies but no bearer, which is a different
- * client as far as YouTube is concerned and is answered differently.
- */
 function asPlayer(path, body, overrides) {
     if (!credentials.headers) return Promise.resolve({ error: 'no player call seen yet — open a video first' });
 
@@ -500,8 +432,8 @@ function asPlayer(path, body, overrides) {
         'accept-encoding': 'gzip, deflate'
     }, overrides || {});
 
-    // A header set to null is one the caller wants gone, which is a different question
-    // from one it wants changed.
+    // A header set to null is one the caller wants gone, which is a different question from
+    // one it wants changed.
     Object.keys(overrides || {}).forEach((name) => {
         if (overrides[name] === null) delete headers[name];
     });
@@ -516,7 +448,6 @@ function asPlayer(path, body, overrides) {
         .catch((error) => ({ error: error.message }));
 }
 
-/** How old the held credentials are, so a caller knows whether to expect them to work. */
 const credentialsAge = () => (credentials.headers ? Date.now() - credentials.at : null);
 
 module.exports = {

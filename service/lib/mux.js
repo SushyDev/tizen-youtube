@@ -1,23 +1,8 @@
 'use strict';
 
-// Two fragmented MP4 streams joined into one, so the picture and the sound can be served
-// from a single address with no manifest at all.
-//
-// DASH and HLS both describe a stream and let the set fetch the pieces; each has its own
-// parser, its own read-ahead and its own idea of when to present a frame, and on this
-// hardware those two descriptions of identical media play visibly differently. A plain file
-// has none of that machinery — the set is handed bytes and plays them.
-//
-// YouTube serves the two tracks separately and both call themselves track 1, so the sound
-// has to be renumbered before the two can share a file. Every rewrite here replaces a
-// four-byte field with another four bytes: nothing moves, so the sample offsets inside each
-// fragment — which are counted from the start of their own `moof` — stay correct.
-//
-// That property is what makes the file seekable. A fragment on disk is exactly as long as
-// the segment index said it would be, so the whole file's length and the offset of
-// everything in it are known as soon as the two indexes have been read — before a byte of
-// media has been fetched. A range request can therefore be answered exactly, and a `sidx`
-// written into the head lets the set ask for a moment rather than guess at a byte.
+// Every rewrite here replaces a four-byte field with another four bytes: nothing moves, so
+// sample offsets stay correct and the file's whole length and layout are known from the
+// two segment indexes alone, which is what makes it seekable before anything is fetched.
 
 const { boxes } = require('./mp4.js');
 
@@ -27,7 +12,6 @@ const AUDIO_TRACK = 2;
 // Milliseconds, so the durations in the index go in as they are.
 const TIMESCALE = 1000;
 
-/** The children of a box, walked from its body. */
 const childrenOf = (buffer, box) => boxes(buffer.subarray(box.body, box.end))
     .map((child) => ({
         type: child.type,
@@ -36,26 +20,14 @@ const childrenOf = (buffer, box) => boxes(buffer.subarray(box.body, box.end))
         body: box.body + child.body
     }));
 
-/** The first box of a type among some boxes. */
 const named = (list, type) => list.filter((box) => box.type === type)[0] || null;
 
-/** A box as its own buffer, copied so the original is never written through. */
 const slice = (buffer, box) => Buffer.from(buffer.subarray(box.start, box.end));
 
-/**
- * Where a `tkhd` keeps its track id.
- *
- * Version 1 widens the two times to sixty-four bits, and the id sits after them either way.
- */
+// Version 1 widens the two times to sixty-four bits, and the id sits after them either
+// way.
 const trackIdIn = (buffer, tkhd) => tkhd.body + 4 + (buffer.readUInt8(tkhd.body) === 1 ? 16 : 8);
 
-/**
- * A `trak`, renumbered and told how long it runs. The box keeps its size, so nothing after
- * it moves.
- *
- * The duration is in the movie's timescale, which is where a `tkhd` states it — the track's
- * own `mdhd` uses the media timescale and is left alone.
- */
 function retrak(buffer, trak, id, ticks) {
     const copy = slice(buffer, trak);
     const inside = boxes(copy.subarray(8)).map((box) => ({
@@ -67,21 +39,19 @@ function retrak(buffer, trak, id, ticks) {
 
     copy.writeUInt32BE(id, trackIdIn(copy, tkhd));
 
-    // Only the narrow form is written by anything YouTube serves, and the wide one keeps
-    // the duration somewhere this would have to guess at.
+    // Only the narrow form is written by anything YouTube serves, and the wide one keeps the
+    // duration somewhere this would have to guess at.
     if (ticks && copy.readUInt8(tkhd.body) === 0) copy.writeUInt32BE(ticks, tkhd.body + 20);
 
     return copy;
 }
 
-/** A `trex`, renumbered, which is what tells the set the track exists in fragments. */
 function retrex(buffer, trex, id) {
     const copy = slice(buffer, trex);
     copy.writeUInt32BE(id, 8 + 4);
     return copy;
 }
 
-/** A box header for a body that is already assembled. */
 function wrap(type, body) {
     const header = Buffer.alloc(8);
     header.writeUInt32BE(body.length + 8, 0);
@@ -89,7 +59,6 @@ function wrap(type, body) {
     return Buffer.concat([header, body]);
 }
 
-/** The movie timescale, and where the header keeps its own duration. */
 function timing(buffer, mvhd) {
     const wide = buffer.readUInt8(mvhd.body) === 1;
 
@@ -100,14 +69,8 @@ function timing(buffer, mvhd) {
     };
 }
 
-/**
- * How long the movie runs, said where a fragmented file says it.
- *
- * Without this the element never learns a duration: it reports `NaN`, offers nothing as
- * seekable, and answers a seek by guessing a byte offset from a length it does not know.
- * Asked for thirty seconds of a fifty-two second video it fetched eighty per cent of the
- * file and landed at forty-one.
- */
+// Without this the element never learns a duration: it reports `NaN`, offers nothing as
+// seekable, and answers a seek by guessing a byte offset from a length it does not have.
 const movieExtendsHeader = (ticks) => {
     const body = Buffer.alloc(8);
     body.writeUInt32BE(0, 0);            // version 0, no flags
@@ -115,12 +78,6 @@ const movieExtendsHeader = (ticks) => {
     return wrap('mehd', body);
 };
 
-/**
- * The `moov` describing both tracks.
- *
- * The picture's own is the frame this is built on — its `mvhd` sets the timescale
- * everything else is read against — and the sound's `trak` is lifted into it as track two.
- */
 function movie(videoInit, audioInit, durationMs) {
     const video = named(boxes(videoInit), 'moov');
     const audio = named(boxes(audioInit), 'moov');
@@ -138,8 +95,7 @@ function movie(videoInit, audioInit, durationMs) {
     const clock = timing(videoInit, mvhd);
     const ticks = Math.round((durationMs || 0) * (clock.timescale || 1000) / 1000);
 
-    // So a set that walks the file to work out what tracks to expect is told there are two
-    // and no more. Only the thirty-two-bit form is written by anything YouTube serves.
+    // Only the thirty-two-bit form is written by anything YouTube serves.
     if (!clock.wide) {
         header.writeUInt32BE(AUDIO_TRACK + 1, 8 + 96);
         if (ticks) header.writeUInt32BE(ticks, 8 + (clock.durationAt - mvhd.body));
@@ -164,14 +120,6 @@ function movie(videoInit, audioInit, durationMs) {
     ]));
 }
 
-/**
- * How the fragments are grouped in the file: each picture segment preceded by the sound
- * that belongs with it.
- *
- * Grouped rather than merely interleaved, because a `sidx` describes runs of bytes against
- * durations — so each group has to be one contiguous stretch covering one span of time, and
- * a set given a moment can land on the group holding it.
- */
 function group(videoIndex, audioIndex) {
     const groups = [];
     let audioAt = 0;
@@ -198,19 +146,10 @@ function group(videoIndex, audioIndex) {
             startMs: video.startMs
         });
 
-        // In the order the moments happen, not sound first.
-        //
-        // The sound was put in front of the picture it belongs with, so that a reader that
-        // had got this far had both. But an audio fragment is longer than a video one here
-        // — ten seconds against six — so one that merely *starts* inside a video segment's
-        // span can cover the whole of the next one. Where it starts near that span's end
-        // the reader is handed sound for ten seconds it has no picture for yet.
-        //
-        // Measured on the television, on the video that shows this most plainly: audio
-        // beginning at 39.94 was written in front of the picture covering 34.03 to 40.04 —
-        // a tenth of a second before that picture ends, the largest such jump in the file —
-        // and a viewer saw a hiccup at exactly 34. Ordered by time it reads as it plays.
-        // Sound still goes first where the two begin together, which is where it is wanted.
+        // In the order the moments happen, not sound first. An audio fragment is longer than
+        // a video one here, so one that merely *starts* inside a video segment's span can
+        // cover the whole of the next: audio beginning at 39.94 written in front of the
+        // picture covering 34.03 to 40.04 was heard as a hiccup at exactly 34.
         parts.sort((a, b) => (a.startMs - b.startMs) || (a.kind === 'audio' ? -1 : 1));
 
         groups.push({ parts, startMs: video.startMs, durationMs: video.durationMs });
@@ -234,17 +173,16 @@ function group(videoIndex, audioIndex) {
     return groups;
 }
 
-/** The segment index for the groups, so a seek can name a moment instead of a byte. */
 function segmentIndexFor(groups) {
     const body = Buffer.alloc(24 + (12 * groups.length));
     let at = 0;
 
     body.writeUInt32BE(0, at); at += 4;                  // version 0, no flags
-    body.writeUInt32BE(VIDEO_TRACK, at); at += 4;        // reference id
+    body.writeUInt32BE(VIDEO_TRACK, at); at += 4;
     body.writeUInt32BE(TIMESCALE, at); at += 4;
     body.writeUInt32BE(groups.length ? groups[0].startMs : 0, at); at += 4;
-    body.writeUInt32BE(0, at); at += 4;                  // the first group follows this box
-    body.writeUInt16BE(0, at); at += 2;                  // reserved
+    body.writeUInt32BE(0, at); at += 4;
+    body.writeUInt16BE(0, at); at += 2;
     body.writeUInt16BE(groups.length, at); at += 2;
 
     groups.forEach((one) => {
@@ -261,15 +199,7 @@ function segmentIndexFor(groups) {
     return wrap('sidx', body);
 }
 
-/**
- * Everything about the file that can be known before it is fetched: the bytes of its head,
- * and where every fragment will land.
- *
- * Returned together because the offsets depend on the head's length and the head's length
- * depends on how many groups there are, so working either out alone is half an answer.
- */
 function describeFile(videoInit, audioInit, videoIndex, audioIndex) {
-    // As long as both tracks have something to show, which is what the element can play.
     const spanOf = (index) => (index.length
         ? index[index.length - 1].startMs + index[index.length - 1].durationMs
         : 0);
@@ -302,13 +232,6 @@ function describeFile(videoInit, audioInit, videoIndex, audioIndex) {
     return { head, parts, groups, total: offset, durationMs };
 }
 
-/**
- * A media fragment, renumbered onto a track and given its place in the sequence.
- *
- * Both fields are four bytes wide and are written where they stand, so the sample offsets a
- * `trun` holds — counted from the start of this `moof` — go on pointing at the same bytes,
- * and the fragment is exactly as long as the index promised.
- */
 function retrack(fragment, id, sequence) {
     const copy = Buffer.from(fragment);
     const top = boxes(copy);
@@ -329,7 +252,6 @@ function retrack(fragment, id, sequence) {
     return copy;
 }
 
-/** The byte range a request asks for, or null when it asks for the whole file. */
 function rangeOf(header, total) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(String(header || '').trim());
     if (!match) return null;
@@ -344,8 +266,6 @@ function rangeOf(header, total) {
 
     if (from > to || from >= total) return { unsatisfiable: true };
 
-    // Whether the caller named an end. One that did not is asking for "the rest", which is
-    // a request to be answered with a sensible amount rather than with everything.
     return { from, to, open: !hasLast };
 }
 

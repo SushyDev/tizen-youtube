@@ -1,8 +1,7 @@
 'use strict';
 
 // googlevideo is ESM only, and ncc leaves it as a bare `require` that resolves to nothing
-// on the television. Rolling it up to CommonJS first gives ncc an ordinary file to inline,
-// and keeps the dependency pinned at build time rather than resolved at runtime.
+// on the television. Rolling it up to CommonJS first gives ncc an ordinary file to inline.
 
 const { rollup } = require('rollup');
 const { nodeResolve } = require('@rollup/plugin-node-resolve');
@@ -14,8 +13,6 @@ const root = join(__dirname, '..');
 const outDir = join(root, 'vendor');
 const outFile = join(outDir, 'googlevideo.cjs');
 
-// One entry re-exporting only what the service uses, so the bundle carries no more than
-// the SABR path needs.
 const ENTRY = join(__dirname, 'vendor-entry.mjs');
 
 async function build() {
@@ -24,7 +21,6 @@ async function build() {
     const bundle = await rollup({
         input: ENTRY,
         plugins: [nodeResolve({ preferBuiltins: true }), commonjs()],
-        // Node's own modules stay external; everything else is inlined.
         external: (id) => id.startsWith('node:') || require('module').builtinModules.includes(id)
     });
 

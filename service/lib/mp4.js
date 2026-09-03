@@ -1,9 +1,5 @@
 'use strict';
 
-// Just enough ISO-BMFF to read the `sidx` in YouTube's initialization segments, which lists
-// how long every media segment runs and how many bytes it takes.
-
-/** Walks the boxes at the top level. A box that is not all here ends the walk. */
 function boxes(buffer) {
     const found = [];
     const end = buffer.length;
@@ -13,8 +9,8 @@ function boxes(buffer) {
         const size = buffer.readUInt32BE(at);
         const type = buffer.toString('latin1', at + 4, at + 8);
 
-        // 0 means "to the end of the file"; 1 means a 64-bit size follows. Neither appears
-        // in what YouTube serves, and guessing at them would be worse than stopping.
+        // 0 means "to the end of the file"; 1 means a 64-bit size follows. Neither appears in
+        // what YouTube serves, and guessing at them would be worse than stopping.
         if (size < 8 || at + size > end) break;
 
         found.push({ type, start: at, end: at + size, body: at + 8 });
@@ -24,11 +20,6 @@ function boxes(buffer) {
     return found;
 }
 
-/**
- * The segment index, as a list of segments in order. Sizes are bytes of the file after the
- * index; durations are in the index's own timescale, converted to milliseconds here so a
- * manifest can be written without carrying the timescale around.
- */
 function segmentIndex(buffer) {
     const box = boxes(buffer).filter((entry) => entry.type === 'sidx')[0];
     if (!box) return null;
@@ -36,7 +27,7 @@ function segmentIndex(buffer) {
     const version = buffer.readUInt8(box.body);
     let at = box.body + 4;
 
-    at += 4;                                          // reference id
+    at += 4;
     const timescale = buffer.readUInt32BE(at);
     at += 4;
 
@@ -45,8 +36,7 @@ function segmentIndex(buffer) {
     if (!timescale) return null;
 
     // Version 1 widens two fields to 64 bits. Read as two halves rather than as a BigInt:
-    // every real value is far below the point where that loses precision, and it asks
-    // nothing of the runtime.
+    // every real value is far below the point where that loses precision.
     const wide = version !== 0;
     const wideAt = (start) => (buffer.readUInt32BE(start) * 0x100000000) + buffer.readUInt32BE(start + 4);
 
@@ -55,11 +45,10 @@ function segmentIndex(buffer) {
     const firstOffset = wide ? wideAt(at) : buffer.readUInt32BE(at);
     at += wide ? 8 : 4;
 
-    at += 2;                                          // reserved
+    at += 2;
     const count = buffer.readUInt16BE(at);
     at += 2;
 
-    // The references have to be inside the box that declares them.
     if (at + (count * 12) > box.end) return null;
 
     const segments = [];

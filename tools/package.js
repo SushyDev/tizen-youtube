@@ -1,13 +1,5 @@
 'use strict';
 
-// Packages the .wgt, signed or not. Always builds first.
-//
-//   npm run package                signed for this machine's television
-//   npm run package -- --unsigned  signed by nobody, for Tizen Homebrew
-//
-// A signature names the television it may be installed on, and Tizen Homebrew re-signs
-// what it installs — so the unsigned .wgt installs anywhere, and a TV refuses it over sdb.
-
 const { execFileSync } = require('child_process');
 const { existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSync, writeFileSync } = require('fs');
 const { join, dirname, relative, sep } = require('path');
@@ -25,10 +17,7 @@ const APP = {
     include: [
         'config.xml',
         'icon.png',
-        // The boot screen. config.xml points at ui/dist/index.html.
         'ui/dist',
-        // Both userscript bundles sit under dist/assets, which is what makes a first
-        // launch work with no network at all.
         'service/dist'
     ]
 };
@@ -57,11 +46,10 @@ function checkPrerequisites() {
         );
     }
 
-    // Left to itself tizenjs signs with the stock Tizen public distributor certificate,
-    // which expired in October 2022 and no retail Samsung TV ever trusted. Packages
-    // signed with it are refused at install with `install failed[118, -12] Invalid
-    // certificate chain`, which says nothing about which signature is at fault. Samsung
-    // mints both halves together, so the distributor p12 sits beside the author one.
+    // Left to itself tizenjs signs with the stock Tizen public distributor certificate, which
+    // expired in October 2022 and no retail Samsung TV ever trusted. Packages signed with it
+    // are refused at install with `install failed[118, -12] Invalid certificate chain`, which
+    // says nothing about which signature is at fault.
     return {
         p12: found.author,
         password: found.password,
@@ -71,7 +59,6 @@ function checkPrerequisites() {
     };
 }
 
-// Copies the allowlist into an empty directory: the package as it will be read.
 function stageContents(staging) {
     APP.include.forEach((entry) => {
         const from = join(ROOT, entry);
@@ -87,17 +74,14 @@ function stageContents(staging) {
     });
 }
 
-// Diagnostic packaging: a key that must never reach a release, added to the staged copy
-// so the file in the repository stays the file that ships.
+// Diagnostic packaging, added to the staged copy so the file in the repository stays the
+// file that ships:
 //
-//     TUBE_GAME_MODE=1 npm run package -- --unsigned
+//   TUBE_GAME_MODE=1 npm run package -- --unsigned
 //
-// use.game.mode is what makes the platform's renderer count frames. Nothing counts them
-// otherwise on this hardware — a pristine getVideoPlaybackQuality reads 0/0/0 through a
-// playing video — so every figure in the stats panel is our own arithmetic, with nothing
-// to check it against. This is the one documented way to get a real number. It is said to
-// cost frames, which is why it is opt-in and why a package built with it is for measuring
-// and not for watching.
+// use.game.mode is what makes the platform's renderer count frames — a pristine
+// getVideoPlaybackQuality reads 0/0/0 through a playing video otherwise. It is said to
+// cost frames, so a package built with it is for measuring and not for watching.
 const GAME_MODE = '<tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="true"/>';
 
 const wantsGameMode = () => process.env.TUBE_GAME_MODE === '1';
@@ -145,7 +129,6 @@ async function zipUnsigned(staging, outPath) {
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-// The certificate is null for an unsigned package, the only difference after staging.
 async function packageApp(certificate) {
     const staging = join(ROOT, '.package');
     const outPath = join(ROOT, APP.output);
@@ -174,8 +157,8 @@ async function packageApp(certificate) {
 async function main() {
     const unsigned = process.argv.indexOf('--unsigned') !== -1;
 
-    // A release build refuses a placeholder origin: it is baked into every TV that
-    // installs the package, so the example host means no OTA updates ever.
+    // A release build refuses a placeholder origin: it is baked into every TV that installs
+    // the package, so the example host means no OTA updates ever.
     const release = process.argv.indexOf('--release') !== -1;
 
     const config = load({ requireReal: release });

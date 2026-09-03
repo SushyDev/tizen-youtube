@@ -1,12 +1,11 @@
-// A television, for styling the boot log against. With no TV to talk to this answers
-// instead, and `boot.js` holds on the last line rather than handing over. Each
-// scenario is a real path through `boot.js`, selected by the query string:
+// A television, for styling the boot log against. Each scenario is a real path through
+// `boot.js`, selected by the query string:
 //
-//   /                    developer mode off, the proxy path
-//   /?boot=debugger      developer mode on, injection
-//   /?boot=failed        injection already failed once
-//   /?boot=slow          the service never answers, and it gives up
-//   /?boot=script        the userscript could not be resolved
+//   /                 developer mode off, the proxy path
+//   /?boot=debugger   developer mode on, injection
+//   /?boot=failed     injection already failed once
+//   /?boot=slow       the service never answers, and it gives up
+//   /?boot=script     the userscript could not be resolved
 
 const PROXY_URL = 'http://localhost:8098/tv?additionalDataUrl=' +
     encodeURIComponent('http://localhost:8097/dial/apps/YouTube');
@@ -20,19 +19,14 @@ const BASE = {
 };
 
 const SCENARIOS = {
-    // Developer mode off: the ordinary path for a TV nobody has unlocked.
     proxy: { ...BASE, canInject: false, isConnecting: false, injectionFailed: false },
 
-    // Developer mode on: the shell hands over to the debugger and exits.
     debugger: { ...BASE, canInject: true, isConnecting: false, injectionFailed: false },
 
-    // Tried last launch and did not take, so this one goes straight to the proxy.
     failed: { ...BASE, canInject: true, isConnecting: false, injectionFailed: true },
 
-    // Another launch of the app is already mid-injection.
     connecting: { ...BASE, canInject: true, isConnecting: true, injectionFailed: false },
 
-    // The one state that logs in the error tone without anything else being wrong.
     script: {
         ...BASE,
         canInject: false,
@@ -44,7 +38,6 @@ const SCENARIOS = {
     // `slow` is deliberately absent: it is the absence of an answer, handled below.
 };
 
-/** Stands in for the on-TV service. `enabled` is false when there is a real device. */
 const devService = ({ enabled }) => ({
     name: 'tube-dev-service',
     apply: 'serve',
@@ -60,7 +53,6 @@ const devService = ({ enabled }) => ({
 
             const wanted = new URLSearchParams(query || '').get('boot') || 'proxy';
 
-            // Never answering is itself a scenario: the only way to see boot.js give up.
             if (wanted === 'slow') {
                 say('holding /__tube/state open so the shell gives up');
                 return;

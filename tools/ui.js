@@ -1,8 +1,5 @@
 'use strict';
 
-// Consistent terminal output for the build tools. Colour is disabled when NO_COLOR is
-// set, when stdout is not a TTY, or when TERM says dumb.
-
 const ESC = String.fromCharCode(27);
 
 const enabled = !process.env.NO_COLOR &&
@@ -58,7 +55,6 @@ function blank() {
     process.stdout.write('\n');
 }
 
-// Prints an error the way a person can act on it, not a stack trace.
 function crash(err) {
     const message = err && err.message ? err.message : String(err);
     process.stderr.write(`\n${style.red('Failed.')}\n\n`);

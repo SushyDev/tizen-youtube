@@ -3,14 +3,8 @@ import { DEV_TOOLS } from '../dev/tools.js';
 import { measured } from './playbackStats.js';
 import { servingNow } from './nativePlayback.js';
 
-// Pushes playback readings to the service, which publishes them to the network. What
-// goes in the snapshot is decided here, and nothing comes back the other way. Only
-// works on the proxy path, where the page and the service share an origin.
-
 const INTERVAL = 1000;
 
-// Commands are looked for more often than readings are pushed: a reading every second is
-// plenty, but waiting a second to be asked a question makes an hour of poking unbearable.
 const LISTEN_EVERY = 200;
 
 let timer = null;
@@ -18,7 +12,6 @@ let listener = null;
 
 const servedByService = () => /^http:\/\/localhost:\d+$/.test(window.location.origin);
 
-/** Everything worth knowing about playback, and nothing that is not ours to send. */
 function reading() {
     const video = document.querySelector('video');
     const player = document.querySelector('#movie_player, .html5-video-player');
@@ -26,10 +19,9 @@ function reading() {
 
     const quality = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
     let stats = {};
-    try { stats = player.getStatsForNerds(); } catch (e) { /* not this build, or not ready */ }
+    try { stats = player.getStatsForNerds(); } catch (e) { }
 
     return {
-        // What is on screen.
         videoId: (function () {
             try { return player.getVideoData().video_id; } catch (e) { return null; }
         }()),
@@ -39,14 +31,11 @@ function reading() {
             return Math.round(rect.width) + 'x' + Math.round(rect.height);
         }()),
 
-        // What it is playing.
         intrinsic: video.videoWidth + 'x' + video.videoHeight,
         resolution: stats.resolution || null,
 
-        // What is being decoded, which once this app feeds the element is not what the
-        // player selected. Left to `getStatsForNerds` this said `opus (251)` through four
-        // minutes of AAC — the panel on screen is corrected, and a measurement taken from
-        // here was reading the uncorrected rows.
+        // Not `getStatsForNerds`, which reports what the player selected: it said `opus (251)`
+        // through four minutes of AAC.
         codecs: (function () {
             const now = servingNow();
             if (!now || !now.video || !now.audio) return stats.codecs || null;
@@ -59,9 +48,8 @@ function reading() {
             }
             return stats.color || null;
         }()),
-        // From the element, not the player. `getStatsForNerds` reports the player's own
-        // buffer, which once the picture comes from this app is a buffer nothing is
-        // playing from — it read 0.00s for half a minute while the video played on.
+        // From the element, not the player, whose own buffer nothing is playing from once the
+        // picture comes from this app — it read 0.00s for half a minute while the video played on.
         buffer: (function () {
             try {
                 const ranges = video.buffered;
@@ -72,9 +60,6 @@ function reading() {
             }
         }()),
 
-        // Which rung it settled on, against the rungs it was actually offered. A player
-        // sitting below the best on a healthy buffer has been capped, not starved, and
-        // the two lists together say by whom.
         quality: (function () {
             try { return player.getPlaybackQuality(); } catch (e) { return null; }
         }()),
@@ -84,20 +69,14 @@ function reading() {
         }()),
         preferred: configRead('preferredVideoQuality'),
 
-        // Whether anything is counting frames, which is the question this was built for.
-        // `derived` should now always be false: nothing is substituted, so a non-zero
-        // count here is the platform renderer's own and a zero means it counts nothing.
         frames: stats.dims_and_frames || null,
         decoded: quality ? quality.totalVideoFrames : null,
         dropped: quality ? quality.droppedVideoFrames : null,
         corrupted: quality ? quality.corruptedVideoFrames : null,
         derived: !!(quality && quality.tubeDerived),
 
-        // What this app worked out on its own, beside what the renderer says, so the two
-        // can be compared without reading either off the screen.
         measured: measured(),
 
-        // Whether it is actually playing.
         evaluated: lastEval,
         mediaTime: +video.currentTime.toFixed(2),
         paused: video.paused,
@@ -105,15 +84,10 @@ function reading() {
     };
 }
 
-// What the last evaluate returned, carried out in the reading.
 let lastEval = null;
 
-// How long to wait on an expression that answers with a promise. Most of what is worth
-// asking this page is asynchronous — a request, a decode, a frame — and making every
-// question a two-step dance through a global was most of the friction in using this.
 const AWAIT_FOR = 25000;
 
-/** Whatever it returned, resolved if it needs resolving, and always answered. */
 function settle(value) {
     if (!value || typeof value.then !== 'function') return Promise.resolve(value);
 
@@ -123,7 +97,6 @@ function settle(value) {
     ]);
 }
 
-/** Said as text, without throwing on something that cannot be stringified. */
 function describe(value) {
     if (typeof value === 'undefined') return 'undefined';
 
@@ -147,7 +120,7 @@ function answer(id, source, outcome) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(Object.assign({ id }, outcome))
-    }).catch(() => { /* nothing waiting for it */ });
+    }).catch(() => { });
 }
 
 function collect() {
@@ -170,7 +143,7 @@ function collect() {
                 (failure) => answer(command.id, command.source, { error: String(failure && failure.message || failure) })
             );
         }))
-        .catch(() => { /* the service is not answering */ });
+        .catch(() => { });
 }
 
 function push() {
@@ -181,7 +154,7 @@ function push() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body
-    }).catch(() => { /* the service will report the reading as stale */ });
+    }).catch(() => { });
 }
 
 function apply(enabled) {
@@ -190,7 +163,7 @@ function apply(enabled) {
     fetch(`/__tube/dev/enable?on=${enabled ? 1 : 0}`)
         .then((response) => response.json())
         .then((state) => console.log(`[tube] diagnostics ${state.open ? 'readable on :' + state.port : 'closed'}`))
-        .catch(() => { /* nothing to report to */ });
+        .catch(() => { });
 
     clearInterval(timer);
     clearInterval(listener);
@@ -200,9 +173,7 @@ function apply(enabled) {
 }
 
 // Hung off the baked constant rather than off the setting, so a release build does not
-// merely leave this switched off — nothing above is referenced, and the minifier drops the
-// lot. Read from the setting it would otherwise be, so a build that does carry the tooling
-// can still be turned off from the menu.
+// merely leave this switched off: nothing above is referenced and the minifier drops it.
 if (DEV_TOOLS) {
     apply(configRead('enableDevBridge'));
 

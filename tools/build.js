@@ -1,9 +1,5 @@
 'use strict';
 
-// One command to build the app: the boot screen, the two userscript bundles, and the
-// service that serves and injects them. Sub-build output is captured and shown only on
-// failure, so a successful build is a short summary rather than a wall of log.
-
 const { execFileSync } = require('child_process');
 const { existsSync, statSync } = require('fs');
 const { join } = require('path');
@@ -33,20 +29,16 @@ const STEPS = [
     }
 ];
 
-// npm wraps every failure in lifecycle boilerplate that says nothing the underlying
-// tool has not. Strip it so the compiler error is what a person reads first.
 function cleanOutput(raw) {
     const lines = String(raw).split('\n');
     const kept = [];
 
     for (const line of lines) {
         if (/^npm (error|notice|warn)\b/.test(line.trim())) continue;
-        // Deep frames inside node_modules are noise for a source-level error.
         if (/^\s+at .*[\\/]node_modules[\\/]/.test(line)) continue;
         kept.push(line);
     }
 
-    // Collapse the runs of blank lines that removal leaves behind.
     return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 

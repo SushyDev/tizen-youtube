@@ -1,33 +1,11 @@
 import { note } from '../dev/journal.js';
 import { objectURLFor } from '../youtube/mediaSource.js';
 
-// The same media, fed to the element through a MediaSource this app drives itself.
-//
-// Handing the element a URL is what makes the picture smooth here: the platform decodes it
-// and scans it out to a hardware overlay, and nothing in the web engine ever touches a
-// frame. That is also why nothing can count them — every counter reads zero, a canvas comes
-// back black, and the one switch that makes the renderer count stops the platform playing a
-// URL at all. On a television whose whole purpose is to play 2160p60 cleanly, "we cannot
-// tell you whether it drops frames" is not a good enough answer.
-//
-// Through MediaSource the engine does the decoding, so it counts. YouTube's own use of it
-// drops four frames in a hundred at 2160p60 — but that is *its* use of it: small appends,
-// its own eviction, its own adaptive churn. What this does instead is append whole segments,
-// keep a deep buffer, never change format mid-stream and never evict ahead of the player.
-// Whether that is smooth is the question, and either answer is worth having: smooth means a
-// pipeline that is both good and measurable, and rough means the engine's decode is the
-// fault rather than YouTube's handling of it, which closes the question for good.
-
-// How far ahead of the player to keep the buffer, and how much of the past to keep. Both
-// generous: memory is not the constraint here, and a deep buffer is the point.
 const AHEAD_SECONDS = 24;
 const BEHIND_SECONDS = 12;
 
-// How often to look at whether more is wanted. Appending is driven by how much is buffered
-// rather than by a timer, so this only decides how promptly that is noticed.
 const LOOK_EVERY = 250;
 
-/** A source buffer's `updateend`, as something that can be waited for. */
 const settled = (buffer) => new Promise((done, failed) => {
     if (!buffer.updating) return done();
 
@@ -49,7 +27,6 @@ const settled = (buffer) => new Promise((done, failed) => {
     return undefined;
 });
 
-/** One track: where its segments come from, and how far through them this has got. */
 function trackOf(session, kind, origin) {
     const described = session[kind];
 
@@ -57,23 +34,14 @@ function trackOf(session, kind, origin) {
         kind,
         described,
         buffer: null,
-        // The segment to append next, and where in the video it will land.
         next: described.first,
         last: described.first + described.segments - 1,
         appendedMs: 0,
         address: (number) => `${origin}/dash/${session.id}/${kind}/${number === 0 ? 'init.mp4' : `${number}.m4s`}`,
-        // What the element has to be told the bytes are, before it will take any.
         type: `${described.mimeType}; codecs="${described.codecs}"`
     };
 }
 
-/**
- * Feeds one video into a MediaSource, and answers with the address to hand the element.
- *
- * Returns null where the platform will not take the formats being served, which is the
- * signal to hand over something else instead — there is no use pointing the element at a
- * source that will never accept a byte.
- */
 export function feed(session, origin) {
     if (typeof window === 'undefined' || !window.MediaSource) return null;
 
@@ -87,8 +55,8 @@ export function feed(session, origin) {
 
     const source = new window.MediaSource();
 
-    // The browser's own, not the replacement: asking the patched one would hand back
-    // whatever this is being asked to produce.
+    // The browser's own, not the replacement: the patched one would hand back whatever this
+    // is being asked to produce.
     const address = objectURLFor(source);
     if (!address) return null;
 
@@ -103,8 +71,6 @@ export function feed(session, origin) {
     source.addEventListener('sourceclose', stop);
 
     source.addEventListener('sourceopen', () => {
-        // Set once and never changed: an element told how long the video runs can seek
-        // across the whole of it rather than only across what has been appended.
         try {
             source.duration = session.durationMs / 1000;
         } catch (e) {
@@ -128,7 +94,6 @@ export function feed(session, origin) {
         });
     });
 
-    /** How much is buffered ahead of where the element is playing. */
     const ahead = (track) => {
         const video = document.querySelector('video');
         const at = video ? video.currentTime : 0;
@@ -138,11 +103,9 @@ export function feed(session, origin) {
             if (ranges.start(n) <= at + 0.1 && ranges.end(n) > at) return ranges.end(n) - at;
         }
 
-        // Nothing covering the moment being played: whatever is there is not usable yet.
         return ranges.length ? 0 : 0;
     };
 
-    /** Drops what is well behind, so a long video does not grow without limit. */
     const forget = async (track) => {
         const video = document.querySelector('video');
         const at = video ? video.currentTime : 0;
@@ -184,7 +147,6 @@ export function feed(session, origin) {
                 await forget(track);
             }
 
-            // Every track has appended everything it has, so the video is complete.
             if (!stopped && tracks.every((one) => one.next > one.last)
                 && tracks.every((one) => !one.buffer.updating)
                 && source.readyState === 'open') {

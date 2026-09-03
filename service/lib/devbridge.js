@@ -1,8 +1,7 @@
 'use strict';
 
-// Publishes what the page reports about playback, so the app can be inspected when sdbd
-// refuses and there is no debugger. Readings travel one way: the page pushes, the network
-// reads, and nothing arriving from the network is stored or run.
+// Readings travel one way: the page pushes, the network reads, and nothing arriving from
+// the network is stored or run.
 
 const crypto = require('crypto');
 const express = require('express');
@@ -14,7 +13,6 @@ const postmortem = require('./postmortem.js');
 const proxy = require('./proxy.js');
 const sabr = require('./sabr.js');
 
-// Readings older than this say so rather than being served as if current.
 const STALE_AFTER = 10000;
 
 // Baked for a debug build, random otherwise. Evaluate runs whatever it is handed, so it
@@ -28,8 +26,6 @@ let latest = null;
 let receivedAt = 0;
 let queue = [];
 
-// Answers waiting to be collected, by the id of the question. An asker that has given up
-// leaves one behind, so they are dropped once they are older than anyone would wait.
 const answers = new Map();
 const ANSWER_KEPT = 60000;
 
@@ -40,7 +36,6 @@ function forget() {
     });
 }
 
-/** Asks the page something and waits for what it says. */
 function ask(source, seconds) {
     const id = crypto.randomBytes(8).toString('hex');
     const deadline = Date.now() + (Math.min(Number(seconds) || 30, 120) * 1000);
@@ -67,7 +62,7 @@ function ask(source, seconds) {
     });
 }
 
-/** The page's half, on this service's origin. Registered before the proxy's catch-all. */
+// Registered before the proxy's catch-all.
 function attach(app) {
     app.post('/__tube/dev/report', express.json({ limit: '256kb' }), (req, res) => {
         latest = req.body || null;
@@ -87,9 +82,8 @@ function attach(app) {
         res.json({ commands: pending });
     });
 
-    // The page answering a question it was asked. Kept by id so an answer reaches whoever
-    // asked rather than being matched by comparing the source text, which two questions
-    // asked in the same second could both claim.
+    // Kept by id, so an answer reaches whoever asked rather than being matched on source
+    // text that two questions asked in the same second could both claim.
     app.post('/__tube/dev/result', express.json({ limit: '4mb' }), (req, res) => {
         const answer = req.body || {};
         if (answer.id) answers.set(String(answer.id), { at: Date.now(), answer });
@@ -107,11 +101,9 @@ function attach(app) {
     });
 }
 
-/** The reading half, on every interface, so a computer on the network can read it. */
 function start() {
     if (server) return server;
 
-    // Everything written for reading is written from here on, and not before.
     journal.open(true);
 
     const app = express();
@@ -127,8 +119,6 @@ function start() {
 
     app.get('/health', (_, res) => res.json({ ok: true, port: ports.DEV, hasReading: !!latest }));
 
-    // Can this set speak SABR at all? The page posts what it read out of the player
-    // response and this reports what came back over the wire.
     app.post('/sabr/measure', express.json({ limit: '1mb' }), (req, res) => {
         const seconds = Math.min(Number(req.body && req.body.seconds) || 5, 20);
 
@@ -138,9 +128,8 @@ function start() {
         );
     });
 
-    // What the proxy has learned about the session the page opened. The PO token comes
-    // with it only for a caller holding the token, so the session cannot be lifted off
-    // this port by anything else on the network.
+    // The PO token comes with it only for a caller holding the token, so the session cannot
+    // be lifted off this port by anything else on the network.
     app.get('/sabr/session', (req, res) => {
         const session = sabr.observed.session;
         if (!session) return res.json({ seen: false });
@@ -157,8 +146,6 @@ function start() {
         });
     });
 
-    // What this engine actually provides, so a library that needs streams or protobuf is
-    // known to run here before anything is built on it.
     app.get('/runtime', (_, res) => {
         const has = (name) => typeof globalThis[name] !== 'undefined';
         const compiles = (source) => {
@@ -196,9 +183,6 @@ function start() {
         });
     });
 
-    // One question, one answer, on one connection. Everything else here reads a reading
-    // pushed on a timer; this waits for the page to actually run something and say what it
-    // returned — including when what it returns is a promise.
     app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), (req, res) => {
         if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
 
@@ -208,8 +192,6 @@ function start() {
         return ask(source, req.query.seconds).then((answer) => res.json(answer));
     });
 
-    // DEV: ask YouTube something with the app's own identity. The page cannot do this —
-    // its fetch carries cookies but no bearer, which YouTube answers as a different client.
     app.post('/asplayer', express.json({ limit: '1mb' }), (req, res) => {
         if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
 
@@ -224,7 +206,6 @@ function start() {
 
     app.get('/stats', (_, res) => res.json(snapshot()));
 
-    // Everything both sides recorded, oldest first, as plain text to be read with `tail`.
     app.get('/log', (req, res) => {
         const count = Number(req.query && req.query.tail) || 0;
         res.type('text/plain').send(journal.read(count) || 'nothing recorded yet');
@@ -232,10 +213,8 @@ function start() {
 
     app.post('/log/clear', (_, res) => { journal.clear(); res.json({ cleared: true }); });
 
-    // What stopped the service last time, which is otherwise unanswerable on a television.
     app.get('/postmortem', (_, res) => res.type('text/plain').send(postmortem.read() || 'nothing recorded'));
 
-    // Queued for the page to run and report back in its next reading.
     app.post('/command', express.json({ limit: '64kb' }), (req, res) => {
         if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'bad token' });
         if (!req.body || !req.body.action) return res.status(400).json({ error: 'no action' });
@@ -259,7 +238,7 @@ function start() {
 function stop() {
     if (!server) return;
     journal.open(false);
-    try { server.close(); } catch (e) { /* already closing */ }
+    try { server.close(); } catch (e) { }
     server = null;
     latest = null;
     receivedAt = 0;

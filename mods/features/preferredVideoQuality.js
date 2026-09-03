@@ -16,8 +16,8 @@ const CONFIG_KEYS = {
 
 const CHECK_INTERVAL = 3000;
 
-// Asking restarts the stream, so a rung the player will not take is asked for a few
-// times and then left alone until the next video.
+// Asking restarts the stream, so a rung the player will not take is asked for a few times
+// and then left alone until the next video.
 const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
 
 // Below this, a jump backwards is a seek; above it, the video started over.
@@ -27,30 +27,22 @@ class PreferredQualityHandler {
     #player = null;
     #attachTimeout = null;
 
-    // What playback we are looking at, so a video starting over is noticed.
     #lastVideoId = null;
     #lastTime = 0;
 
-    // What we last asked for, and how insistently.
     #target = null;
     #attempts = 0;
     #askedAt = 0;
 
-    // Set once the preference has been applied to this video. A preference is what to
-    // start on, not a rung to hold: without this, choosing another quality from the
-    // player's own menu was overridden again within the tick.
+    // A preference is what to start on, not a rung to hold: without this, choosing another
+    // quality from the player's own menu was overridden again within the tick.
     #settled = false;
 
-    // Set when the video is about to be started again on purpose, carrying a quality the
-    // viewer picked. The restart looks exactly like a new video from here — same id, time
-    // back at the start — and applying the preference to it would undo the choice that
-    // caused it.
+    // A deliberate restart looks exactly like a new video from here — same id, time back at
+    // the start — and applying the preference to it would undo the choice that caused it.
     #keepChoice = false;
 
     keepCurrentChoice() {
-        // Both halves matter. Standing down now stops the preference, which retries for a
-        // few seconds after a video starts, from pushing back over a choice made while it
-        // was still trying; the flag stops the restart that follows from undoing that.
         this.#keepChoice = true;
         this.#settled = true;
         this.#attempts = 0;
@@ -85,7 +77,6 @@ class PreferredQualityHandler {
     #setupConfigListener() {
         configChangeEmitter.addEventListener(EVENTS.CONFIG_CHANGE, (ev) => {
             if (ev.detail?.key !== CONFIG_KEYS.QUALITY) return;
-            // An explicit choice starts the asking over, in either direction.
             this.#forget();
             this.#tick();
         });
@@ -98,8 +89,8 @@ class PreferredQualityHandler {
         this.#settled = false;
     }
 
-    // A new id or a jump back to the start: autoplay, play next, replay and repeat all
-    // arrive here. Repeat was missed before, since its id never changes.
+    // A new id or a jump back to the start: autoplay, play next, replay and repeat all arrive
+    // here. Repeat was missed before, since its id never changes.
     #startedOver() {
         const id = this.#player.getVideoData?.()?.video_id;
         const time = this.#player.getCurrentTime?.() ?? 0;
@@ -171,16 +162,8 @@ class PreferredQualityHandler {
     };
 }
 
-// Off the television this file is only imported for what it exports, and there is no page
-// for a handler to watch.
 if (typeof window !== 'undefined') window.preferredVideoQualityHandler = new PreferredQualityHandler();
 
-/**
- * Leaves the quality alone through the next restart.
- *
- * Starting a video again to change what is being fetched looks like a new video from here,
- * and the preference would be applied over the very choice that asked for the restart.
- */
 export function keepCurrentChoice() {
     if (typeof window !== 'undefined') window.preferredVideoQualityHandler.keepCurrentChoice();
 }

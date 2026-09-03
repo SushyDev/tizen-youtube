@@ -1,9 +1,8 @@
 import { configRead } from '../config.js';
 import { fedByUs, servingNow } from './nativePlayback.js';
 
-// The platform player counts no frames, so getVideoPlaybackQuality() reads zero and the
-// stats line shows a dash. Time the video failed to advance converts to frames at the
-// reported rate; real counts are passed through untouched.
+// The platform player counts no frames, so `getVideoPlaybackQuality()` reads zero here.
+// What can be measured instead is the time the picture failed to advance.
 
 // Below this a gap is sampling jitter, not a hitch worth reporting.
 export const TOLERANCE = 0.02;
@@ -13,25 +12,13 @@ const MAX_GAP = 2;
 
 const DEFAULT_FPS = 60;
 
-/**
- * What one sample interval adds, in seconds. `reseed` drops the baseline.
- *
- * Both sides are returned rather than their difference, and the difference is taken over
- * the totals instead. Charging each sample's shortfall as it happens is what made this
- * unusable: only lag is charged, nothing credits the samples that catch up, and the
- * sampling timer's jitter is zero-mean — so summing the shortfalls of a signal whose total
- * shortfall is zero yields a large positive number.
- *
- * Measured against thirty seconds of this television's own playback: the media clock
- * advanced 29.751s against 29.751s expected — perfect — while the per-sample sum came to
- * 0.694s, which the old code reported as forty-one dropped frames. The deficit of the
- * totals is 0.000s. A one-second stall injected into the same data still shows in full.
- */
+// Both sides are returned rather than their difference, which `lostBy` takes over the
+// totals instead: the timer's jitter is zero-mean, so summing each sample's shortfall
+// charges the lag and credits none of the catching up.
 export function account(previous, current) {
     const none = { played: 0, expected: 0, advanced: 0, reseed: false };
     const drop = { played: 0, expected: 0, advanced: 0, reseed: true };
 
-    // A pause is not lost time and a seek's jump is not progress.
     if (!current || current.paused || current.seeking) return drop;
     if (!previous) return none;
 
@@ -41,29 +28,16 @@ export function account(previous, current) {
     const advanced = current.media - previous.media;
     const expected = wall * (previous.rate || 1);
 
-    // A backwards or wildly forward jump is a seek or a loop, whoever asked for it.
     if (advanced < 0 || advanced > expected * 4) return drop;
 
     return { played: Math.min(advanced, expected), expected, advanced, reseed: false };
 }
 
-// How much of the recent past the reported figure covers. Long enough that a real stall
-// stays visible while it matters, short enough that it stops being reported once playback
-// has been fine for a while.
+// Seconds of the recent past the reported figure covers.
 export const WINDOW = 30;
 
-/**
- * Time the picture was trying to advance and did not, over the recent past.
- *
- * The deficit of the totals: exact, and self-correcting, because a sample that lags and a
- * sample that catches up cancel — which is what jitter does and what a stall does not.
- *
- * Over the *recent* totals, not the whole session. A cumulative figure is dominated for
- * ever by whatever happened at startup: measured here, a video reported six hundred
- * dropped frames for four minutes while losing nothing at all after the first few seconds.
- * A viewer reading that sees a number climbing against a picture that is plainly fine, and
- * correctly stops believing it.
- */
+// Over the recent past rather than the whole session, which would be dominated for ever
+// by whatever happened at startup.
 export function lostBy(tally) {
     if (!tally.recent || !tally.recent.length) {
         return Math.max(0, (tally.expected || 0) - (tally.advanced || 0));
@@ -92,17 +66,12 @@ function tallyFor(video) {
     return tally;
 }
 
-// How fast frames are actually arriving, smoothed, so a rung claiming 60 that delivers 48
-// says so.
 const EMA = 0.3;
 const MAX_PLAUSIBLE_FPS = 200;
 
 function measureRate(video, tally, wall) {
-    // The renderer's own count, never the substitute below it. Reading the patched one
-    // meant averaging numbers this module had invented from `fps` moments earlier, so the
-    // figure shown as a measured frame rate reduced algebraically to the rate the player
-    // claimed. Where the renderer counts nothing there is no rate to report, and saying so
-    // is better than laundering a claim.
+    // The prototype's own count rather than whatever the page has put on the element, so a
+    // patched one cannot be averaged back into a measurement of itself.
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     const real = proto && proto.getVideoPlaybackQuality;
     const quality = real ? real.call(video) : null;
@@ -123,19 +92,11 @@ function measureRate(video, tally, wall) {
     tally.rateAt = wall;
 }
 
-// The panel composes its frames line itself rather than calling getStatsForNerds, so the
-// rate is shown beside it. Writing into the panel's own text made it blink: the panel
-// rewrites that line on its refresh and we put it back a quarter second later. Our own
-// element next to it is never rewritten, so there is nothing to lose the race to.
 const FIND_EVERY = 2000;
 
-// Rows the panel fills in from what the player selected. Once the picture comes from here
-// that is no longer what reaches the decoder, and the panel goes on saying it — opus while
-// the set plays AAC, AV1 while it plays VP9, protected while nothing is. Not merely useless
-// but misleading, which is worse: every measurement read off it has to be thrown away.
-//
-// Each is written as a label and then its value, so the value is reached from the label
-// rather than by recognising the shape of what is written in it.
+// Rows the panel fills in from what the player selected, which is no longer what reaches
+// the decoder once the picture comes from here — opus while the set plays AAC, AV1 while
+// it plays VP9. Reached by label, since the panel writes each row as a label then a value.
 const CORRECTED = {
     Codecs: (now) => `${now.video.codecs} (${now.video.itag}) / ${now.audio.codecs} (${now.audio.itag})`,
 
@@ -145,13 +106,9 @@ const CORRECTED = {
 
     Protected: () => 'no — served from this app',
 
-    // The player's own figures describe the copy it is fetching and discarding, which is
-    // neither what is playing nor a measure of anything. Ours is the size of the stream
-    // actually being decoded.
     'Connection Speed': (now) => `${Math.round((now.video.bitrate + now.audio.bitrate) / 1000)} Kbps of media`
 };
 
-/** The value beside a label, when the panel has written that row. */
 function valueBeside(label) {
     if (!searchable()) return null;
 
@@ -169,14 +126,6 @@ function valueBeside(label) {
     return null;
 }
 
-/**
- * Rewrites the rows the panel cannot know the answer to.
- *
- * The panel refreshes on its own timer and puts its own text back, so this runs on the
- * same interval as the frame rate beside it and simply writes over it again. Only when
- * this app is the one feeding the element — otherwise the panel is right and should be
- * left alone.
- */
 function correctRows(video) {
     if (pipelineOf(video) !== 'enhanced') return;
 
@@ -213,44 +162,21 @@ function framesNode() {
     return null;
 }
 
-/**
- * Which pipeline is feeding the element.
- *
- * A stream served by this app comes from an address of its own; the player's own media
- * arrives through MediaSource as a blob. Worth saying on the line, because the two look
- * identical until you count frames.
- */
 function pipelineOf(video) {
     const source = String(video.currentSrc || '');
 
-    // Three of them now, and the third looks exactly like the player's own from here: when
-    // this app feeds a MediaSource itself the element holds a blob address, the same as
-    // YouTube's own pipeline. Saying "default" for it made the two indistinguishable on the
-    // one line meant to tell them apart.
+    // Asked of the feeder rather than the address: when this app feeds a MediaSource itself
+    // the element holds a blob, exactly as it does on YouTube's own pipeline.
     if (source.indexOf('/dash/') !== -1) return 'enhanced';
     if (fedByUs()) return 'fed by the app';
 
     return 'default';
 }
 
-/**
- * What this module can honestly say about playback.
- *
- * Where the renderer counts frames, the rate is measured and the panel's own dropped-of
- * row is the truth. Where it counts nothing — which is this television, because
- * `use.game.mode` is left out of config.xml after it was found to drop frames — there is no
- * frame count to be had. What can be measured is *time*: how long the picture failed to
- * advance while it was trying to. That is the number reported, in the units it was
- * measured in, rather than multiplied by an assumed rate into frames nobody dropped.
- */
 function said(tally) {
-    // Sub-second precision would suggest a confidence this does not have.
     const lost = lostBy(tally);
     const time = lost >= 0.05 ? `~${lost.toFixed(1)}s lost` : '~no time lost';
 
-    // Two different facts, and where both are known both are worth saying. A measured
-    // rate below the rung's own says frames are not arriving; lost time says the clock
-    // stopped. A stream can do either without the other.
     return tally.rate ? `@ ${tally.rate.toFixed(2)} fps · ${time}` : time;
 }
 
@@ -262,7 +188,6 @@ function showRate(video, tally, wall) {
         if (!tally.node) return;
     }
 
-    // Re-inserted whenever the panel rebuilds the row around it.
     if (!tally.label || !tally.label.isConnected) {
         tally.label = document.createElement('span');
         tally.label.style.cssText = 'display:inline;white-space:pre';
@@ -274,7 +199,6 @@ function showRate(video, tally, wall) {
     correctRows(video);
 }
 
-/** The reported frame rate, re-read only on a size change: it moves with the rung. */
 function frameRate(video, tally) {
     if (video.videoWidth === tally.width && video.videoHeight === tally.height) return tally.fps;
 
@@ -286,7 +210,7 @@ function frameRate(video, tally) {
     try {
         const match = /@(\d+(?:\.\d+)?)/.exec(player.getStatsForNerds().resolution || '');
         if (match) tally.fps = parseFloat(match[1]) || tally.fps;
-    } catch (e) { /* the player is not ready, or not this build */ }
+    } catch (e) { }
 
     return tally.fps;
 }
@@ -294,8 +218,8 @@ function frameRate(video, tally) {
 export function sample(video) {
     const tally = tallyFor(video);
 
-    // The player swaps its element without always ending playback on the old one, and a
-    // timer holding a detached video keeps both alive for the rest of the session.
+    // The player swaps its element without always ending playback on the old one, and a timer
+    // holding a detached video keeps both alive for the rest of the session.
     if (video.isConnected === false) {
         clearInterval(tally.timer);
         tally.timer = null;
@@ -316,8 +240,6 @@ export function sample(video) {
     tally.expected += step.expected;
     tally.advanced += step.advanced;
 
-    // Kept as a window rather than a running total, so a stall ages out of the report the
-    // way it ages out of what the viewer can see.
     tally.recent.push({ expected: step.expected, advanced: step.advanced });
     while (tally.recent.length > (WINDOW * 1000) / TICK) tally.recent.shift();
     frameRate(video, tally);
@@ -335,18 +257,14 @@ export function sample(video) {
     tally.previous = step.reseed ? null : current;
 }
 
-// What the last sample worked out, for anything measuring this app rather than watching
-// it. The panel says the same thing, but reading it off the screen means parsing it back
-// out of a sentence.
 let latest = null;
 
 export function measured() {
     return latest;
 }
 
-// Sampled on a timer that runs only while playing. timeupdate would be tidier, but the
-// platform player advances currentTime without necessarily firing it, and that is the
-// one path these counts exist for.
+// Sampled on a timer rather than on `timeupdate`, which the platform player does not
+// always fire even as it advances `currentTime`.
 const TICK = 250;
 
 function watch(video) {
@@ -366,8 +284,8 @@ function watch(video) {
         tally.timer = setInterval(() => sample(video), TICK);
     };
 
-    // The player loads the next video into the same element, so without this the totals
-    // are cumulative for the session where the stats line means them per video.
+    // The player loads the next video into the same element, so without this the totals are
+    // cumulative for the session where the stats line means them per video.
     const restart = () => {
         stop();
         tally.played = 0;
@@ -394,29 +312,15 @@ function watch(video) {
     if (!video.paused) start();
 }
 
-/**
- * Watches playback so the time it loses can be reported. Nothing is substituted.
- *
- * This used to answer `getVideoPlaybackQuality` with counts derived from lost time —
- * `dropped = lost × fps` — because the renderer answers zero on this hardware and the
- * panel's row shows a dash. That was a mistake, and an expensive one. Frames that were
- * never decoded or discarded were reported as dropped; a stall at startup was charged as
- * hundreds of them; and because the honest measure of lost time cancels as the clock
- * catches up, the "count" could fall as well as rise. A number that goes down is not a
- * count, and a viewer looking at a clean picture is right to disbelieve it.
- *
- * So the row keeps whatever the renderer actually knows, which here is nothing, and the
- * truth is put beside it in the units it was measured in.
- */
+// `getVideoPlaybackQuality` is left alone: lost time cancels as the clock catches up, so
+// a frame count derived from it can fall as well as rise, which no count does.
 export function install() {
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     if (!proto) return;
 
-    // Captured at the document, so a video the page creates later needs no polling.
     document.addEventListener('play', (event) => {
         if (event.target instanceof window.HTMLVideoElement) watch(event.target);
     }, true);
 }
-
 
 if (typeof window !== 'undefined' && configRead('reportPlaybackStats')) install();

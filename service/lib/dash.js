@@ -1,10 +1,5 @@
 'use strict';
 
-// Serves YouTube's media back to the page as DASH on localhost, because a video element
-// fed a URL plays 2160p60 here without dropping frames and the same media through
-// MediaSource does not. The manifest covers the whole video from the first moment; a
-// segment the player reaches before the download does is waited for, not refused.
-
 const express = require('express');
 const { createReadStream } = require('fs');
 const { open, readFile } = require('fs/promises');
@@ -15,22 +10,14 @@ const journal = require('./journal.js');
 const sabr = require('./sabr.js');
 const stream = require('./stream.js');
 
-// The coding-independent code points a manifest states colour with. The set reads these to
-// decide whether to switch the panel into HDR; without them it decodes wide-gamut video and
-// shows it as if it were ordinary, which looks worse than not offering HDR at all.
+// The set reads these to decide whether to switch the panel into HDR; without them it
+// decodes wide-gamut video and shows it as if it were ordinary.
 const CICP = {
     COLOR_PRIMARIES_BT2020: 9,
     COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084: 16,
     COLOR_TRANSFER_CHARACTERISTICS_ARIB_STD_B67: 18
 };
 
-/**
- * The colour of the picture, said in the manifest so the set can act on it.
- *
- * Only worth stating when it is not ordinary video: BT.709 is what everything assumes, and
- * saying it changes nothing. BT.2020 with one of the two HDR curves is what makes the panel
- * switch, and the matrix goes with the primaries.
- */
 function colourProperties(format) {
     const colour = format.colorInfo || {};
     if (colour.primaries !== 'COLOR_PRIMARIES_BT2020') return '';
@@ -44,16 +31,12 @@ function colourProperties(format) {
         + property('MatrixCoefficients', CICP.COLOR_PRIMARIES_BT2020);
 }
 
-// What the stats panel calls the two HDR curves. The response names them as the standards
-// do — SMPTE ST 2084, ARIB STD-B67 — and stripping the prefix leaves `smptest2084`, which
-// reads like a typo beside the panel's own rows. This row is written over the panel's, so
-// it says what the panel would have said.
+// What the stats panel calls the two HDR curves, which is not what the response names them.
 const CURVES = {
     smptest2084: 'smpte2084 (PQ)',
     arib_std_b67: 'arib-std-b67 (HLG)'
 };
 
-/** What the response says about a format's colour, in words the page can show. */
 function colourOf(format) {
     const colour = format.colorInfo || {};
     if (!colour.primaries && !colour.transferCharacteristics) return null;
@@ -75,22 +58,14 @@ function codecsOf(mimeType) {
 
 const typeOf = (mimeType) => String(mimeType || '').split(';')[0];
 
-/** ISO 8601 duration, which is the only form a manifest takes. */
 const iso = (ms) => `PT${(ms / 1000).toFixed(3)}S`;
 
 const escape = (text) => String(text)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/**
- * The segment timeline, with runs of equal-length segments written once.
- *
- * A segment element each meant a 2.5-hour video arrived as some three thousand of them
- * across the two tracks, and the set has to parse the whole thing before it can show a
- * frame — which is most of the black screen between pressing play and seeing anything.
- * YouTube cuts at a constant cadence, so nearly all of them collapse into a handful of
- * runs. `r` is the number of *additional* repeats, and this stays exact: a segment whose
- * length differs starts a new run rather than being rounded into the last one.
- */
+// Runs of equal-length segments are written once, because the set parses the whole thing
+// before it can show a frame. `r` counts *additional* repeats, and a segment of a
+// different length starts a new run rather than being rounded into the last.
 function timelineOf(index) {
     const runs = [];
 
@@ -109,11 +84,6 @@ function timelineOf(index) {
         .join('');
 }
 
-/**
- * The manifest, describing every segment of both tracks. It is written once and does not
- * change: the file's own index says how long each segment runs, so nothing about it depends
- * on how much has been downloaded.
- */
 function manifest(session) {
     const set = (track, attributes, extra) => {
         const format = track.format;
@@ -153,13 +123,12 @@ function manifest(session) {
 `;
 }
 
-/** A session as the page should see it: what is playing, not where it is kept. */
 function describe(session) {
     const track = ({ kind, format, index }) => ({
         kind,
         itag: format.itag,
-        // The itag does not name a format on its own — dubbed tracks and compressed dynamic
-        // range share one — so what the page compares against has to carry this too.
+        // Dubbed tracks and compressed dynamic range share an itag, so it does not name a format
+        // on its own.
         xtags: format.xtags || '',
         codecs: codecsOf(format.mimeType),
         colour: colourOf(format),
@@ -170,9 +139,8 @@ function describe(session) {
         mimeType: typeOf(format.mimeType),
         segments: index.length,
 
-        // Which number the first one carries, and how long each runs. A page feeding these
-        // to a source buffer itself has to ask for them by number and know when it has
-        // enough — neither of which follows from the count alone.
+        // A page feeding these to a source buffer itself asks for them by number and needs to
+        // know when it has enough, neither of which follows from the count alone.
         first: index[0].number,
         durationsMs: index.map((segment) => segment.durationMs)
     });
@@ -184,18 +152,14 @@ function describe(session) {
         video: track(session.tracks.video),
         audio: track(session.tracks.audio),
 
-        // Whether this one can be served as a plain file. Roughly, since the head is a
-        // couple of kilobytes against hundreds of megabytes of media.
+        // Excludes the head, which is kilobytes against hundreds of megabytes of media.
         plainFileBytes: [session.tracks.video, session.tracks.audio]
             .reduce((total, one) => total + (one.index || [])
                 .reduce((bytes, segment) => bytes + (segment.end - segment.start + 1), 0), 0)
     };
 }
 
-/** Everything the page needs, on the service's own origin. */
 function attach(app) {
-    // The page asks: it holds the formats, and the SABR session this uses came off its own
-    // traffic through the proxy.
     app.post('/dash/open', express.json({ limit: '4mb' }), (req, res) => {
         stream.open(req.body || {}).then(
             (session) => res.json({ ok: true, session: describe(session) }),
@@ -203,9 +167,6 @@ function attach(app) {
         );
     });
 
-    // What the page's own player is asking the servers for. It changes when the viewer
-    // changes quality, audio track, stable volume or voice boost — every one of which is a
-    // different format — so this is how the page sees that its stream no longer matches.
     app.get('/dash/selection', (_, res) => {
         const session = sabr.observed.session;
         res.json({ selected: (session && session.selected) || [] });
@@ -218,24 +179,19 @@ function attach(app) {
         );
     });
 
-    // The page hands the player a URL for a video before the session for it exists — it
-    // has to, because the player asks for one the moment the response lands. This waits,
-    // then points at the real thing, so every relative URL inside the manifest resolves
-    // against the session that answered.
+    // The player asks for a URL the moment the response lands, before the session exists, so
+    // these wait and then redirect: relative URLs inside the manifest then resolve against
+    // the session that answered rather than against the video.
+    //
+    // Never redirected across descriptions: the set commits to reading an MP4 from the
+    // address it was given and will not take a manifest in its place.
     app.get('/dash/by-video/:videoId/progressive.mp4', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
-            // Answering this with a redirect to the manifest was tried, for a file too
-            // large to play as one — and refused: the set commits to reading an MP4 from
-            // the address it was given and will not take a manifest in its place. So the
-            // choice belongs to the page, which makes it from the sizes the player response
-            // carries. This stays a plain file or nothing.
             (session) => res.redirect(302, `/dash/${session.id}/progressive.mp4`),
             (error) => res.status(404).send(error.message)
         );
     });
 
-    // The same wait, for a set being handed HLS instead. Which description the page asks
-    // for is the page's choice; both point at the same segments.
     app.get('/dash/by-video/:videoId/master.m3u8', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
             (session) => res.redirect(302, `/dash/${session.id}/master.m3u8`),
@@ -246,9 +202,8 @@ function attach(app) {
     app.get('/dash/by-video/:videoId/manifest.mpd', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
             (session) => res.redirect(302, `/dash/${session.id}/manifest.mpd`),
-            // Not found rather than timed out, and said plainly: the page reads this as
-            // "there is no stream here", drops back to its own player and carries on. A
-            // video that cannot be served this way still plays.
+            // Not found rather than timed out, which the page reads as "no stream here" and answers
+            // by dropping back to its own player.
             (error) => res.status(404).send(error.message)
         );
     });
@@ -264,8 +219,8 @@ function attach(app) {
         const session = find(req, res);
         if (!session) return;
 
-        // A session exists from the moment it is asked for; its manifest cannot be written
-        // until both indexes have been read.
+        // A session exists from the moment it is asked for; its manifest cannot be written until
+        // both indexes have been read.
         if (!session.ready) return res.status(503).send('the stream is still opening');
 
         res.setHeader('Content-Type', 'application/dash+xml');
@@ -298,51 +253,17 @@ function attach(app) {
         return res.send(playlist);
     });
 
-    // Both tracks as one plain file, which is the whole point: no manifest, no playlist,
-    // nothing for the set to parse and make decisions about. It is handed bytes in order
-    // and plays them, and on this hardware that is the only one of the three descriptions
-    // which presents a 2160p60 picture cleanly.
-    //
-    // Seekable, because it has to be — a part-watched video that cannot resume is no use to
-    // anybody. Every rewrite the muxer makes replaces four bytes with four bytes, and every
-    // fragment's length is already in the segment index, so the file's whole shape is known
-    // before any of it has been fetched: a real Content-Length, real byte ranges, and a
-    // `sidx` in the head so the set can ask for a moment rather than guess at a byte.
-    // An open-ended range is answered to the end of the file, and nothing less.
-    //
-    // Bounding it was tried, to twenty-four megabytes, because a set asking `bytes=0-` for a
-    // nine-hundred-megabyte file could not cope with being handed all of it. The set does
-    // not ask for the next range: it plays what it was given — twenty seconds, for a
-    // sixty-three megabyte video cut at twenty-four — then jumps to the end of the file and
-    // stops, because the duration in the header says there should have been more and there
-    // is none. Watched on the television, a fifty-two second video ended after twenty.
-    //
-    // The file it was added for never reaches here now: anything too large to play as one
-    // is asked for as a manifest instead, before a byte is served.
-
-    // (declared above the routes so both the by-video redirect and the file itself use it)
-    // How large a plain file this television will play at all.
-    //
-    // Measured by bisection, opening the same videos at different rungs: 63MB, 205MB,
-    // 221MB, 385MB and 553MB all play; 684MB, 971MB and 1135MB never start — the set asks
-    // for the first chunk, the service delivers it, and the element consumes nothing and
-    // reports nothing. Fragment size is not what decides it: one file plays with 9.0MB
-    // fragments and another fails with 9.6MB and three times the total.
-    //
-    // So the size is known before anything is handed over, and a file over it is not
-    // offered. The page asks for a manifest instead, which has no such limit.
+    // Beyond this the set asks for the first chunk of a plain file and then consumes nothing,
+    // reporting no error. Measured by bisection: 553MB plays, 684MB does not.
+    // `PLAIN_FILE_LIMIT` in the userscript is the same number, since the page has to choose a
+    // description before the service is asked anything.
     const MAX_FILE = 600 * 1024 * 1024;
 
     const described = new Map();
 
-    // Which request for a session is the live one. A seek makes the set open another before
-    // it has closed the last, and it opens several in a burst while it settles on where it
-    // wants to be — four inside a third of a second, measured. Each one was starting its own
-    // walk through the file and asking the same track to fetch from a different place, so
-    // they aborted one another's downloads in turn and the element was left with nothing at
-    // all: readyState 0, the clock parked, no picture.
-    //
-    // Only the newest matters. The ones before it are abandoned where they stand.
+    // Which request for a session is the live one. A seek opens several in a burst, and each
+    // one walking the file separately has them abort one another's downloads in turn, leaving
+    // the element with nothing at all. Only the newest is served.
     const serving = new Map();
 
     const shapeOf = async (session) => {
@@ -366,18 +287,13 @@ function attach(app) {
         return shape;
     };
 
-    // One fragment, out to the client, without holding it in memory.
-    //
-    // Everything the muxer rewrites lives in the `moof` at the front — a track id and a
-    // sequence number, a few kilobytes in — and the `mdat` behind it is untouched. Reading
-    // the whole fragment to change eight bytes meant two copies of it in memory at once:
-    // thirty megabytes for one 2160p60 fragment, on a set that is decoding at the same
-    // time. So the head is read and rewritten, and the rest is streamed off the disk.
-    /** A write that waits when the client is not keeping up, rather than piling into memory. */
     const pushed = (res, chunk) => (res.write(chunk)
         ? Promise.resolve()
         : new Promise((drained) => res.once('drain', drained)));
 
+    // Only the `moof` at the front is rewritten and the `mdat` behind it is streamed off the
+    // disk: reading a whole 2160p60 fragment to change eight bytes put thirty megabytes in
+    // memory twice over, on a set that is decoding at the same time.
     async function pourFragment(res, file, id, sequence, begin, finish) {
         const handle = await open(file, 'r');
         let headLength = 0;
@@ -386,8 +302,7 @@ function attach(app) {
             const header = Buffer.alloc(8);
             await handle.read(header, 0, 8, 0);
 
-            // The `moof` is the first box of a fragment; anything else is not one this
-            // wrote, and the safe answer is to send the bytes untouched.
+            // Anything else is not a fragment this wrote, so the bytes go out untouched.
             if (header.toString('latin1', 4, 8) === 'moof') headLength = header.readUInt32BE(0);
 
             if (headLength && begin < headLength) {
@@ -457,7 +372,6 @@ function attach(app) {
         const mine = (serving.get(session.id) || 0) + 1;
         serving.set(session.id, mine);
 
-        // A request the set walks away from should stop costing anything.
         let gone = false;
         res.on('close', () => { gone = true; });
 
@@ -466,7 +380,6 @@ function attach(app) {
         journal.service('progressive', `${session.id}: `
             + `${asked ? `bytes ${from}-${to}` : 'the whole file'} of ${shape.total}`);
 
-        // Where the head still has something to say, it goes first.
         if (from < shape.head.length) {
             res.write(shape.head.subarray(from, Math.min(shape.head.length, to + 1)));
         }
@@ -477,7 +390,6 @@ function attach(app) {
 
             const part = shape.parts[at];
 
-            // Behind what was asked for, or past the end of it.
             if (part.offset + part.size - 1 < from) return send(at + 1);
             if (part.offset > to) return res.end();
 
@@ -490,7 +402,6 @@ function attach(app) {
                 return res.end();
             }
 
-            // Another request arrived while this one waited for bytes; it decides now.
             if (!current()) return res.end();
 
             const id = part.kind === 'video' ? mux.VIDEO_TRACK : mux.AUDIO_TRACK;
@@ -509,9 +420,8 @@ function attach(app) {
         return send(0);
     });
 
-    // One track as a plain file, for a browser that will not parse a manifest. Desktop
-    // Chrome plays fragmented MP4 from a URL but has no DASH of its own, so this is what
-    // makes the page testable anywhere other than the television it is written for.
+    // One track as a plain file, for a browser that plays fragmented MP4 from a URL but has
+    // no DASH of its own. This is what makes the page testable off the television.
     app.get('/dash/:id/:kind.mp4', (req, res) => {
         const session = find(req, res);
         if (!session) return;
@@ -522,7 +432,6 @@ function attach(app) {
         res.setHeader('Content-Type', typeOf(track.format.mimeType));
         res.setHeader('Accept-Ranges', 'none');
 
-        // Written as it arrives, in order, for as long as the player keeps reading.
         const pour = async (number) => {
             if (res.writableEnded || number > track.index[track.index.length - 1].number) return res.end();
 
@@ -564,14 +473,12 @@ function attach(app) {
     });
 }
 
-/** Waits for a segment to be on disk, then sends it. */
 function send(session, kind, number, res) {
     const track = session.tracks[kind];
     if (!track) return res.status(404).end();
     if (!stream.locate(track, number)) return res.status(404).end();
 
-    // Where the player has reached decides what is fetched next and what is deleted, so
-    // asking for a segment is what moves the window along — for both tracks, because the
+    // Asking for a segment is what moves the download's window along, for both tracks: the
     // player asks about one at a time and they share a position.
     track.want(number);
     if (number > 0) stream.align(session, kind, number);

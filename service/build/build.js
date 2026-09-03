@@ -1,9 +1,5 @@
 'use strict';
 
-// Same two-stage build as Tizen Homebrew: bundle with ncc, then lower the whole bundle
-// — dependencies included — to the syntax the oldest set this installs on can parse. The userscript
-// bundles are copied in alongside so the app never needs the network for a script.
-
 const { execFileSync } = require('child_process');
 const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, rmSync, readdirSync, statSync } = require('fs');
 const { join } = require('path');
@@ -33,8 +29,8 @@ console.log('[3/5] lowering the bundle to the syntax floor');
 const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8'), {
     configFile: join(root, 'babel.config.json'),
     // ncc emits CommonJS, and some dependencies use `await` as an ordinary identifier
-    // (e.g. `Gate.prototype.await = ...`), which is legal in script mode but reserved
-    // under Babel's default module parsing.
+    // (e.g. `Gate.prototype.await = ...`), which is legal in script mode but reserved under
+    // Babel's default module parsing.
     sourceType: 'script',
     compact: false,
     sourceMaps: false,
@@ -43,8 +39,6 @@ const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8
 
 let code = result.code;
 
-// Bake these in so the running app needs no environment. A debug build supplies a token
-// it can be driven with; anything else gets a random one nobody knows.
 const devToken = process.env.TUBE_DEV_TOKEN || require('crypto').randomBytes(8).toString('hex');
 
 code = injectTokens(code, { __TUBE_ORIGIN__: config.origin, __TUBE_DEV_TOKEN__: devToken }).code;

@@ -1,9 +1,5 @@
 'use strict';
 
-// CDP injection: the preferred path when Developer Mode is on. `shell:0 debug <appId>`
-// over SDB relaunches this app with the DevTools Protocol enabled and prints its port.
-// Attaching lets the userscript be evaluated into youtube.com with CSP bypassed.
-
 const adbhost = require('adbhost');
 const CDP = require('chrome-remote-interface');
 const fetch = require('node-fetch');
@@ -21,17 +17,14 @@ const platformVersion = (function () {
 
 const isTizen3 = String(platformVersion || '').indexOf('3.0') === 0;
 
-// A launch that is mid-injection blocks others from starting a second one, but only
-// while it is genuinely still trying. A plain boolean had no way back if an attempt
-// died between setting and clearing it, leaving every later launch waiting forever.
+// Only while an attempt is genuinely still running. A plain boolean had no way back if
+// one died between setting and clearing it, leaving every later launch waiting forever.
 const CONNECT_TIMEOUT = 30000;
 
 // An attached client holds V8's inspector open for the whole session, so it is dropped
-// once the script is in. Page.setBypassCSP reverts with the connection, which the script
-// is past needing by then. TUBE_KEEP_DEBUGGER=1 keeps it attached.
+// once the script is in. Page.setBypassCSP reverts with the connection.
 const KEEP_DEBUGGER = process.env.TUBE_KEEP_DEBUGGER === '1';
 
-// Long enough for the page to finish making the contexts it makes at startup.
 const DETACH_DELAY = 3000;
 
 // sdbd refuses most connection attempts, so one refusal is retried rather than taken as
@@ -57,7 +50,6 @@ function isConnecting() {
     if (!connecting) return false;
     if (Date.now() - connectingSince < CONNECT_TIMEOUT) return true;
 
-    // Whatever was connecting is not connecting any more.
     stopConnecting();
     return false;
 }
@@ -76,8 +68,8 @@ function canConnectToDaemon() {
         .catch(() => ({ canConnectToDaemon: false, ip: null, platformVersion, isConnecting: isConnecting() }));
 }
 
-// The DIAL server carries the payload from a phone's cast button. The wrong port here
-// is what silently broke casting in the reference.
+// The DIAL server carries the payload from a phone's cast button. The wrong port here is
+// what silently broke casting in the reference.
 function watchUrl(args) {
     const additional = encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`);
     return `https://www.youtube.com/tv?additionalDataUrl=${additional}${args ? `&${args}` : ''}`;
@@ -96,7 +88,6 @@ function attach(host, port, args, attempt) {
                     script = loader.resolve(platformVersion);
                     console.log(`Injecting ${script.variant} userscript (${script.origin}, ${script.version}).`);
                 } catch (e) {
-                    // Nothing to inject is a packaging failure, not a network one.
                     console.error(`No userscript available: ${e.message}`);
                     return reject(e);
                 }
@@ -104,14 +95,14 @@ function attach(host, port, args, attempt) {
                 client.Runtime.enable();
                 client.Page.enable();
 
-                // Enabling Runtime reports the contexts that already exist, so this runs
-                // for the shell we are replacing as well as for the page we navigate to.
+                // Enabling Runtime reports the contexts that already exist, so this runs for the shell we
+                // are replacing as well as for the page we navigate to.
                 let injections = 0;
                 let detaching = null;
 
                 const detach = () => {
-                    // Only once the script is actually in: a load event with nothing
-                    // injected means the connection still has work to do.
+                    // Only once the script is actually in: a load event with nothing injected means the
+                    // connection still has work to do.
                     if (KEEP_DEBUGGER || detaching || !injections) return;
 
                     detaching = setTimeout(() => {
@@ -124,16 +115,12 @@ function attach(host, port, args, attempt) {
                     }, DETACH_DELAY);
                 };
 
-                // Every new execution context: covers the initial load and any
-                // same-page navigation YouTube performs.
                 client.on('Runtime.executionContextCreated', (msg) => {
                     client.Runtime.evaluate({ expression: script.source, contextId: msg.context.id })
                         .then(() => { injections += 1; })
                         .catch((e) => console.error(`Injection failed: ${e.message}`));
                 });
 
-                // By the load event the script is in, and a television client is a
-                // single page that never navigates again.
                 client.on('Page.loadEventFired', detach);
 
                 // Without this, youtube.com's CSP blocks the injected script.
@@ -153,7 +140,6 @@ function attach(host, port, args, attempt) {
         });
 }
 
-/** One attempt at asking sdbd to relaunch this app under the debugger. */
 function requestDebugPort() {
     return new Promise((resolve, reject) => {
         const client = adbhost.createConnection({ host: '127.0.0.1', port: ports.SDB });
@@ -173,8 +159,8 @@ function requestDebugPort() {
 
         client._stream.on('error', (e) => finish(new Error(`SDB connection failed: ${e.message}`)));
 
-        // A refusal is a close with nothing said, and waiting the full timeout for it
-        // would spend the retry budget on one attempt.
+        // A refusal is a close with nothing said, and waiting the full timeout for it would spend
+        // the retry budget on one attempt.
         client._stream.on('close', () => finish(new Error('SDB closed the connection before reporting a port.')));
 
         client._stream.on('connect', () => {
@@ -188,14 +174,13 @@ function requestDebugPort() {
                 finish(null, Number(text.substr(text.indexOf(':') + 1, 6).replace(' ', '')));
 
                 setTimeout(() => {
-                    try { client._stream.end(); } catch (e) { /* already closed */ }
+                    try { client._stream.end(); } catch (e) { }
                 }, 1000);
             });
         });
     });
 }
 
-/** Keeps asking until one attempt lands or the deadline passes. */
 function requestDebugPortUntil(deadline) {
     return requestDebugPort().catch((error) => {
         if (Date.now() >= deadline) throw error;
@@ -204,7 +189,6 @@ function requestDebugPortUntil(deadline) {
     });
 }
 
-// Relaunches this app under the debugger and attaches to it.
 function startDebugger(args) {
     return canConnectToDaemon().then((state) => {
         if (!state.canConnectToDaemon) return false;

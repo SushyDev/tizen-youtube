@@ -1,8 +1,5 @@
 'use strict';
 
-// Runs every test suite in the repo and summarises them together.
-// Output from a passing suite is condensed; a failing suite prints in full.
-
 const { execFileSync } = require('child_process');
 
 const ui = require('./ui.js');
@@ -17,14 +14,11 @@ ui.heading('test');
 
 let failures = 0;
 
-// Lint first. `node --check` only validates syntax, so an undeclared variable reaches
-// runtime and fails on whichever machine hits that line first.
 {
     const started = Date.now();
     try {
         execFileSync('npx', ['eslint', '.'], { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
         ui.ok('lint', 'no errors', Date.now() - started);
-
     } catch (e) {
         failures++;
         ui.fail('lint', 'correctness errors found');

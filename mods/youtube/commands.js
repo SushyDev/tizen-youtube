@@ -6,21 +6,11 @@ import { showToast, buttonItem } from '../ui/ytUI.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
 import { chooseQuality, chooseAudioTrack, noteSpeed, startsAt } from '../features/nativePlayback.js';
 
-// YouTube routes everything through a single `resolveCommand` on one singleton, so
-// wrapping it is how this app's settings end up behaving exactly like YouTube's.
-//
-// The wrapper is a list of interpreters, each asked in turn whether a command is
-// theirs. An interpreter answers with a result, or hands the command on untouched.
-
-// What an interpreter returns when the command is not its business.
 const PASS = { pass: true };
 
 const APP_NAME = 'YouTube';
 
-// Commands YouTube has never heard of, carried under `customAction` so they travel
-// the same rails as everything else.
 const ACTIONS = {
-    // A settings row asking for the list of answers it offers.
     [OPTIONS_ACTION]: (parameters) => openOptions(parameters),
 
     OPEN_SPEED_OPTIONS: () => openSpeedOptions(),
@@ -41,8 +31,8 @@ const ACTIONS = {
         const video = document.querySelector('video');
         if (video) video.playbackRate = Number(parameters);
 
-        // The set plays our own stream silently at anything but normal speed, so the
-        // choice decides which pipeline the video has to be on.
+        // The set plays our own stream silently at anything but normal speed, so the choice
+        // decides which pipeline the video has to be on.
         noteSpeed(Number(parameters));
     },
 
@@ -79,8 +69,7 @@ const perform = (action) => {
     return !!run;
 };
 
-// A setting YouTube does not recognise is one of ours: its own all have underscored
-// enum names, ours are the config keys themselves.
+// YouTube's own settings all have underscored enum names; ours are the config keys.
 const applyOurSettings = (command) => {
     const endpoint = command.setClientSettingEndpoint;
     if (!endpoint || !endpoint.settingDatas) return PASS;
@@ -110,8 +99,7 @@ const applyOurSettings = (command) => {
 
         if (field !== 'arrayValue') return configWrite(key, value);
 
-        // An array setting is a set of checkboxes and the command carries the one
-        // pressed. A new array, so configWrite never gets the stored one back.
+        // A new array, so configWrite never gets the stored one back.
         const current = configRead(key) || [];
         configWrite(key, current.indexOf(value) === -1
             ? current.concat(value)
@@ -126,7 +114,6 @@ const runCustomActions = (command) => {
     return action && perform(action) ? true : PASS;
 };
 
-// The speed row points at this app's finer-grained menu, and a mini player button is added.
 const dressPlaybackSettings = (command) => {
     const popup = command.openPopupAction;
     if (!popup || popup.uniqueId !== 'playback-settings') return PASS;
@@ -166,7 +153,6 @@ const dressPlaybackSettings = (command) => {
     return PASS;
 };
 
-// Starting a video ends any mini player that was running.
 const forgetMiniPlayer = (command) => {
     if (!command.watchEndpoint || !command.watchEndpoint.videoId) return PASS;
 
@@ -178,7 +164,6 @@ const forgetMiniPlayer = (command) => {
     return PASS;
 };
 
-// Ours are performed here; the rest go back through the resolver one at a time.
 const runCommandBatch = (command) => {
     const batch = command.commandExecutorCommand && command.commandExecutorCommand.commands;
     if (!batch) return PASS;
@@ -192,8 +177,6 @@ const runCommandBatch = (command) => {
     return true;
 };
 
-// YouTube asks "who's watching?" on the way out. Nobody wants that between them and
-// the home button.
 const skipWhosWatchingOnExit = (command, original, self, context) => {
     const request = command.requestAccountSelectorCommand;
 
@@ -207,17 +190,12 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
-// The same question on the way in, which is asked by a different route.
+// The account carousel a signed-in set is shown arrives as a command rather than through
+// the "last fired" record, and arrived on every launch regardless of the setting.
+// Answering it takes a remote, so an app left to start on its own got no further.
 //
-// Suppressing it by pushing YouTube's own "last fired" record a week ahead works only for
-// the three prompts that record ran through, and the account carousel a signed-in set with
-// several accounts is shown is not one of them: it arrives as a command, and it arrived on
-// every launch regardless of the setting. Answering it takes a remote, so an app left to
-// start on its own — a test, a schedule, anything not sitting in front of it — got as far
-// as the carousel and no further.
-//
-// These are the triggers that mean "before anything has been asked for", as against the
-// ones that mean a real answer is needed: a locked account, a PIN, an upgrade.
+// These are the triggers that mean "before anything has been asked for", as against a
+// locked account, a PIN or an upgrade, where a real answer is needed.
 const ON_ARRIVAL = [
     'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
     'ACCOUNT_EVENT_TRIGGER_WHO_FALLBACK',
@@ -235,19 +213,9 @@ const skipWhosWatchingOnArrival = (command) => {
     if (!trigger || ON_ARRIVAL.indexOf(trigger) === -1) return PASS;
     if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return PASS;
 
-    // Nothing put in its place: whoever was watching last is still signed in, and the app
-    // carries on to wherever it was going.
     return false;
 };
 
-/**
- * What the viewer settled on, which is not the same as what they moved over.
- *
- * Walking the quality list emits a setting for every rung the highlight passes, so acting
- * on those alone follows the cursor rather than the choice — and lands on whichever rung
- * the list happened to stop at. Confirming is what closes the menu, so the choice is the
- * setting that arrives in the same batch as the signal to close it.
- */
 const noteViewerChoice = (command) => {
     const batch = command.commandExecutorCommand;
     if (!batch || !Array.isArray(batch.commands)) return PASS;
@@ -274,10 +242,8 @@ const noteViewerChoice = (command) => {
                 return;
             }
 
-            // Any other playback setting: the audio track, stable volume, voice boost. Each
-            // is a different variant of the same sound, and telling them apart by name would
-            // mean guessing at names. Asking what changed costs nothing and answers all of
-            // them — it does nothing unless the format the player is on has actually moved.
+            // Any other playback setting: the audio track, stable volume, voice boost. Telling them
+            // apart by name would mean guessing at names, and asking what changed answers all of them.
             if (typeof item === 'string' && item.indexOf('PLAYBACK_') === 0) chooseAudioTrack();
         });
     });
@@ -285,8 +251,8 @@ const noteViewerChoice = (command) => {
     return PASS;
 };
 
-// Opening a part-watched video says where it is to resume. Knowing that before the element
-// is given an address is what stops the opening seconds playing before the seek lands.
+// Knowing where a part-watched video resumes before the element is given an address is
+// what stops the opening seconds playing before the seek lands.
 const noteStartTime = (command) => {
     const watch = command.watchEndpoint;
     if (watch && watch.videoId) startsAt(watch.videoId, Number(watch.startTimeSeconds) || 0);
@@ -306,7 +272,6 @@ const INTERPRETERS = [
     skipWhosWatchingOnArrival
 ];
 
-/** Wraps YouTube's resolver. False when it is not registered yet; the caller retries. */
 const interceptCommands = () => {
     const resolver = findResolver();
     if (!resolver || resolver.__tubePatched) return false;

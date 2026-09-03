@@ -15,9 +15,9 @@ const TV = process.env.TUBE_TV || '';
 const SCENARIOS = !TV && process.env.TUBE_BOOT === 'scenarios';
 const LOCAL = !TV && !SCENARIOS;
 
-// The boot screen lands in the same webview the Homebrew channel's pages do (Chromium
-// 63 on Tizen 5.5, 76 on 6.5) and fails the same silent way, so it is written in modern
-// CSS, lowered by PostCSS, and checked by the build. See tools/css-support.js.
+// The boot screen lands in the same webview the Homebrew channel's pages do (Chromium 63
+// on Tizen 5.5, 76 on 6.5) and fails the same silent way, so it is written in modern CSS,
+// lowered by PostCSS, and checked by the build.
 const ENGINE = 'chrome >= 63';
 
 export default defineConfig({
@@ -43,16 +43,13 @@ export default defineConfig({
     plugins: [
         viteSingleFile(),
 
-        // The real service, off-TV. Development only.
         tubeService({ enabled: LOCAL }),
 
-        // The stand-in, for looking at the boot screen itself.
         devService({ enabled: SCENARIOS })
     ],
 
     server: {
         host: true,
-        // The stand-in answers from inside Vite; the other two are a service on a port.
         proxy: SCENARIOS ? undefined : {
             '/__tube': { target: `http://${TV || 'localhost'}:${PROXY_PORT}`, changeOrigin: true }
         }

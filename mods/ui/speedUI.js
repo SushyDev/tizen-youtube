@@ -18,8 +18,8 @@ function execute_once_dom_loaded_speed() {
         const video = document.querySelector('video');
         if (video) video.playbackRate = speed;
 
-        // Carrying a speed into a new video decides which pipeline can play it, the same
-        // as choosing one does.
+        // Carrying a speed into a new video decides which pipeline can play it, the same as
+        // choosing one does.
         noteSpeed(speed);
     });
 
@@ -43,13 +43,6 @@ function execute_once_dom_loaded_speed() {
     document.addEventListener('keyup', eventHandler, true);
 }
 
-/**
- * The rate the video is actually running at.
- *
- * Not the stored one. The store is only consulted when the speed is meant to be remembered,
- * and it is written either way — so reading it would leave the menu opening on a rung the
- * viewer chose during some earlier video and the player long since abandoned.
- */
 function currentRate() {
     const video = document.querySelector('video');
     if (video && video.playbackRate > 0) return Math.round(video.playbackRate * 100) / 100;

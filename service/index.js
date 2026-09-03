@@ -1,12 +1,7 @@
 'use strict';
 
-// tube service: CDP injection when Developer Mode is on, a local proxy when it is off.
-// The shell asks which is available and goes straight there.
-
-// First, before anything that could fail. A television shows a service that died as a boot
-// screen that times out and nothing else — no console, no stack, no way to ask. This is
-// where it says what happened, and it is the first thing to read when the app will not
-// start. Kept small and best-effort: a logger that throws would be the worst of all.
+// First, before anything that could fail. A television shows a service that died as a
+// boot screen that times out and nothing else, so this is where it says what happened.
 require('./lib/postmortem.js').watch();
 
 const ports = require('./lib/ports.js');
@@ -18,21 +13,17 @@ const dash = require('./lib/dash.js');
 const stream = require('./lib/stream.js');
 const dial = require('./lib/dial.js');
 
-// Off-TV the proxy, loader and rewrite rules still work; only DIAL and injection need
-// the platform. This is what `npm run dev` uses.
 const isTV = typeof tizen !== 'undefined';
 
-// Off-TV there is no platform to ask, so this says which TV to be. One bundle is
-// served whatever it says; it decides what /__tube/state reports.
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
 const app = proxy.create(platformVersion);
 
-// The service outlives the app and can stay resident for days, so checking only at
-// start would mean an update lands after a reboot. The shell hits /__tube/state once
-// per launch; debounced so repeated launches cannot hammer the origin.
+// The service outlives the app and can stay resident for days, so checking only at start
+// would mean an update lands after a reboot. Debounced, so repeated launches cannot
+// hammer the origin.
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
 let lastUpdateCheck = 0;
@@ -51,40 +42,17 @@ function maybeCheckForUpdate() {
     );
 }
 
-// Whether to offer the debugger path at all.
-//
-// Attaching to the page means relaunching the app in debug mode, and that means the window
-// that is open has to close first — so taking this path always costs an exit and a
-// relaunch before YouTube appears. The proxy path costs one navigation and no restart, and
-// delivers the same userscript; what it costs instead is standing between the page and
-// youtube.com for every request that is not media.
-//
 // Off, because the exit is paid before anything is known: the shell has to close for the
 // relaunch to replace it, so a set where attaching does not work pays the whole cost and
-// lands on the proxy regardless. Measured on a QE65S93DATXXN, which reports a reachable
+// lands on the proxy anyway. Measured on a QE65S93DATXXN, which reports a reachable
 // daemon and then never attaches.
-//
-// Turn it on to develop against a real youtube.com origin, where the proxy is out of the
-// request path entirely.
 const OFFER_DEBUGGER = false;
 
-// A failed injection, remembered for as long as this service runs.
-//
-// The shell has already exited by the time one fails, so the service brings the app back
-// and leaves this behind — and the next launch takes the proxy instead of looping.
-//
-// This used to be remembered for a minute. The service outlives app launches, so on a set
-// where the debugger cannot be attached to at all the memory had always expired by the next
-// launch: the shell exited, injection failed, the app was reopened on the proxy, and the
-// launch after that did the same again. Every start of the app paid for an exit and a
-// relaunch that never bought anything, which is what it looked like from the sofa — the app
-// restarting itself before YouTube appeared.
-//
-// Once per lifetime is enough. A developer turning the daemon on restarts this service to
-// install what they built, and that is what clears it.
+// Once per lifetime, not for a minute: the service outlives app launches, so on a set
+// where the debugger never attaches a shorter memory had always expired by the next one,
+// and every start of the app paid for an exit and a relaunch that bought nothing.
 let injectionFailed = false;
 
-// Without this the television is left on the home row with nothing having happened.
 function relaunchApp(reason) {
     injectionFailed = true;
     injector.stopConnecting();
@@ -100,12 +68,10 @@ function relaunchApp(reason) {
     );
 }
 
-// The shell polls this to decide which path to take.
 app.get('/__tube/state', (_, res) => {
     maybeCheckForUpdate();
 
     injector.canConnectToDaemon().then((state) => {
-        // Which script this TV would run, so "did my update land?" is answerable.
         let script = null;
         try {
             const resolved = loader.resolve(platformVersion);
@@ -123,7 +89,6 @@ app.get('/__tube/state', (_, res) => {
             variant: loader.variantFor(platformVersion),
             script,
 
-            // DIAL only runs on a TV, so off one there is no cast endpoint to point at.
             proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
                 ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
                 : '')
@@ -131,7 +96,6 @@ app.get('/__tube/state', (_, res) => {
     });
 });
 
-// Starts the debugger and injects. The shell exits immediately after calling this.
 app.get('/__tube/inject', (req, res) => {
     if (!isTV) {
         return res.status(501).json({ error: 'Injection needs a TV; this service is running off-device.' });
@@ -140,8 +104,8 @@ app.get('/__tube/inject', (req, res) => {
     const args = req.originalUrl.split('?')[1] || '';
     const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
 
-    // The debug launch has to replace a window that is already gone, so wait for the
-    // shell to exit — and give up, rather than polling for the life of the service.
+    // The debug launch has to replace a window that is already gone, so wait for the shell to
+    // exit — and give up, rather than polling for the life of the service.
     const startedWaiting = Date.now();
 
     const waitForExit = setInterval(() => {
@@ -166,19 +130,13 @@ app.get('/__tube/inject', (req, res) => {
     res.json({ ok: true });
 });
 
-// The page's half of the diagnostics bridge. The reading port only opens when the
-// app asks for it, and serves readings the page chose to push — never the reverse.
-
 devbridge.attach(app);
 
-// Where the page's video element reads its media from.
 dash.attach(app);
 
-// Whatever a previous run left is gone before this one writes, and sessions nobody is
-// watching are dropped while it runs. The set has little room for them.
 stream.clean();
 
-// `unref` is a Node convenience and not every runtime this service has to start on has it.
+// `unref` is a Node convenience and not every runtime this service starts on has it.
 // Losing the timer would be a slow leak; failing to start is a black screen.
 const sweeping = setInterval(() => stream.sweep(), stream.SWEEP_INTERVAL);
 if (sweeping && typeof sweeping.unref === 'function') sweeping.unref();
@@ -186,8 +144,7 @@ if (sweeping && typeof sweeping.unref === 'function') sweeping.unref();
 // Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);
 
-// Loopback on the set. Serving another machine's television means binding the network,
-// which only happens when a host has been named for it.
+// Loopback on the set. Serving another machine's television means binding the network.
 const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
 
 app.listen(ports.PROXY, BIND, () => {
@@ -197,9 +154,8 @@ app.listen(ports.PROXY, BIND, () => {
     }
 });
 
-// DIAL discovery needs the platform to launch the app on a cast request.
 if (isTV) dial.start();
 
-// A new script is used from the next launch onward, so a bad one cannot break the
-// session that fetched it.
+// A new script is used from the next launch onward, so a bad one cannot break the session
+// that fetched it.
 setTimeout(maybeCheckForUpdate, 5000);

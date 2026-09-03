@@ -1,14 +1,11 @@
 'use strict';
 
-// Just enough Matroska to read the cues in YouTube's WebM initialization segments.
+// Just enough Matroska to read the cues in YouTube's WebM initialization segments, in the
+// same shape `mp4.segmentIndex` returns.
 //
-// The MP4 files carry a `sidx` listing every segment; WebM carries a Cues element listing
-// every cluster instead. Same information in a different shape, so this returns exactly
-// what `mp4.segmentIndex` does and everything downstream stays container-agnostic.
-//
-// This exists because at 2160p60 YouTube offers only AV1 in MP4, and this hardware cannot
-// hold ten-bit AV1 at that size — while its VP9 path plays 4K60 without dropping a frame,
-// which is what the set's own YouTube app uses. VP9 is only ever offered in WebM.
+// It exists because at 2160p60 YouTube offers only AV1 in MP4, which this hardware cannot
+// hold at ten bits, while its VP9 path plays 4K60 without dropping a frame — and VP9 is
+// only ever offered in WebM.
 
 const SEGMENT = 0x18538067;
 const INFO = 0x1549a966;
@@ -19,18 +16,11 @@ const CUE_TIME = 0xb3;
 const CUE_TRACK_POSITIONS = 0xb7;
 const CUE_CLUSTER_POSITION = 0xf1;
 
-// Matroska's default: timecodes are in units of a million nanoseconds, which is a
-// millisecond. YouTube uses the default, but a file may say otherwise and then every
-// duration would be wrong by a factor nobody would notice until seeking.
+// Matroska's default of a million nanoseconds, which is a millisecond. A file may say
+// otherwise, and then every duration would be wrong by a factor nobody would notice until
+// seeking.
 const DEFAULT_TIMECODE_SCALE = 1000000;
 
-/**
- * An EBML variable-length integer.
- *
- * The first byte's leading zeros say how many bytes it occupies. An id keeps the marker
- * bit, because that is part of how ids are written down; a size drops it, because there
- * the bit is only a length marker.
- */
 function vint(buffer, at, keepMarker) {
     if (at >= buffer.length) return null;
 
@@ -44,8 +34,8 @@ function vint(buffer, at, keepMarker) {
     let value = keepMarker ? first : first & (0xff >> width);
 
     for (let i = 1; i < width; i += 1) {
-        // Beyond this a number stops being exact, and a silently wrong offset is worse
-        // than refusing to read the file.
+        // Beyond this a number stops being exact, and a silently wrong offset is worse than
+        // refusing to read the file.
         if (value > Number.MAX_SAFE_INTEGER / 256) return null;
         value = (value * 256) + buffer[at + i];
     }
@@ -53,7 +43,6 @@ function vint(buffer, at, keepMarker) {
     return { value, width };
 }
 
-/** The elements laid out between two offsets, without descending into them. */
 function elements(buffer, from, to) {
     const found = [];
     let at = from;
@@ -67,18 +56,17 @@ function elements(buffer, from, to) {
 
         const body = at + id.width + size.width;
 
-        // Every size bit set means "length unknown", which is how a segment written as a
-        // stream declares itself. It runs to the end of what there is — and since nothing
-        // can follow it, the walk stops after it rather than trying to read past it.
+        // Every size bit set means "length unknown", which is how a segment written as a stream
+        // declares itself. Nothing can follow it, so the walk stops after it.
         const unknown = size.value === (2 ** (7 * size.width)) - 1;
         if (unknown) {
             found.push({ id: id.value, start: at, body, end: to, unknown: true });
             break;
         }
 
-        // An element larger than what has arrived is still where it says it is: the cues
-        // sit near the front and the clusters after them, so truncating here would hide
-        // the index behind the first cluster that had not finished downloading.
+        // An element larger than what has arrived is still where it says it is: the cues sit near
+        // the front and the clusters after them, so truncating here would hide the index behind
+        // the first cluster that had not finished downloading.
         found.push({ id: id.value, start: at, body, end: Math.min(body + size.value, to) });
         if (body + size.value > to) break;
 
@@ -88,7 +76,6 @@ function elements(buffer, from, to) {
     return found;
 }
 
-/** An unsigned integer element, which is however many bytes it says it is. */
 function uint(buffer, element) {
     let value = 0;
     for (let at = element.body; at < element.end; at += 1) {
@@ -98,7 +85,6 @@ function uint(buffer, element) {
     return value;
 }
 
-/** Where an element's body starts, given where the element itself does. */
 function bodyOf(buffer, at) {
     const id = vint(buffer, at, true);
     if (!id) return null;
@@ -109,19 +95,10 @@ function bodyOf(buffer, at) {
     return at + id.width + size.width;
 }
 
-/** Depth-first search for one element id, which is enough for the few needed here. */
 function find(buffer, from, to, id) {
     return elements(buffer, from, to).filter((element) => element.id === id)[0] || null;
 }
 
-/**
- * The segment index, in the same shape `mp4.segmentIndex` returns.
- *
- * Cluster positions are written relative to the start of the segment's body rather than to
- * the file, so the segment's own header has to be found first. `total` is the file's length,
- * which is what closes the last cluster — the cues say where each one begins and nothing
- * says where the last one ends.
- */
 function segmentIndex(buffer, total, ranges) {
     const segment = find(buffer, 0, buffer.length, SEGMENT);
     if (!segment) return null;
@@ -185,9 +162,8 @@ function segmentIndex(buffer, total, ranges) {
         };
     });
 
-    // The last cluster's length is only known from the file's own length. Without it its
-    // end is not a number, and a segment that cannot be asked for is dropped rather than
-    // served as a range running past the end of the file.
+    // The last cluster's length is only known from the file's own length. Without it a
+    // segment is dropped rather than served as a range running past the end of the file.
     const usable = segments.filter((one) => Number.isFinite(one.end) && one.end >= one.start);
 
     if (!usable.length) return null;

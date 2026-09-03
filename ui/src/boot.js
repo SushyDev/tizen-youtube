@@ -1,8 +1,5 @@
 import './boot.css';
 
-// Two ways in: the debugger evaluates the userscript into youtube.com, or a local
-// proxy splices it in. Every failure falls through to the proxy, so no path dead-ends.
-
 const PORT = 8099;
 
 // No `tizen` object off a television, which decides whether this file may exit.
@@ -12,7 +9,6 @@ const onTv = !!application;
 
 const BASE = onTv ? `http://localhost:${PORT}` : '';
 
-// Long enough for a cold service start on a slow TV.
 const GIVE_UP_AFTER = 20000;
 const POLL_INTERVAL = 200;
 
@@ -23,7 +19,6 @@ const MEDIA_KEYS = [
     'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue'
 ];
 
-// dmesg-style log: timestamp, facility, terse message. See boot.css.
 const startedAt = (window.performance && window.performance.now)
     ? window.performance.now()
     : Date.now();
@@ -39,7 +34,6 @@ let handedOver = false;
 // Oldest lines fall off the top; TV webviews handle scrollTop inconsistently.
 const MAX_LINES = 34;
 
-/** Writes one line. `tone` is omitted for the ordinary case. */
 const say = (facility, message, tone) => {
     if (handedOver) return;
 
@@ -65,23 +59,19 @@ const say = (facility, message, tone) => {
     while (logElement.childNodes.length > MAX_LINES) logElement.removeChild(logElement.firstChild);
 };
 
-// Whatever happens next paints over a black page, not over the log.
 const handOver = () => {
     handedOver = true;
     document.body.className = 'done';
 };
 
-// Whether there is anywhere to go. Off a TV only the dev server knows — see dev/tube.js.
 const canHandOver = (state) => onTv || !!(state && state.handOver);
 
-/** Reports what the TV would have done next, and stops. */
 const hold = (facility, what) => {
     say(facility, what, 'note');
     say('tube', 'held — off-TV, so nothing is handed over', 'note');
     document.body.className = 'held';
 };
 
-/** Splits startup into shell time and time spent waiting on the service. */
 const summarise = () => {
     const total = now();
     const shell = shellReadyAt;
@@ -117,8 +107,6 @@ const ask = (path, timeout) => new Promise((resolve, reject) => {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-
-// Which Chromium this is decides what the page may use.
 const engine = () => {
     const agent = navigator.userAgent || '';
     const chromium = /Chrome\/(\d+)/.exec(agent);
@@ -130,7 +118,7 @@ const engine = () => {
     ].filter(Boolean).join(', ');
 };
 
-// Not always the 1920x1080 the platform promises. Model and firmware would need a
+// Not always the 1920x1080 the platform promises, and model and firmware would need a
 // privilege this app lacks.
 const surface = () => {
     const view = { w: window.innerWidth, h: window.innerHeight };
@@ -146,8 +134,8 @@ const surface = () => {
     };
 };
 
-// An origin still pointing at the example host presents as YouTube loading with none
-// of the modifications and no explanation on screen.
+// An origin still pointing at the example host presents as YouTube loading with none of
+// the modifications and no explanation on screen.
 const PLACEHOLDER = /(^|\.)example\.(com|net|org|invalid)$/;
 
 const isPlaceholder = (origin) => {
@@ -167,7 +155,7 @@ const castArguments = () => {
         const args = data.filter((entry) => entry.key === 'args')[0];
         return args ? (JSON.parse(args.value[0]).args || '') : '';
     } catch (e) {
-        return '';   // plain launch, no payload
+        return '';
     }
 };
 
@@ -196,7 +184,6 @@ const launchService = () => new Promise((resolve) => {
         serviceId,
         () => { say('service', 'launch accepted', 'ok'); resolve(); },
         (error) => {
-            // Usually it is already running from a previous launch.
             say('service', `launch refused: ${error.message}`, 'warn');
             say('service', 'probably already running; asking it anyway');
             resolve();
@@ -204,7 +191,6 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
-// Lets the summary apportion shell time against service wait.
 let shellReadyAt = 0;
 let serviceUpAt = 0;
 
@@ -233,7 +219,6 @@ const boot = async () => {
         say('tvinputdevice', `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered`,
             keys.refused.length ? 'warn' : 'ok');
 
-        // Which key a model lacks decides which button does nothing on the remote.
         if (keys.refused.length) {
             say('tvinputdevice', `not on this model: ${keys.refused.join(' ')}`);
         }
@@ -281,7 +266,6 @@ const boot = async () => {
         }
 
         if (state) {
-            // Said once, not on every poll.
             if (!described) {
                 described = true;
                 serviceUpAt = now();
@@ -290,7 +274,6 @@ const boot = async () => {
                              `${((serviceUpAt - started) / 1000).toFixed(3)}s`, 'ok');
 
                 if (state.platformVersion) {
-                    // Which script a TV gets follows from its platform version.
                     say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
                 }
                 if (state.ip) say('state', `device ${state.ip}`);
@@ -322,7 +305,6 @@ const boot = async () => {
             if (state.canInject && !state.isConnecting) return useDebugger(state, args);
 
             if (state.canInject && state.isConnecting) {
-                // Another launch is mid-injection and will replace this window.
                 if (!announcedWait) {
                     say('inject', 'another launch is already connecting, waiting for it', 'note');
                     announcedWait = true;
@@ -339,8 +321,8 @@ const boot = async () => {
     }
 };
 
-// Injection relaunches this app under the debugger, so exiting makes room for it. If
-// the relaunch never happens the service brings the app back on the proxy path.
+// Injection relaunches this app under the debugger, so exiting makes room for it. If the
+// relaunch never happens the service brings the app back on the proxy path.
 const useDebugger = async (state, args) => {
     say('inject', 'available, developer mode is on', 'ok');
     say('inject', `asking the service to attach on ${state.ip || 'loopback'}`);
@@ -381,8 +363,8 @@ const useProxy = (state, args) => {
     }, 120);
 };
 
-// Nothing answered, but the proxy URL is a constant: a page that loads late beats an
-// app that never opens.
+// Nothing answered, but the proxy URL is a constant: a page that loads late beats an app
+// that never opens.
 const giveUp = (state, args) => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
@@ -401,7 +383,6 @@ const giveUp = (state, args) => {
     }, 400);
 };
 
-// Return key exits at any point during startup.
 document.addEventListener('keydown', (event) => {
     if (onTv && (event.keyCode === 10009 || event.keyCode === 27)) application.exit();
 });

@@ -1,9 +1,5 @@
 'use strict';
 
-// Verifies the built bundle parses as the syntax the floor allows. Tizen 3 is gone and
-// with it the Node v4.4.3 target: lowering that far pulled in regeneratorRuntime and
-// rewrote every async function, for engines this app no longer installs on.
-//
 // ES2019 is what Node 10 parses — optional catch binding included — and Node 10 is the
 // floor Tizen 5.5 clears.
 

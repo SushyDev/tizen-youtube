@@ -1,9 +1,5 @@
 'use strict';
 
-// Reading a WebM segment index. The cues say where each cluster starts and nothing says
-// where the last one ends, so the file's own length has to close it — get that wrong and
-// the last segment is either missing or a byte range that runs past the end of the file.
-
 const results = [];
 function check(name, ok, detail) {
     results.push(ok);
@@ -12,7 +8,6 @@ function check(name, ok, detail) {
 
 const webm = require('../lib/webm.js');
 
-/** An EBML element: an id written as-is, a one-byte length marker, and a body. */
 function element(id, body) {
     const idBytes = [];
     let value = id;
@@ -46,8 +41,8 @@ function cuePoint(timeMs, clusterAt) {
     ]));
 }
 
-// Cluster positions are relative to the segment's body, which is what makes this worth
-// testing: an index built against the file's start is wrong by exactly the header.
+// Cluster positions are relative to the segment's body: an index built against the
+// file's start is wrong by exactly the header.
 const CUES = [
     { timeMs: 0, at: 400 },
     { timeMs: 5000, at: 1400 },
@@ -87,7 +82,6 @@ check('the initialization segment is everything before the first cluster',
     index && index.init.end === bodyAt + CUES[0].at - 1,
     index && `${index.init.end}`);
 
-// A timecode scale other than the default changes every duration in the file.
 const slow = element(0x18538067, Buffer.concat([
     element(0x1549a966, element(0x2ad7b1, uintBytes(2000000))),
     cues
@@ -97,21 +91,17 @@ check('a non-default timecode scale is honoured',
     scaled && scaled.segments[0].durationMs === 10000,
     scaled && `${scaled.segments[0].durationMs} rather than 10000`);
 
-// Without the file's length there is no way to ask for the last cluster.
 const open = webm.segmentIndex(segment, null);
 check('an unknown file length drops the segment it cannot close',
     open && open.segments.length === CUES.length - 1,
     open && `${open.segments.length}`);
 
-// Nothing here should throw on rubbish; a stream this cannot read has to fall back.
 check('a buffer that is not WebM is refused rather than fatal',
     webm.segmentIndex(Buffer.alloc(64, 7), 1000) === null, 'returned something');
 check('an empty buffer is refused', webm.segmentIndex(Buffer.alloc(0), 1000) === null, 'returned something');
 
-// A segment written as a stream declares its length unknown, and the walk has to read
-// inside it anyway or the index is never found.
 const unknownSize = Buffer.concat([
-    Buffer.from([0x18, 0x53, 0x80, 0x67, 0xff]),   // Segment, length unknown
+    Buffer.from([0x18, 0x53, 0x80, 0x67, 0xff]),
     info, cues
 ]);
 const streamed = webm.segmentIndex(unknownSize, 5 + info.length + cues.length + 4200);
@@ -119,8 +109,6 @@ check('a segment of unknown length is still walked',
     streamed && streamed.segments.length === CUES.length,
     streamed ? `${streamed.segments.length}` : 'nothing');
 
-// The player response says where the cues are, which is what makes them reachable when the
-// bytes after them have not arrived yet.
 const statedAt = segment.length - cues.length;
 const byRange = webm.segmentIndex(segment, TOTAL,
     { indexRange: { start: String(statedAt), end: String(segment.length - 1) } });

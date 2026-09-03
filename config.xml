@@ -9,16 +9,10 @@
     <feature name="http://tizen.org/feature/web.service"/>
     <icon src="icon.png"/>
 
-    <!-- Undocumented, and none of them changed playback when removed or restored. Kept for
-         now only because they came with the app.
-
-         use.game.mode is deliberately absent, and must stay absent. It is the one switch
-         that makes the platform's renderer count frames — which is the only real number
-         this app could ever check its own arithmetic against — but it also stops the
-         platform playing a URL at all: the element takes the src and sits at networkState
-         0 with no error, so the enhanced player never attaches and every video falls back
-         to the default one. Three cold starts each way, same code, same video.
-
+    <!-- use.game.mode is deliberately absent and must stay absent. It is the one switch
+         that makes the platform's renderer count frames, but it also stops the platform
+         playing a URL at all: the element takes the src and sits at networkState 0 with no
+         error, so every video falls back to the default player. Three cold starts each way.
          `TUBE_GAME_MODE=1 npm run package` adds it to the staged copy for measuring. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
@@ -26,17 +20,16 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- From Samsung's own NativePlayer sample: a video app declares it does not
-         multitask, which is the closest thing found to a rendering-priority hint. -->
+    <!-- From Samsung's own NativePlayer sample: the closest thing found to a
+         rendering-priority hint. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="false"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
 
     <!-- Jellyfin sets this on Tizen; a different namespace from the samsung.com keys. -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
 
-    <!-- Declaring no API generation may be what gets this app the platform's legacy
-         defaults on a Tizen 9 set. The page is served over http and pulls media over
-         https, which is the mixed content this asks to be allowed. -->
+    <!-- The page is served over http and pulls media over https, which is the mixed
+         content this asks to be allowed. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="5.5"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/allow.mixedcontent" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/runningtype" value="MAIN"/>

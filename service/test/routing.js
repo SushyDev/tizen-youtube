@@ -1,8 +1,8 @@
 'use strict';
 
-// The proxy's catch-all matches every path, so route registration order is load
-// bearing: attached too early, /__tube/state returns YouTube's HTML instead of JSON
-// and the app never launches. This pins the order.
+// The proxy's catch-all matches every path, so route registration order is load bearing:
+// attached too early, /__tube/state returns YouTube's HTML instead of JSON and the app
+// never launches.
 
 const http = require('http');
 
@@ -14,7 +14,6 @@ function check(name, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 }
 
-// Build the app the same way the service does.
 const app = proxy.create('7.0');
 app.get('/__tube/state', (_, res) => res.json({ marker: 'service-endpoint' }));
 app.get('/__tube/inject', (_, res) => res.status(501).json({ marker: 'inject' }));
@@ -38,7 +37,7 @@ const server = app.listen(0, '127.0.0.1', () => {
     get('/__tube/state')
         .then((res) => {
             let parsed = null;
-            try { parsed = JSON.parse(res.body); } catch (e) { /* not ours */ }
+            try { parsed = JSON.parse(res.body); } catch (e) { }
             check('/__tube/state is served by the service, not the proxy',
                 !!parsed && parsed.marker === 'service-endpoint',
                 `got ${res.body.slice(0, 60)}`);
@@ -46,7 +45,7 @@ const server = app.listen(0, '127.0.0.1', () => {
         })
         .then((res) => {
             let parsed = null;
-            try { parsed = JSON.parse(res.body); } catch (e) { /* not ours */ }
+            try { parsed = JSON.parse(res.body); } catch (e) { }
             check('/__tube/inject is served by the service, not the proxy',
                 res.status === 501 && !!parsed && parsed.marker === 'inject',
                 `status ${res.status}, body ${res.body.slice(0, 60)}`);

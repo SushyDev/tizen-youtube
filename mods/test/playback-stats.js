@@ -1,11 +1,6 @@
-// What the accounting actually detects. Nothing on this hardware counts frames, so what is
-// reported is time the picture was trying to advance and did not — and these are the ways
-// that measurement went wrong before.
 import * as stats from '../features/playbackStats.js';
 import { account, lostBy, TOLERANCE, install } from '../features/playbackStats.js';
 
-// A step reports what was expected of it and what arrived; the loss is the difference, and
-// over many steps it is the difference of the totals, so jitter cancels instead of adding up.
 const shortfall = (step) => lostBy({ expected: step.expected, advanced: step.advanced });
 
 const results = [];
@@ -18,7 +13,6 @@ const at = (wall, media, over) => Object.assign(
     { wall, media, rate: 1, paused: false, seeking: false, readyState: 4 }, over || {}
 );
 
-// A second of wall time that advanced the video by a second cost nobody anything.
 {
     const step = account(at(0, 10), at(1000, 11));
     check('smooth playback loses nothing', shortfall(step) === 0, JSON.stringify(step));
@@ -26,7 +20,6 @@ const at = (wall, media, over) => Object.assign(
         Math.abs(step.played - 1) < 1e-9, JSON.stringify(step));
 }
 
-// Half a second of media for a second of wall is half a second the viewer lost.
 {
     const step = account(at(0, 10), at(1000, 10.5));
     check('a hitch is charged as lost time',
@@ -35,30 +28,23 @@ const at = (wall, media, over) => Object.assign(
         Math.abs(step.played - 0.5) < 1e-9, JSON.stringify(step));
 }
 
-// Starved of data and not advancing at all: the case the first draft of this silently
-// ignored, by skipping every sample whose readyState had fallen.
 {
     const step = account(at(0, 10, { readyState: 4 }), at(1000, 10, { readyState: 1 }));
     check('a rebuffer is charged as lost time',
         Math.abs(shortfall(step) - 1) < 1e-9, JSON.stringify(step));
 }
 
-// Sampling jitter is not a hitch.
 {
     const step = account(at(0, 10), at(1000, 1 + 10 - TOLERANCE / 2));
-    // Not forgiven in a single step any more: a shortfall is recorded honestly and cancels
-    // against the sample that catches up, which is what the run above measures.
     check('a sample that lags slightly records it', shortfall(step) > 0, JSON.stringify(step));
 }
 
-// A pause is not lost time, and the gap across it must not be either.
 {
     const paused = account(at(0, 10), at(1000, 10, { paused: true }));
     check('a pause costs nothing', shortfall(paused) === 0 && paused.played === 0, JSON.stringify(paused));
     check('a pause drops the baseline', paused.reseed === true, JSON.stringify(paused));
 }
 
-// Seeking, and the jump a seek produces once it completes.
 {
     const seeking = account(at(0, 10), at(1000, 90, { seeking: true }));
     check('a seek costs nothing', shortfall(seeking) === 0, JSON.stringify(seeking));
@@ -69,14 +55,12 @@ const at = (wall, media, over) => Object.assign(
     check('a forward jump drops the baseline', jump.reseed === true, JSON.stringify(jump));
 }
 
-// A loop puts media time backwards; it is not a hundred seconds of lost video.
 {
     const step = account(at(0, 313), at(1000, 0.5));
     check('a loop is not charged as lost time', shortfall(step) === 0, JSON.stringify(step));
     check('a loop drops the baseline', step.reseed === true, JSON.stringify(step));
 }
 
-// At double speed, two seconds of media in one second of wall is correct, not a windfall.
 {
     const step = account(at(0, 10, { rate: 2 }), at(1000, 12, { rate: 2 }));
     check('double speed keeping up loses nothing', shortfall(step) === 0, JSON.stringify(step));
@@ -86,23 +70,17 @@ const at = (wall, media, over) => Object.assign(
         Math.abs(shortfall(behind) - 1) < 1e-9, JSON.stringify(behind));
 }
 
-// A suspended app or a throttled timer: what happened in the gap is unknowable.
 {
     const step = account(at(0, 10), at(30000, 11));
     check('a long gap is not charged to anyone', shortfall(step) === 0, JSON.stringify(step));
     check('a long gap drops the baseline', step.reseed === true, JSON.stringify(step));
 }
 
-// The first sample has nothing to compare against.
 {
     const step = account(null, at(0, 10));
     check('the first sample counts nothing', step.played === 0 && shortfall(step) === 0, JSON.stringify(step));
 }
 
-// Nothing is substituted into getVideoPlaybackQuality any more. Deriving frame counts from
-// lost time reported frames that were never decoded or discarded, charged a startup stall as
-// hundreds of them, and — because the honest measure of lost time cancels as the clock
-// catches up — could fall as well as rise. A number that goes down is not a count.
 {
     const video = {
         currentTime: 0, playbackRate: 1, paused: false, seeking: false, readyState: 4,
@@ -126,11 +104,10 @@ const at = (wall, media, over) => Object.assign(
         after.call(video).droppedVideoFrames === 0, 'a count was invented');
 }
 
-
-// Sampling jitter is zero-mean, and charging each sample's shortfall as it happens turns it
-// into a large positive total. Measured against thirty seconds of the television's own
-// playback: the media clock kept up exactly, and the old accounting still reported forty-one
-// dropped frames. The deficit of the totals is what actually happened.
+// Sampling jitter is zero-mean, and charging each sample's shortfall as it happens turns
+// it into a large positive total. Measured against thirty seconds of the television's own
+// playback: the media clock kept up exactly, and the old accounting still reported
+// forty-one dropped frames.
 const runFor = (fps, wobbleMs, ticks) => {
     const frame = 1 / fps;
     let wall = 0;
@@ -140,8 +117,8 @@ const runFor = (fps, wobbleMs, ticks) => {
     for (let tick = 0; tick < ticks; tick++) {
         wall += 0.25 + (((tick % 2) ? wobbleMs : -wobbleMs) / 1000);
 
-        // The media clock reports whole frames, as it does when it carries the presented
-        // frame's timestamp — which is where the per-sample lag came from.
+        // The media clock reports whole frames, as it does when it carries the presented frame's
+        // timestamp, which is where the per-sample lag came from.
         const media = Math.floor((wall / frame) + 1e-9) * frame;
         const current = { wall: wall * 1000, media, rate: 1, paused: false, seeking: false };
         const step = account(previous, current);
@@ -159,12 +136,10 @@ check('jitter at twenty-four frames a second is not charged as loss',
 check('nor at thirty', runFor(30, 20, 240) < 1, `${runFor(30, 20, 240).toFixed(1)} frames`);
 check('nor at sixty', runFor(60, 10, 240) < 1, `${runFor(60, 10, 240).toFixed(1)} frames`);
 
-// A stall is a real deficit and must survive the cancelling.
 const stall = (() => {
     const tally = { played: 0, expected: 0, advanced: 0 };
     let previous = { wall: 0, media: 10, rate: 1, paused: false, seeking: false };
 
-    // A second of the clock not moving, then a second of ordinary playback.
     for (let at = 1; at <= 8; at++) {
         const stopped = at <= 4;
         const current = { wall: at * 250, media: stopped ? 10 : 10 + ((at - 4) * 0.25),
@@ -180,10 +155,9 @@ const stall = (() => {
 
 check('a stall is still counted in full', Math.abs(stall - 1) < 0.01, `${stall.toFixed(3)}s`);
 
-
 // A cumulative figure is dominated for ever by whatever happened at startup: measured on
 // the set, a video reported six hundred dropped frames for four minutes while losing
-// nothing after the first few seconds. The report covers the recent past instead.
+// nothing after the first few seconds.
 const overTime = (stallSeconds, thenSmoothSeconds) => {
     const tally = { played: 0, expected: 0, advanced: 0, recent: [] };
     let wall = 0;

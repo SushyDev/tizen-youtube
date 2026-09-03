@@ -1,27 +1,12 @@
 'use strict';
 
-// The same stream, described as HLS instead of DASH.
-//
-// Both are handed to the element as a plain URL, and both are played by the platform's own
-// pipeline rather than through MediaSource — which is the whole point of serving anything
-// here. What differs is the description, and on a Samsung set HLS is the better-trodden
-// path: it is what broadcast apps ship, so it is the one the platform's own people
-// exercise. Whether it starts faster or seeks better than DASH on this hardware is a
-// question only the television can answer, so it is offered beside DASH rather than
-// instead of it.
-//
-// The segments are the ones already on disk. HLS carries fragmented MP4 the same way DASH
-// does — an initialisation segment named by EXT-X-MAP and media segments after it — so
-// nothing is cut twice and the two descriptions point at the same files.
-
 const codecsOf = (mimeType) => {
     const match = /codecs="([^"]+)"/.exec(mimeType || '');
     return match ? match[1] : '';
 };
 
-// How HLS says what the pictures' brightness means. DASH states this as CICP code points;
-// HLS has three words for it, and saying the wrong one is worse than saying nothing —
-// a set told SDR will tone-map a PQ picture into a flat grey.
+// Saying the wrong one is worse than saying nothing: a set told SDR will tone-map a PQ
+// picture into a flat grey.
 function rangeOf(format) {
     const colour = format.colorInfo || {};
 
@@ -31,18 +16,11 @@ function rangeOf(format) {
     return 'SDR';
 }
 
-/** The longest segment, rounded up, which is what EXT-X-TARGETDURATION has to be. */
+// The longest segment, rounded up, which is what EXT-X-TARGETDURATION has to be.
 const targetDuration = (index) => Math.ceil(index.reduce(
     (longest, segment) => Math.max(longest, segment.durationMs), 0
 ) / 1000);
 
-/**
- * One track's playlist: every segment, in order, at the addresses they are already served
- * from.
- *
- * A VOD playlist is written once and complete — the file's own index says how long each
- * segment runs, so none of this depends on how much has been downloaded.
- */
 function media(session, kind) {
     const track = session.tracks[kind];
     if (!track || !track.index) return null;
@@ -66,13 +44,6 @@ function media(session, kind) {
     return `${lines.join('\n')}\n`;
 }
 
-/**
- * The playlist that names the others.
- *
- * One variant, because there is one of each track — the same single-rung commitment DASH
- * makes here. The sound is a separate media playlist rather than muxed in, which is what
- * lets the two be fetched independently the way the DASH tracks are.
- */
 function master(session) {
     const video = session.tracks.video;
     const audio = session.tracks.audio;

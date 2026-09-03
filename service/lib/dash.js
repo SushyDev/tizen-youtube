@@ -286,8 +286,10 @@ function send(session, kind, number, res) {
     if (!stream.locate(track, number)) return res.status(404).end();
 
     // Where the player has reached decides what is fetched next and what is deleted, so
-    // asking for a segment is what moves the window along.
+    // asking for a segment is what moves the window along — for both tracks, because the
+    // player asks about one at a time and they share a position.
     track.want(number);
+    if (number > 0) stream.align(session, kind, number);
 
     return track.reach(number).then(
         () => {

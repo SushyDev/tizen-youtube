@@ -94,21 +94,6 @@ function isHdr(format) {
 }
 
 /**
- * Whether a picture asks more of this hardware than it can give.
- *
- * Measured on the set: 2160p60 in ten-bit AV1 stalls for seconds before the first frame and
- * drops throughout, while the same size and rate in eight-bit AV1, and in VP9 at either
- * depth, plays without dropping a frame. VP9 profile 2 is not lumped in with it — that is
- * the path the set's own YouTube app uses for HDR.
- */
-function tooMuch(format) {
-    if ((format.fps || 30) <= 30 || !isTenBit(format)) return false;
-
-    const codec = (/codecs="([^"]+)"/.exec(format.mimeType || '') || [])[1] || '';
-    return codec.indexOf('av01.') === 0;
-}
-
-/**
  * Whether a format is ten bits deep.
  *
  * AV1 and the long form of VP9 both put the depth in the fourth field of the codec string —
@@ -273,7 +258,7 @@ class Track {
  * the same audio with its dynamic range compressed — and which one the viewer is meant to
  * hear was decided by YouTube, not by which has the higher bitrate.
  */
-function pick(formats, kind, maxHeight, chosen, xtags) {
+function pick(formats, kind, maxHeight, chosen, xtags, hdr) {
     // Picture may be WebM; sound stays MP4. At 2160p60 the MP4 ladder offers only ten-bit
     // AV1, which this hardware cannot hold, while its VP9 path plays that size without
     // dropping a frame — and VP9 is never offered in anything but WebM.
@@ -325,13 +310,16 @@ function pick(formats, kind, maxHeight, chosen, xtags) {
     const best = (formats) => formats
         .sort((a, b) => (b.height - a.height)
             || ((b.fps || 30) - (a.fps || 30))
-            || ((isHdr(b) ? 1 : 0) - (isHdr(a) ? 1 : 0))
+            || (hdr ? (isHdr(b) ? 1 : 0) - (isHdr(a) ? 1 : 0) : (isHdr(a) ? 1 : 0) - (isHdr(b) ? 1 : 0))
             || ((isTenBit(a) ? 1 : 0) - (isTenBit(b) ? 1 : 0))
             || (MP4.test(a.mimeType || '') ? -1 : 1))[0] || null;
 
-    const holds = offered.filter((format) => !tooMuch(format));
-
-    return best(holds.length ? holds : offered);
+    // Ten-bit AV1 at 2160p60 was refused here for a while, on a measurement that showed it
+    // stalling for seconds and dropping throughout. That measurement was taken on a resumed
+    // video, and seeking was broken for the container it was being compared against — with
+    // that fixed it holds 2160p60 without dropping a frame, and it is the only picture that
+    // puts this panel into HDR. VP9 profile 2 decodes but the set stays in standard range.
+    return best(offered);
 }
 
 /**
@@ -464,6 +452,9 @@ async function fill(track, params, chosen, using) {
             return;
         }
 
+        journal.service('run', `${track.kind} ${track.format.itag} from ${from || 'the start'}`
+            + `${positioned ? ` claiming ${(state.initializedFormats.find((one) => one.downloadedSegments.length) || { downloadedSegments: [] }).downloadedSegments.length} segments` : ''}`);
+
         const following = await follow(Object.assign({}, params, { gate }), {
             kind: track.kind,
             videoFormat: chosen.video,
@@ -498,12 +489,35 @@ async function fill(track, params, chosen, using) {
             return wanted;
         };
 
+        // Whether a stream that begins partway through has opened with the file's header
+        // again. It is already on disk, and taking it for media puts every segment after it
+        // at the wrong offset.
+        //
+        // This used to read MP4 boxes whatever the container was. Fed WebM it took the EBML
+        // header's first four bytes for a box length, got a number larger than the buffer,
+        // found no boxes and gave up — so a seek into a WebM stream downloaded for ever and
+        // never cut a single segment. Which is every part-watched video on VP9.
+        const resent = () => {
+            const head = Buffer.concat(parts, held);
+
+            if (WEBM.test(track.format.mimeType || '')) {
+                if (head.length < 4) return null;
+                return head.readUInt32BE(0) === 0x1a45dfa3;
+            }
+
+            const boxes = mp4.boxes(head);
+            if (!boxes.length) return null;
+            return boxes[0].type === 'ftyp';
+        };
+
         const cut = async () => {
             while (track.index) {
                 if (skipping) {
-                    const boxes = mp4.boxes(Buffer.concat(parts, held));
-                    if (!boxes.length) return;
-                    if (boxes[0].type !== 'ftyp') { skipping = false; continue; }
+                    const again = resent();
+
+                    // Not enough bytes yet to tell one from the other.
+                    if (again === null) return;
+                    if (!again) { skipping = false; continue; }
 
                     const header = track.init.end + 1;
                     if (held < header) return;
@@ -527,6 +541,10 @@ async function fill(track, params, chosen, using) {
                 await writeFile(track.file(track.next), take(segment.end - base + 1));
                 track.arrived(track.next);
 
+                if (track.next === from || track.next === (track.index[0] || {}).number) {
+                    journal.service('run', `${track.kind} ${track.format.itag} wrote segment ${track.next}`);
+                }
+
                 base = segment.end + 1;
                 track.next = track.next === 0 ? track.index[0].number : track.next + 1;
 
@@ -534,13 +552,31 @@ async function fill(track, params, chosen, using) {
             }
         };
 
+        // DEV: a run that produces nothing looks exactly like a run that was never asked
+        // for, and the difference is the whole question when a seek goes quiet.
+        const began = Date.now();
+        let arrived = 0;
+        let announced = false;
+
         try {
             for (;;) {
                 const { done, value } = await following.reader.read();
-                if (done || track.stopped || track.restartAt) break;
+                if (done || track.stopped || track.restartAt) {
+                    journal.service('run', `${track.kind} ${track.format.itag} from ${from || 0} ended`
+                        + ` after ${arrived} bytes${done ? ', server closed' : ''}`
+                        + `${track.restartAt ? `, moving to ${track.restartAt}` : ''}`);
+                    break;
+                }
 
                 parts.push(Buffer.from(value));
                 held += value.byteLength;
+                arrived += value.byteLength;
+
+                if (!announced) {
+                    announced = true;
+                    journal.service('run', `${track.kind} ${track.format.itag} from ${from || 0}`
+                        + ` first bytes after ${Date.now() - began}ms`);
+                }
 
                 if (!track.index) {
                     // Bounded rather than conditional: a first chunk larger than this would
@@ -621,7 +657,7 @@ async function open(params) {
     const taken = await sabr.awaitSession(params.ustreamerConfig, null, since || undefined);
 
     const chosen = {
-        video: pick(params.formats, 'video', params.maxHeight),
+        video: pick(params.formats, 'video', params.maxHeight, null, undefined, params.hdr),
         audio: pick(params.formats, 'audio', null, taken.selected, params.audioXtags)
     };
 
@@ -692,6 +728,34 @@ async function open(params) {
 function busy() {
     const now = Date.now();
     return [...sessions.values()].some((session) => session.ready && now - session.read < 15000);
+}
+
+/**
+ * Brings the other track to the same moment.
+ *
+ * The player asks for one segment at a time, so a resumed video moves the picture to where
+ * it left off and says nothing about the sound — which then grinds forward from the start
+ * while the player waits for audio it will not have for minutes. Both tracks belong to one
+ * position, and only this knows about both of them.
+ */
+function align(session, kind, number) {
+    const moved = session.tracks[kind];
+    const other = session.tracks[kind === 'video' ? 'audio' : 'video'];
+    if (!moved || !other || !moved.index || !other.index) return;
+
+    const at = moved.index.filter((segment) => segment.number === number)[0];
+    if (!at) return;
+
+    // The segment holding that moment: the first whose end is past where the other track
+    // has been moved to.
+    const match = other.index.filter((segment) => segment.startMs + segment.durationMs > at.startMs)[0];
+    if (!match) return;
+
+    other.want(match.number);
+
+    if (other.have.has(match.number) || other.reachable(match.number)) return;
+
+    other.seekTo(match.number);
 }
 
 /** Everything needed to send one segment, once it is on disk. */
@@ -766,5 +830,5 @@ async function clean() {
 module.exports = {
     HEAD_BYTES, IDLE_TIMEOUT, KEEP_BEHIND, MEDIA_DIR, READ_AHEAD, READ_AHEAD_AT_FIRST,
     SEGMENT_WAIT, SWEEP_INTERVAL, Track,
-    awaitVideo, busy, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
+    align, awaitVideo, busy, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
 };

@@ -341,34 +341,25 @@ check('and the odd length is stated exactly',
 check('only the first run carries a start time',
     (mixed.match(/ t="/g) || []).length === 2, 'more than one start time per track');
 
-// Bit depth before height, above thirty frames a second. This set plays 2160p60 in eight
-// bits without dropping a frame and stalls for seconds on the same rung in ten, and some
-// videos offer nothing but ten-bit AV1 at the top.
+// Nothing is refused for its bit depth. Ten-bit AV1 was held back here for a while on a
+// measurement taken while seeking was broken for the container it was compared against.
 const TEN_BIT = [
     { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 },
     { itag: 700, mimeType: 'video/mp4; codecs="av01.0.12M.10"', height: 1440, fps: 60 },
     { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
 ];
 
-check('a rung with eight bits is taken over a taller one with ten',
-    stream.pick(TEN_BIT, 'video', 2160).itag === 299, 'took the ten-bit picture');
+check('the tallest picture is taken whatever its depth',
+    stream.pick(TEN_BIT, 'video', 2160).itag === 701, 'stepped down for bit depth');
 check('eight bits at the top is still the tallest picture',
     stream.pick(VIDEO.concat(AUDIO), 'video', 2160).itag === 401, 'stepped down needlessly');
-check('ten bits is fine below sixty frames a second',
-    stream.pick([{ itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 24 }],
-        'video', 2160).itag === 701, 'stepped down at 24fps');
-check('a longer codec string is read the same way',
+check('depth still breaks a tie at the same size',
     stream.pick([
-        { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10.0.110.01.01.01.0"', height: 2160, fps: 60 },
-        { itag: 299, mimeType: 'video/mp4; codecs="avc1.64002a"', height: 1080, fps: 60 }
-    ], 'video', 2160).itag === 299, 'missed the depth field');
-check('nothing but ten-bit still plays rather than nothing at all',
-    stream.pick([{ itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 }],
-        'video', 2160).itag === 701, 'refused the only picture on offer');
+        { itag: 701, mimeType: 'video/mp4; codecs="av01.0.13M.10"', height: 2160, fps: 60 },
+        { itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }
+    ], 'video', 2160).itag === 401, 'ignored the depth on a tie');
 
-// At 2160p60 the MP4 ladder offers only ten-bit AV1, which this hardware stalls on, while
-// its VP9 path plays that size without dropping a frame — and VP9 is only ever in WebM.
-// This is the real ladder of a video that would not play.
+// The real ladder of a 2160p60 HDR video, which is where the interesting choices are.
 const REAL = [
     { itag: 315, mimeType: 'video/webm; codecs="vp9"', height: 2160, fps: 60 },
     { itag: 337, mimeType: 'video/webm; codecs="vp9.2"', height: 2160, fps: 60 },
@@ -383,16 +374,18 @@ const REAL = [
 const GRADED = { primaries: 'COLOR_PRIMARIES_BT2020', transferCharacteristics: 'COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084' };
 const withHdr = REAL.map((f) => (f.itag === 337 || f.itag === 701 ? Object.assign({}, f, { colorInfo: GRADED }) : f));
 
-check('the wider colour is taken where the video has it',
-    stream.pick(withHdr, 'video', 2160).itag === 337, 'left HDR on the shelf');
+// AV1 is what puts this panel into HDR — VP9 profile 2 decodes and the set stays in
+// standard range — and MP4 wins the tie between two equally graded pictures anyway.
+check('the wider colour is taken where the display can show it',
+    stream.pick(withHdr, 'video', 2160, null, undefined, true).itag === 701, 'left HDR on the shelf');
+check('and refused where the display cannot',
+    stream.pick(withHdr, 'video', 2160, null, undefined, false).itag === 315,
+    'spent the bitrate on a picture that would be flattened');
 check('a ten-bit encode of ordinary colour is not preferred',
     stream.pick(REAL, 'video', 2160).itag === 315, 'took ten bits for nothing');
-check('ten-bit AV1 above thirty is refused even when it is the HDR one',
-    stream.pick(withHdr.filter((f) => f.itag !== 337 && f.itag !== 315), 'video', 2160).itag === 308,
-    'took the one format that stalls');
 check('HDR outranks the container an even tie would have won',
     stream.pick(withHdr.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
-        'video', 2160).itag === 337, 'took SDR mp4 over HDR');
+        'video', 2160, null, undefined, true).itag === 701, 'took SDR mp4 over HDR');
 
 // Colour has to be stated in the manifest or the set decodes wide-gamut video and shows it
 // as if it were ordinary — which looks worse than not offering HDR at all.
@@ -435,3 +428,65 @@ check('and depth never costs a rung of picture',
     ], 'video', 2160).itag === 1, 'stepped down for eight bits');
 check('sound is still never taken from webm',
     stream.pick(AUDIO.concat(REAL), 'audio', null, [{ itag: 251, xtags: '' }]).itag === 140, 'took the webm');
+
+// A stream that begins partway through opens with the file's header again, and that header
+// is already on disk. Recognising it used to mean reading MP4 boxes whatever the container
+// was — which, fed WebM, found nothing and cut no segments at all, so every part-watched
+// video on VP9 downloaded for ever and never played.
+const EBML_HEADER = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81]);
+const FTYP = box('ftyp', Buffer.alloc(8, 1));
+
+check('an EBML header is not read as an MP4 box',
+    mp4.boxes(EBML_HEADER).length === 0, 'found boxes in WebM');
+check('and the EBML signature is what marks it',
+    EBML_HEADER.readUInt32BE(0) === 0x1a45dfa3, 'signature moved');
+check('an MP4 header is still recognised by its first box',
+    mp4.boxes(FTYP)[0].type === 'ftyp', 'ftyp not found');
+
+// Both tracks belong to one position. The player asks for one segment at a time, so a
+// resumed video moves the picture and says nothing about the sound — which then grinds
+// forward from the start while the player waits for audio it will not have for minutes.
+const longVideo = Array.from({ length: 720 }, (_, at) => ({
+    number: at + 1, startMs: at * 5000, durationMs: 5000, start: 0, end: 1
+}));
+const longAudio = Array.from({ length: 360 }, (_, at) => ({
+    number: at + 1, startMs: at * 10000, durationMs: 10000, start: 0, end: 1
+}));
+
+const paired = () => {
+    const video = new stream.Track('video', { itag: 337, mimeType: 'video/webm; codecs="vp9"' }, dir);
+    const audio = new stream.Track('audio', { itag: 140, mimeType: 'audio/mp4' }, dir);
+    video.index = longVideo;
+    audio.index = longAudio;
+    video.next = 1;
+    audio.next = 1;
+    return { tracks: { video, audio } };
+};
+
+// Resuming an hour in: video segment 721 would be 3600s, so 361 is 1800s — segment 181 of
+// the audio, which is nowhere near where the sound has reached.
+const far = paired();
+stream.align(far, 'video', 361);
+check('sound is moved to where the picture went',
+    far.tracks.audio.wanted === 181, `wanted ${far.tracks.audio.wanted}`);
+check('and the download is sent there rather than crawling',
+    far.tracks.audio.restartAt === 181, `restartAt ${far.tracks.audio.restartAt}`);
+
+// A step of one segment is ordinary playback and must not restart anything.
+const near = paired();
+near.tracks.audio.next = 3;
+stream.align(near, 'video', 5);
+check('ordinary playback does not move the other track',
+    near.tracks.audio.restartAt === null, `restartAt ${near.tracks.audio.restartAt}`);
+
+// Nor should a segment already on disk.
+const held = paired();
+held.tracks.audio.next = 400;
+held.tracks.audio.have.add(181);
+stream.align(held, 'video', 361);
+check('a segment already held is not fetched again',
+    held.tracks.audio.restartAt === null, `restartAt ${held.tracks.audio.restartAt}`);
+
+check('aligning against a segment that does not exist is harmless',
+    (() => { const s2 = paired(); stream.align(s2, 'video', 99999); return s2.tracks.audio.restartAt === null; })(),
+    'moved the other track anyway');

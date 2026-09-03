@@ -131,6 +131,42 @@ IP. Probing deepens it.
 
 **Do not conclude a path is closed while the address is flagged.** Leave it and retest.
 
+## Seeking, and the measurements it ruined
+
+A stream that begins partway through re-sends the file's header, which is already on disk
+and has to be skipped or every segment after it lands at the wrong offset. Recognising it
+read MP4 boxes **whatever the container was**. Given WebM, it took the EBML signature for a
+box length, found no boxes, and returned — so a seek into a WebM stream downloaded for ever
+and never cut a single segment.
+
+Every part-watched video on VP9 was silently broken this way: it would open, seek, and sit
+on a still frame. And because AV1 is MP4 and VP9 is WebM, any comparison between the two on
+a resumed video was really a comparison between working and broken seeking. Three
+conclusions rested on that and all three were wrong:
+
+- that ten-bit AV1 stalls at 2160p60 and drops throughout — it holds zero dropped frames
+- that VP9 profile 2 was the better HDR format — the A/B was never about codecs
+- that HDR could not be triggered through this pipeline at all
+
+The second half of a resume is that the player asks for one segment at a time, so moving the
+picture says nothing about the sound. The other track has to be brought to the same moment
+or it grinds forward from the start while the player waits for audio it will not have for
+minutes.
+
+## HDR
+
+**AV1 is what puts this panel into HDR.** VP9 profile 2 decodes perfectly and the set stays
+in standard range; ten-bit AV1 with BT.2020 and the PQ curve switches it. The manifest has
+to say so as well — colour stated as CICP code points, and only when it is not ordinary
+video, because saying BT.709 changes nothing.
+
+Do not gate this on `(video-dynamic-range: high)`. That reports the mode the display is in
+at that moment, not what it can do, and it is only in standard because nothing has asked it
+to change — so gating on it never asks, and it never switches.
+
+The set's own YouTube app cannot do HDR here at all, because the encrypted ladder it is
+served contains no HDR encodes: `558:2160:BT709` and `557:1440:BT709`, nothing else.
+
 ## Codecs, for this panel
 
 Measured on a QE65S93DATXXN, Tizen 9:
@@ -138,16 +174,16 @@ Measured on a QE65S93DATXXN, Tizen 9:
 | Format | Result |
 |---|---|
 | VP9 8-bit 2160p60 (`315`, `558`) | zero dropped frames |
-| VP9 Profile 2 HDR 2160p60 (`337`) | zero dropped frames |
-| AV1 8-bit 2160p60 (`401`) | clean once settled |
-| AV1 10-bit 2160p60 (`701`) | stalls for seconds, drops throughout |
+| VP9 Profile 2 HDR 2160p60 (`337`) | zero dropped frames, but the panel stays SDR |
+| AV1 8-bit 2160p60 (`401`) | zero dropped frames |
+| AV1 10-bit HDR 2160p60 (`701`) | zero dropped frames, and the panel switches to HDR |
 
-At 2160p60 the MP4 ladder offers only AV1, and above 30fps only ten-bit on many videos —
-which is why WebM is read for its cue index alongside MP4's `sidx`. VP9 exists nowhere else.
+At 2160p60 the MP4 ladder offers only AV1, and on many videos only ten-bit — which is why
+WebM is read for its cue index alongside MP4's `sidx`, since VP9 exists nowhere else and is
+the only eight-bit picture at that size on some ladders.
 
 The picker takes the tallest, then the fastest, then the wider colour where the video is
-graded for it, and refuses ten-bit AV1 above thirty frames a second unless nothing else will
-do.
+graded for it, then eight bits on a tie, then MP4 on a tie. Nothing is refused for its depth.
 
 ## Reading the numbers
 

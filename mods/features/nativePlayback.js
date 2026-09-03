@@ -436,6 +436,11 @@ function openSession(request) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({
             maxHeight: asked.get(request.videoId) || preferredHeight(),
+            // Always asked for where the video has it. Whether the panel switches cannot be
+            // read beforehand: `(video-dynamic-range: high)` reports the output mode it is
+            // in at that moment, not what it can do — and it is only in standard because
+            // nothing has asked it to change. Gating on it never asks, so it never switches.
+            hdr: true,
             audioXtags: wantedAudio(request.formats),
             fresh: changed.delete(request.videoId)
         }, request))

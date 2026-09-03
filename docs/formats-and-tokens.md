@@ -457,3 +457,40 @@ Which is this one: it reports a reachable daemon, exits, never attaches, and com
 the proxy. So the debugger is not offered, and a launch is one navigation. `OFFER_DEBUGGER`
 in the service turns it back on for developing against a real origin.
 
+## The video is fetched twice
+
+Measured from the page, which records every request it makes, while the enhanced player
+played a sixty-three megabyte video from this app's own address:
+
+```
+proxy → elsewhere    12 requests   20.7 s   53.09 MB    videoplayback
+proxy → youtube      20 requests   22.4 s    0.37 MB    innertube
+service → ours      119 requests   15.6 s    0.04 MB    the diagnostics bridge
+```
+
+Those fifty-three megabytes are the same video, fetched by the page's own player, into a
+source buffer that discards everything appended to it. With the sixty-three the service
+fetched to serve it, a sixty-three megabyte video moved about a hundred and sixteen — and
+the half nobody would ever see was competing for the line with the half on screen. That is
+the likeliest reason the buffer runs thin on the videos that show frame drops.
+
+It is not simply waste to be switched off. A player that has appended nothing decides its
+pipeline has died and reloads the whole video every fifteen seconds, so it has to keep
+receiving something. Two ways of making what it receives cheaper have been tried:
+
+- **Truncating the media response.** Passing on the first sixty-four kilobytes and dropping
+  the rest wedged the page: playback continued, because the picture comes from the platform
+  and not from page script, but the script thread stopped answering entirely and only a
+  reload recovered it. A SABR response is a framed protocol and a cut-off one is not
+  something its reader survives.
+- **Reporting a healthy buffer instead of the element's.** Recorded earlier in this file:
+  the player does stop fetching, and then reloads every fifteen seconds for the reason
+  above.
+
+What has not been tried is making the page's own player fetch a *small* rung — it keeps
+appending, so the watchdog stays quiet, and 144p against 2160p is some forty times less to
+throw away. Nothing in what this app serves depends on that choice: the picture is picked
+by height and the sound by the tags the page asks for, and neither reads the player's own
+selection. What it would cost is the quality menu, which shows what the player selected and
+would then show the wrong thing.
+

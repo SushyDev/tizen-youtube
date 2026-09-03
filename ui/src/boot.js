@@ -276,7 +276,6 @@ const boot = async () => {
                 if (state.platformVersion) {
                     say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
                 }
-                if (state.ip) say('state', `device ${state.ip}`);
 
                 if (state.script && state.script.error) {
                     say('loader', `no userscript: ${state.script.error}`, 'bad');

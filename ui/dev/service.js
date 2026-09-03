@@ -9,7 +9,6 @@ const PROXY_URL = 'http://localhost:8098/tv?additionalDataUrl=' +
     encodeURIComponent('http://localhost:8097/dial/apps/YouTube');
 
 const BASE = {
-    ip: '192.168.2.9',
     platformVersion: '6.5',
     variant: 'modern',
     proxyUrl: PROXY_URL,

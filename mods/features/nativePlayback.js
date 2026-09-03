@@ -119,7 +119,29 @@ export function startsAt(videoId, seconds) {
  * the download reaching that point on its own — rather than a video that never plays.
  */
 function startsFrom(videoId) {
-    const at = resumeAt.get(videoId) || 0;
+    const said = resumeAt.get(videoId) || 0;
+
+    // The player's own clock, but only while it is still playing what this app is serving.
+    //
+    // Then it is where the picture actually is, and this is a re-attach rather than a new
+    // load — the player does that to itself for its own reasons, a speed change among them,
+    // and a stream reopened at the beginning while the element sits at forty seconds simply
+    // stops. Watched on the television: the clock stuck at 40 with an empty buffer while
+    // the download fetched segment one.
+    //
+    // On a load it is the opposite: the element is being torn down and rebuilt, so it is
+    // not playing ours, and the clock still holds the *previous* position — which is how
+    // replaying a finished video used to move the download to its last segment.
+    let live = 0;
+    if (playingOurs() && playerVideo() === videoId) {
+        try {
+            live = player().getCurrentTime() || 0;
+        } catch (e) {
+            // Between videos; what the page said stands.
+        }
+    }
+
+    const at = Math.max(said, live);
     return at > 1 ? at : 0;
 }
 

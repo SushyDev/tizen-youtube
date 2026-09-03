@@ -1,10 +1,8 @@
-/* The boot log: black ground, monospace, monotonic timestamps, one line per thing
-   that happened. Black is not a style choice — the page it hands over to is black,
-   so anything else would flash. */
+/* Black is not a style choice: the page this hands over to is black, and anything else
+   would flash. */
 
-/* The Linux console's sixteen colours as the kernel defines them (`default_red[]`
-   and friends in drivers/tty/vt/vt.c). Colour 3 is brown rather than dark yellow
-   because the VGA card put 0x55 in its green channel. */
+/* The Linux console's sixteen colours as the kernel defines them (`default_red[]` and
+   friends in drivers/tty/vt/vt.c). */
 :root {
   --ansi-0:  #000000;   /* black          */
   --ansi-1:  #aa0000;   /* red            */
@@ -23,17 +21,12 @@
   --ansi-14: #55ffff;   /* light cyan     */
   --ansi-15: #ffffff;   /* white          */
 
-  /* Roles, each an index rather than a colour. A console with no escape codes is
-     colour 7 on colour 0, and the timestamp and facility columns are the two roles
-     util-linux names in dmesg.c: time green, subsys brown.
-
-     Severities use the bright half, because 0xaa is what those colours look like on a
-     CRT rather than on an OLED across a room. warn is yellow rather than dmesg's bold,
-     which on a console means bright white and is unreadable at a glance. */
+  /* Roles, each an index rather than a colour. Severities use the bright half: 0xaa is
+     what those colours look like on a CRT, not on an OLED across a room. */
   --ground: var(--ansi-0);
-  --text:   var(--ansi-7);    /* the default foreground, and nothing else  */
-  --stamp:  var(--ansi-2);    /* dmesg's `time`                            */
-  --subsys: var(--ansi-3);    /* dmesg's `subsys`                          */
+  --text:   var(--ansi-7);
+  --stamp:  var(--ansi-2);    /* dmesg's `time`   */
+  --subsys: var(--ansi-3);    /* dmesg's `subsys` */
   --ok:     var(--ansi-10);
   --warn:   var(--ansi-11);
   --bad:    var(--ansi-9);
@@ -50,14 +43,14 @@ html, body {
 body {
   color: var(--text);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* A fraction of the screen, not a pixel count: the same page has to be legible on
-     a television across a room and in a 960-wide webview. */
+  /* A fraction of the screen, not a pixel count: legible both on a television across a
+     room and in a 960-wide webview. */
   font-size: 1vw;
   line-height: 1.55;
 }
 
-/* `pre` so the padded timestamps line up without a table or grid, either of which an
-   old engine could drop. */
+/* `pre` so the padded timestamps line up without a table or grid, either of which an old
+   engine could drop. */
 #log {
   white-space: pre;
 }
@@ -70,6 +63,6 @@ body {
 .bad  { color: var(--bad); }
 .note { color: var(--note); }
 
-/* Handing over: the log is simply not there any more, on the frame before YouTube
-   paints. */
-body.done > * { display: none; }
+/* Only the log: this page keeps everything else it owns, because it no longer goes away
+   when YouTube appears. */
+body.done > #log { display: none; }

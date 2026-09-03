@@ -1,19 +1,12 @@
-# Builds the widget and opens a draft release for the tag that triggered it.
+# Builds the widget and opens a draft release for the tag that triggered it:
 #
 #   npm run version:set 1.2.0    # and commit
 #   git tag v1.2.0 && git push origin v1.2.0
 #
-# The widget is unsigned on purpose: a Tizen signature names the television it may be
-# installed on, and Tizen Homebrew re-signs whatever it installs.
-#
-# It must be a *draft* — GitHub refuses asset uploads once a release is published, and
-# no workflow event fires when someone saves a draft by hand.
-#
-# Exactly one .wgt is attached: Tizen Homebrew resolves a GitHub entry to the first
-# package asset it finds.
-#
-# Optional repo variable TUBE_ORIGIN sets where the TV checks for a newer userscript.
-# Without it the app works but never updates itself between releases.
+# Unsigned on purpose: a Tizen signature names the television it may be installed on, and
+# Tizen Homebrew re-signs whatever it installs. It must be a *draft* — GitHub refuses asset
+# uploads once a release is published, and no workflow event fires when someone saves one
+# by hand. Exactly one .wgt is attached, because Tizen Homebrew takes the first it finds.
 
 name: Release
 

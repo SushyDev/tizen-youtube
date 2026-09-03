@@ -1,27 +1,20 @@
 import { configChangeEmitter, configRead } from '../config.js';
 
 // Where YouTube records when each of its startup prompts last fired. Pushing a
-// `lastFired` into the future is how a prompt is suppressed, and pulling it back is how
-// one is asked for.
+// `lastFired` into the future is how a prompt is suppressed.
 const RECURRING_ACTIONS = 'yt.leanback.default::recurring_actions';
 
-// The store does not exist on a first launch: this script runs before the page has
-// written anything, and the page writes it a moment later. Reading it blind threw a
-// SyntaxError out of module evaluation — which took the rest of core.js with it,
-// `interceptJson()` included, so a first launch ran with no modification at all. The
-// unsuppressed "You're signed out" prompt was the visible half of that.
+// The store is absent on a first launch, and reading it blind threw out of module
+// evaluation, taking the rest of core.js with it.
 const WAIT_WINDOW = 15000;
 const WAIT_INTERVAL = 250;
 
-// The three prompts, and whether each one is a prompt this store happens to carry: a
-// signed-out set has never fired most of them, so most of the entries are simply absent.
 const PROMPTS = [
     'startup-screen-account-selector-with-guest',
     'whos_watching_fullscreen_zero_accounts',
     'startup-screen-signed-out-welcome-back'
 ];
 
-/** The parsed store, or null while it is absent or unreadable. */
 function readActions() {
     try {
         const parsed = JSON.parse(localStorage[RECURRING_ACTIONS]);
@@ -40,7 +33,6 @@ configChangeEmitter.addEventListener('configChange', (event) => {
 
 let interval;
 
-/** False when the store is not there yet, which is the caller's cue to wait for it. */
 function disableWhosWatching(value) {
     const LeanbackRecurringActions = readActions();
     if (!LeanbackRecurringActions) return false;
@@ -51,17 +43,17 @@ function disableWhosWatching(value) {
 
     function setActions() {
         PROMPTS.forEach((prompt) => {
-            if (actions[prompt]) actions[prompt].lastFired = date.getTime();
+            // A prompt that never fired has no entry to push, which is all of them on a first launch.
+            if (!actions[prompt]) actions[prompt] = {};
+            actions[prompt].lastFired = date.getTime();
         });
         localStorage[RECURRING_ACTIONS] = JSON.stringify(LeanbackRecurringActions);
     }
 
     if (!value) {
-        // 7 days is enough; this runs on every app launch.
         date.setDate(date.getDate() + 7);
         setActions();
     } else {
-        // Do nothing if the last fired action is less than 2 hours ago.
         if (date.getTime() - actions['startup-screen-account-selector-with-guest']?.lastFired > 0 && date.getTime() - actions['startup-screen-account-selector-with-guest']?.lastFired < 2 * 60 * 60 * 1000
         && !shouldPermanentlyEnable) {
             return true;
@@ -77,12 +69,8 @@ function disableWhosWatching(value) {
     return true;
 }
 
-// On a first launch the store lands a moment after this runs, so the setting is applied
-// the moment there is something to apply it to. That is not a full substitute for
-// running first: the page has its own copy in memory by then and writes it back over
-// ours within the second, so the very first launch of a fresh install can still see the
-// prompt. Every launch after it reads the store at document-start and takes this path
-// once, synchronously, before the page has loaded anything.
+// On a first launch the store lands after this runs, so a fresh install can see the
+// prompt once. Every later launch reads it at document-start, before the page loads.
 if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
     const until = Date.now() + WAIT_WINDOW;
     const waiting = setInterval(() => {
@@ -90,4 +78,59 @@ if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
             clearInterval(waiting);
         }
     }, WAIT_INTERVAL);
+}
+
+const SELECTOR = 'ytlr-account-selector';
+
+// The app acts on what it believes is focused rather than on what was clicked, so the
+// container is focused first and the key is sent to the document as well as to the tile.
+// Everything else was tried and dismissed it only sometimes.
+function answerSelector() {
+    const selector = document.querySelector(SELECTOR);
+    if (!selector) return false;
+
+    const tile = selector.querySelector('ytlr-tile-renderer');
+    if (!tile) return false;
+
+    const target = (tile.closest && tile.closest('yt-focus-container')) || tile;
+
+    try {
+        target.focus();
+    } catch (error) {
+        // Not focusable on this build; the key events below still reach the app.
+    }
+
+    [document, target].forEach((node) => {
+        ['keydown', 'keypress', 'keyup'].forEach((type) => {
+            node.dispatchEvent(new KeyboardEvent(type, {
+                bubbles: true, cancelable: true, composed: true,
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13
+            }));
+        });
+    });
+
+    return true;
+}
+
+// Only while the app is starting. An account selector the viewer opened themselves is
+// one they meant to open.
+const ANSWER_WITHIN = 60000;
+
+// This runs before the page has a body, so the watch is armed on whichever of the two
+// exists first.
+function watchForSelector() {
+    const until = Date.now() + ANSWER_WITHIN;
+
+    const watching = new MutationObserver(() => {
+        if (Date.now() > until) return watching.disconnect();
+        if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return;
+        if (answerSelector()) watching.disconnect();
+    });
+
+    watching.observe(document.body || document.documentElement, { childList: true, subtree: true });
+}
+
+if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    if (document.body) watchForSelector();
+    else document.addEventListener('DOMContentLoaded', watchForSelector, { once: true });
 }

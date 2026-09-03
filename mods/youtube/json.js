@@ -1,11 +1,7 @@
-// Every screen arrives through `JSON.parse` and every request leaves through
-// `JSON.stringify`, so owning those two functions is the entire mechanism this app is
-// built on. They are globals called tens of thousands of times a session, so there is
-// one patch here: reject non-YouTube values cheaply, run each reader in isolation, and
-// always return what the caller asked for.
+// `JSON.parse` and `JSON.stringify` are globals called tens of thousands of times a
+// session, so there is one patch here: reject non-YouTube values cheaply, run each reader
+// in isolation, and always return what the caller asked for.
 
-// Readers may change a parsed response in place; writers return what to serialise.
-// All registration happens at import time.
 const readers = [];
 const writers = [];
 
@@ -15,13 +11,11 @@ const writable = Object.create(null);
 
 const remember = (index, keys) => keys.forEach((key) => { index[key] = true; });
 
-/** Registers a reader. A value naming none of `keys` never reaches `read`. */
 const onResponse = (name, keys, read) => {
     remember(readable, keys);
     readers.push({ name, handle: read });
 };
 
-/** Registers a writer. `write` returns the value to serialise, or nothing to leave it. */
 const onRequest = (name, keys, write) => {
     remember(writable, keys);
     writers.push({ name, handle: write });
@@ -68,8 +62,7 @@ const adopt = () => {
     });
 };
 
-// Long enough for a cold bundle load. A missed capture costs a feature; a permanent
-// interval costs every frame of the session.
+// A missed capture costs a feature; a permanent interval costs every frame of the session.
 const ADOPTION_WINDOW = 15000;
 const ADOPTION_INTERVAL = 250;
 
@@ -83,7 +76,6 @@ const keepAdopting = () => {
     }, ADOPTION_INTERVAL);
 };
 
-/** Installs both patches. Called once, by the module that composes features. */
 const interceptJson = () => {
     const parse = JSON.parse;
     const stringify = JSON.stringify;

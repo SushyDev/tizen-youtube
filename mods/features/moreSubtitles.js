@@ -1,6 +1,3 @@
-// Adds the subtitle languages YouTube leaves out of the TV auto-translate menu,
-// including the user's own.
-
 import { configRead } from "../config.js";
 import { displayLanguage, displayRegion } from "../languageNames.js";
 
@@ -36,7 +33,6 @@ export function getComprehensiveLanguageList() {
     }
 }
 
-// Infers the likely language for an ISO 3166-1 alpha-2 country code, or null.
 export function getCountryLanguage(countryCode) {
     if (!countryCode) return null;
     try {
@@ -187,7 +183,6 @@ function patchSubtitleMenu() {
     const player = document.querySelector('.html5-video-player');
     if (!player) return setTimeout(patchSubtitleMenu, 250);
 
-    // Settings are read when the menu opens, not here.
     if (!window._yttv) return setTimeout(patchSubtitleMenu, 250);
     const yttvInstance = Object.values(window._yttv).find(
         (obj) =>
@@ -249,7 +244,6 @@ function patchSubtitleMenu() {
                             userLanguage.name
                         );
 
-                        // Find the "Recommended languages" section and insert after it
                         const recommendedIndex = items.findIndex(
                             (item) =>
                                 item.overlayMessageRenderer?.subtitle
@@ -265,7 +259,6 @@ function patchSubtitleMenu() {
                             existingLanguages.add(userLanguage.code);
                             existingLanguages.add(userLanguage.name);
                         } else {
-                            // Find "Other languages" section and insert before it
                             const otherLanguagesIndex = items.findIndex(
                                 (item) =>
                                     item.overlayMessageRenderer?.subtitle
@@ -279,7 +272,6 @@ function patchSubtitleMenu() {
                                     userLanguageOption
                                 );
                             } else {
-                                // As a fallback, add it at the beginning
                                 items.unshift(userLanguageOption);
                             }
                             existingLanguages.add(userLanguage.code);
@@ -298,7 +290,6 @@ function patchSubtitleMenu() {
                 }
             }
 
-            // "More languages": everything the menu is missing.
             if (showOtherLanguages) {
                 const missingLanguages = Object.entries(getComprehensiveLanguageList())
                     .filter(([code, name]) => !existingLanguages.has(code) && !existingLanguages.has(name))
@@ -337,7 +328,6 @@ function patchSubtitleMenu() {
     isPatched = true;
 }
 
-// Wait for the YouTube TV app to be ready.
 const interval = setInterval(() => {
     if (window._yttv && Object.keys(window._yttv).length > 0) {
         patchSubtitleMenu();

@@ -4,22 +4,13 @@ import { openOptions, OPTIONS_ACTION } from '../ui/settingsOptions.js';
 import { openSpeedOptions } from '../ui/speedUI.js';
 import { showToast, buttonItem } from '../ui/ytUI.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
+import { chooseQuality, chooseAudioTrack, noteSpeed, startsAt } from '../features/nativePlayback.js';
 
-// YouTube routes everything through a single `resolveCommand` on one singleton, so
-// wrapping it is how this app's settings end up behaving exactly like YouTube's.
-//
-// The wrapper is a list of interpreters, each asked in turn whether a command is
-// theirs. An interpreter answers with a result, or hands the command on untouched.
-
-// What an interpreter returns when the command is not its business.
 const PASS = { pass: true };
 
 const APP_NAME = 'YouTube';
 
-// Commands YouTube has never heard of, carried under `customAction` so they travel
-// the same rails as everything else.
 const ACTIONS = {
-    // A settings row asking for the list of answers it offers.
     [OPTIONS_ACTION]: (parameters) => openOptions(parameters),
 
     OPEN_SPEED_OPTIONS: () => openSpeedOptions(),
@@ -39,6 +30,10 @@ const ACTIONS = {
     SET_PLAYER_SPEED: (parameters) => {
         const video = document.querySelector('video');
         if (video) video.playbackRate = Number(parameters);
+
+        // The set plays our own stream silently at anything but normal speed, so the choice
+        // decides which pipeline the video has to be on.
+        noteSpeed(Number(parameters));
     },
 
     ENTER_MP: () => enterMiniPlayer(),
@@ -74,8 +69,7 @@ const perform = (action) => {
     return !!run;
 };
 
-// A setting YouTube does not recognise is one of ours: its own all have underscored
-// enum names, ours are the config keys themselves.
+// YouTube's own settings all have underscored enum names; ours are the config keys.
 const applyOurSettings = (command) => {
     const endpoint = command.setClientSettingEndpoint;
     if (!endpoint || !endpoint.settingDatas) return PASS;
@@ -105,8 +99,7 @@ const applyOurSettings = (command) => {
 
         if (field !== 'arrayValue') return configWrite(key, value);
 
-        // An array setting is a set of checkboxes and the command carries the one
-        // pressed. A new array, so configWrite never gets the stored one back.
+        // A new array, so configWrite never gets the stored one back.
         const current = configRead(key) || [];
         configWrite(key, current.indexOf(value) === -1
             ? current.concat(value)
@@ -121,7 +114,6 @@ const runCustomActions = (command) => {
     return action && perform(action) ? true : PASS;
 };
 
-// The speed row points at this app's finer-grained menu, and a mini player button is added.
 const dressPlaybackSettings = (command) => {
     const popup = command.openPopupAction;
     if (!popup || popup.uniqueId !== 'playback-settings') return PASS;
@@ -161,7 +153,6 @@ const dressPlaybackSettings = (command) => {
     return PASS;
 };
 
-// Starting a video ends any mini player that was running.
 const forgetMiniPlayer = (command) => {
     if (!command.watchEndpoint || !command.watchEndpoint.videoId) return PASS;
 
@@ -173,7 +164,6 @@ const forgetMiniPlayer = (command) => {
     return PASS;
 };
 
-// Ours are performed here; the rest go back through the resolver one at a time.
 const runCommandBatch = (command) => {
     const batch = command.commandExecutorCommand && command.commandExecutorCommand.commands;
     if (!batch) return PASS;
@@ -187,8 +177,6 @@ const runCommandBatch = (command) => {
     return true;
 };
 
-// YouTube asks "who's watching?" on the way out. Nobody wants that between them and
-// the home button.
 const skipWhosWatchingOnExit = (command, original, self, context) => {
     const request = command.requestAccountSelectorCommand;
 
@@ -202,16 +190,88 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
+// The account carousel a signed-in set is shown arrives as a command rather than through
+// the "last fired" record, and arrived on every launch regardless of the setting.
+// Answering it takes a remote, so an app left to start on its own got no further.
+//
+// These are the triggers that mean "before anything has been asked for", as against a
+// locked account, a PIN or an upgrade, where a real answer is needed.
+const ON_ARRIVAL = [
+    'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
+    'ACCOUNT_EVENT_TRIGGER_WHO_FALLBACK',
+    'ACCOUNT_EVENT_TRIGGER_APP_WELCOME',
+    'ACCOUNT_EVENT_TRIGGER_WELCOME_BACK'
+];
+
+const skipWhosWatchingOnArrival = (command) => {
+    const request = command.requestAccountSelectorCommand;
+
+    const trigger = request
+        && request.identityActionContext
+        && request.identityActionContext.eventTrigger;
+
+    if (!trigger || ON_ARRIVAL.indexOf(trigger) === -1) return PASS;
+    if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return PASS;
+
+    return false;
+};
+
+const noteViewerChoice = (command) => {
+    const batch = command.commandExecutorCommand;
+    if (!batch || !Array.isArray(batch.commands)) return PASS;
+
+    const closes = batch.commands.some((one) =>
+        one.signalAction && one.signalAction.signal === 'POPUP_BACK');
+
+    if (!closes) return PASS;
+
+    batch.commands.forEach((one) => {
+        const settings = one.setClientSettingEndpoint;
+        if (!settings || !Array.isArray(settings.settingDatas)) return;
+
+        settings.settingDatas.forEach((setting) => {
+            const item = (setting.clientSettingEnum || {}).item;
+
+            if (item === 'PLAYBACK_QUALITY' && typeof setting.stringValue === 'string') {
+                try {
+                    const { quality } = JSON.parse(setting.stringValue);
+                    if (quality) chooseQuality(quality);
+                } catch (e) {
+                    // A shape this does not recognise is not a reason to swallow the command.
+                }
+                return;
+            }
+
+            // Any other playback setting: the audio track, stable volume, voice boost. Telling them
+            // apart by name would mean guessing at names, and asking what changed answers all of them.
+            if (typeof item === 'string' && item.indexOf('PLAYBACK_') === 0) chooseAudioTrack();
+        });
+    });
+
+    return PASS;
+};
+
+// Knowing where a part-watched video resumes before the element is given an address is
+// what stops the opening seconds playing before the seek lands.
+const noteStartTime = (command) => {
+    const watch = command.watchEndpoint;
+    if (watch && watch.videoId) startsAt(watch.videoId, Number(watch.startTimeSeconds) || 0);
+
+    return PASS;
+};
+
 const INTERPRETERS = [
+    noteViewerChoice,
+    noteStartTime,
     applyOurSettings,
     runCustomActions,
     dressPlaybackSettings,
     forgetMiniPlayer,
     runCommandBatch,
-    skipWhosWatchingOnExit
+    skipWhosWatchingOnExit,
+    skipWhosWatchingOnArrival
 ];
 
-/** Wraps YouTube's resolver. False when it is not registered yet; the caller retries. */
 const interceptCommands = () => {
     const resolver = findResolver();
     if (!resolver || resolver.__tubePatched) return false;

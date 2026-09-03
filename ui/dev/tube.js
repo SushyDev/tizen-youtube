@@ -1,8 +1,3 @@
-// Runs the real service beside Vite so the whole app works off-TV: only DIAL and
-// debugger injection need the platform. TUBE_DEV_UA presents as a television upstream,
-// TUBE_PLATFORM_VERSION picks which bundle the loader serves, and dev/remote.js puts
-// the remote on the keyboard. All `apply: 'serve'`, so none of it can reach a package.
-
 import { spawn } from 'child_process';
 import { createServer } from 'net';
 import { dirname, join } from 'path';
@@ -14,13 +9,11 @@ const ROOT = join(HERE, '..', '..');
 // Kept in step with service/lib/ports.js, which cannot be imported from a Vite config.
 const PROXY_PORT = 8099;
 
-// A Samsung set of the generation this app mostly runs on.
 const TV_USER_AGENT = 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) 94.0.4606.31/6.5 TV Safari/537.36';
 
 const DEFAULT_PLATFORM_VERSION = '6.5';
 
-/** Whether something already holds the port. */
 function portIsFree(port) {
     return new Promise((resolve) => {
         const probe = createServer();
@@ -30,11 +23,6 @@ function portIsFree(port) {
     });
 }
 
-/**
- * Runs the real service and the userscript watcher alongside Vite. `enabled` is false
- * when there is a television to develop against, where a second service would only
- * compete for the port.
- */
 const tubeService = ({ enabled }) => {
     let service = null;
     let watcher = null;
@@ -49,9 +37,6 @@ const tubeService = ({ enabled }) => {
             const log = server.config.logger;
             const say = (message) => log.info(`  \x1b[36mtube\x1b[0m  ${message}`);
 
-            // `proxyUrl` is a localhost URL in both modes, so off a TV the shell cannot
-            // tell "the service is here" from "it is on a television across the room".
-            // This is the mode where it is here. Registered before Vite's middlewares.
             server.middlewares.use((request, response, next) => {
                 if (request.url.split('?')[0] !== '/__tube/state') return next();
 
@@ -61,11 +46,9 @@ const tubeService = ({ enabled }) => {
                         response.setHeader('content-type', 'application/json; charset=utf-8');
                         response.end(JSON.stringify({ ...state, handOver: true }));
                     })
-                    // The shell already handles no answer: it says so and keeps polling.
                     .catch(() => next());
             });
 
-            // Both children inherit stdio here so their output lands in Vite's stream.
             const relay = (label, colour, stream) => {
                 let pending = '';
                 stream.on('data', (chunk) => {
@@ -97,8 +80,6 @@ const tubeService = ({ enabled }) => {
             };
 
             server.httpServer.once('listening', async () => {
-                // The loader reads the bundles from disk per request, so a rebuild
-                // needs no restart.
                 watcher = start('mods', '\x1b[35m', 'npx', ['rollup', '-c', 'rollup.config.js', '-w'], {
                     cwd: join(ROOT, 'mods')
                 });
@@ -108,9 +89,7 @@ const tubeService = ({ enabled }) => {
                         cwd: join(ROOT, 'service'),
                         env: {
                             TUBE_DEV_UA: process.env.TUBE_DEV_UA || TV_USER_AGENT,
-                            // Which TV to be, and so which bundle to serve.
                             TUBE_PLATFORM_VERSION: process.env.TUBE_PLATFORM_VERSION || DEFAULT_PLATFORM_VERSION,
-                            // The bundles rollup is writing, not the last `npm run build`.
                             TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
                             TUBE_CACHE_DIR: join(ROOT, '.dev', 'cache'),
                             TUBE_DEV_INJECT: join(HERE, 'remote.js')

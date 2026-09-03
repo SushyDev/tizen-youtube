@@ -1,15 +1,11 @@
 // A television remote, for a desk. Development only: the service injects this into the
-// proxied page alongside the userscript when `npm run dev` started it (TUBE_DEV_INJECT
-// in service/lib/proxy.js). Nothing under mods/ or service/ imports it.
-//
-// The colour buttons are keyCodes no laptop key produces. One letter per remote button;
-// letters typed into a real field are left alone.
+// proxied page alongside the userscript when `npm run dev` started it. The colour buttons
+// are keyCodes no laptop key produces.
 
 (function () {
     'use strict';
 
-    // Samsung's TV key codes, as the app sees them. mods/ui/speedUI.js reads 406 for
-    // the speed control; the rest are here to be pressed.
+    // Samsung's TV key codes, as the app sees them.
     var KEYS = {
         g: { code: 404, what: 'green' },
         r: { code: 403, what: 'red' },
@@ -25,15 +21,14 @@
         Backspace: { code: 10009, what: 'return' }
     };
 
-    // The app listens on the document in the capture phase and reads `keyCode`, which
-    // a constructed event does not carry — so it is defined on the way past.
+    // The app listens on the document in the capture phase and reads `keyCode`, which a
+    // constructed event does not carry — so it is defined on the way past.
     function press(code) {
         ['keydown', 'keypress', 'keyup'].forEach(function (type) {
             var event;
             try {
                 event = new KeyboardEvent(type, { bubbles: true, cancelable: true });
             } catch (e) {
-                // Older engines: this file also runs against the legacy bundle.
                 event = document.createEvent('Event');
                 event.initEvent(type, true, true);
             }
@@ -64,7 +59,6 @@
         press(mapped.code);
     }, true);
 
-    // So a script or the devtools console can press the keys with no letter above.
     window.tubeRemote = press;
     window.tubeRemote.keys = KEYS;
 

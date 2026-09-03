@@ -4,8 +4,6 @@ import { onResponse, onRequest } from '../youtube/json.js';
 import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/nativeSettings.js';
 
-// What each SponsorBlock category is called on the skip button. The ids come from
-// the API, so an unknown one falls back to the id itself.
 const SEGMENT_NAMES = {
   sponsor: 'sponsored segment',
   intro: 'intro',
@@ -18,10 +16,9 @@ const SEGMENT_NAMES = {
   poi_highlight: 'highlight'
 };
 
-// A minimal reimplementation of the uBlock Origin rule at
-// https://github.com/uBlockOrigin/uAssets/blob/3497eeb/filters/filters.txt#L116 —
-// dropping adPlacements is enough for YouTube TV. RESPONSE_KEYS are the top-level keys
-// that mean "worth reading"; everything else is rejected on one lookup.
+// A minimal reimplementation of https://github.com/uBlockOrigin/uAssets/blob/3497eeb/filters/filters.txt#L116
+// RESPONSE_KEYS are the top-level keys worth reading; everything else is rejected on one
+// lookup.
 const RESPONSE_KEYS = [
   'adPlacements', 'adSlots', 'contents', 'continuationContents', 'endscreen',
   'entries', 'frameworkUpdates', 'items', 'messages', 'paidContentOverlay',
@@ -38,7 +35,6 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       r.adPlacements = [];
     }
 
-    // playerAds too, just in case.
     if (r.playerAds && adBlockEnabled) {
       r.playerAds = false;
     }
@@ -63,7 +59,6 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       }
     }
 
-    // Drop "masthead" ad from home screen
     if (
       r?.contents?.tvBrowseRenderer?.content?.tvSurfaceContentRenderer?.content
         ?.sectionListRenderer?.contents
@@ -111,18 +106,13 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       );
     }
 
-    // Remove shorts ads
     if (!Array.isArray(r) && r?.entries && adBlockEnabled) {
       r.entries = r.entries?.filter(
         (elm) => !elm?.command?.reelWatchEndpoint?.adClientParams?.isAd
       );
     }
 
-    // This app's own settings, as rows on YouTube's settings page.
-
     PatchSettings(r);
-
-    // DeArrow, done here rather than by DOM manipulation.
 
     if (r?.contents?.sectionListRenderer?.contents) {
       processShelves(r.contents.sectionListRenderer.contents);
@@ -198,15 +188,12 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
         ));
       }
     }
-    // Manual SponsorBlock Skips
 
     if (r?.playerOverlays?.playerOverlayRenderer) {
       const overlay = r.playerOverlays.playerOverlayRenderer;
 
-      // A timely action is a card YouTube lays over the picture partway through a
-      // video. The shopping one sells merchandise behind a QR code; the watermark is
-      // a broadcaster's logo. Both go, and the array is left in place either way
-      // because the SponsorBlock skip buttons below are pushed onto it.
+      // The array is left in place either way: the SponsorBlock skip buttons below are pushed
+      // onto it.
       const unwanted = configRead('hideShoppingAction')
         ? ['TIMELY_ACTION_TYPE_SHOPPING', 'TIMELY_ACTION_TYPE_NFL_WATERMARK']
         : ['TIMELY_ACTION_TYPE_NFL_WATERMARK'];
@@ -271,8 +258,8 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
   }
 });
 
-// Telling the server this playback is ad-free before it decides what to send. A copy
-// rather than an edit in place: the object is YouTube's and is reused across requests.
+// A copy rather than an edit in place, because the object is YouTube's and is reused
+// across requests.
 onRequest('playback context', ['playbackContext'], (value) => {
   const context = value.playbackContext && value.playbackContext.contentPlaybackContext;
   if (!context || context.isInlinePlaybackNoAd) return value;

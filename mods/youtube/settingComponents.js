@@ -1,11 +1,9 @@
 import { configRead } from '../config.js';
 import { findByPrototype, sourceOf } from './internals.js';
 
-// A row on YouTube's settings page is drawn by YouTube's own component, and a boolean
-// row does not read the `enabled` field it was handed: it asks YouTube's settings
-// service, which has never heard of this app's keys and answers false to all of them.
-// So the getter is replaced by one that recognises a row of ours and reads the setting.
-// Anything else falls through to YouTube's own answer untouched.
+// A boolean settings row does not read the `enabled` field it was handed: it asks
+// YouTube's settings service, which has never heard of this app's keys and answers false
+// to all of them. So the getter is replaced by one that reads the setting instead.
 
 const getterOf = (prototype, name) => {
     const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
@@ -19,8 +17,6 @@ const findBooleanRow = () => findByPrototype((prototype) =>
     && getterOf(prototype, 'enabledLabel')
     && getterOf(prototype, 'disabledLabel'));
 
-// The row's own command says which key it writes and which value means "on", so a
-// setting phrased as a negative needs nothing extra here.
 const settingOf = (endpoint) => {
     const datas = endpoint
         && endpoint.setClientSettingEndpoint
@@ -35,7 +31,6 @@ const settingOf = (endpoint) => {
 
 let claimed = false;
 
-/** True once the boolean rows read this app's settings. False while YouTube is still loading. */
 function claimBooleanRows() {
     if (claimed) return true;
 
@@ -65,10 +60,9 @@ const ROWS = [
     'ytlr-setting-action-renderer'
 ].join(',');
 
-// A row redraws itself when it is pressed, but one changed from the sheet drawn over it
-// is left showing the old answer. The base component class has one method that draws
-// again from the props it already holds: the only one taking no arguments that mentions
-// its own state.
+// A row changed from the sheet drawn over it is left showing the old answer. The base
+// component class has one method that draws again from the props it already holds: the
+// only one taking no arguments that mentions its own state.
 let redrawName = null;
 
 const findRedraw = (instance) => {
@@ -91,7 +85,6 @@ const findRedraw = (instance) => {
     return null;
 };
 
-/** Draws every settings row currently on screen again. Does nothing off that page. */
 function redrawSettingRows() {
     const rows = document.querySelectorAll(ROWS);
 

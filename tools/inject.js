@@ -1,8 +1,8 @@
 'use strict';
 
 // Substitutes build-time tokens into a bundle and proves it worked. A silently
-// unreplaced token produces an app that looks fine and never reaches its origin, so
-// every token must be found and none may survive.
+// unreplaced token produces an app that looks fine and never reaches its origin, so every
+// token must be found and none may survive.
 
 function injectTokens(code, tokens) {
     const applied = [];

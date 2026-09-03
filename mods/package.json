@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "rollup -c rollup.config.js"
+    "build": "rollup -c rollup.config.js",
+    "test": "node test/playback-stats.js && node test/quality.js"
   },
   "keywords": [],
   "author": "tube contributors, derived from TizenTube and youtube-webos (GPL-3.0)",
@@ -14,11 +15,9 @@
     "@babel/preset-env": "^7.22.9",
     "@rollup/plugin-babel": "^6.0.3",
     "@rollup/plugin-terser": "^0.4.3",
-    "core-js": "^3.46.0",
     "rollup": "^3.26.2",
     "rollup-plugin-string": "^3.0.0",
-    "tiny-sha256": "^1.0.2",
-    "whatwg-fetch": "^3.6.2"
+    "tiny-sha256": "^1.0.2"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.0",

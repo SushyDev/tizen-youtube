@@ -1,9 +1,5 @@
 'use strict';
 
-// Stages everything the origin serves and writes the latest.json manifest the TV
-// checks. Versioned paths are immutable and cacheable forever; only latest.json is
-// mutable, and it carries the digest that lets a TV refuse a mismatched bundle.
-
 const { createHash } = require('crypto');
 const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, rmSync } = require('fs');
 const { join } = require('path');
@@ -11,8 +7,6 @@ const { join } = require('path');
 const ui = require('./ui.js');
 const { load, ROOT } = require('./config.js');
 
-// A release still pointing at a placeholder host produces an app that silently never
-// updates.
 let config;
 try {
     config = load({ requireReal: true });
@@ -28,7 +22,8 @@ const assetsDir = join(ROOT, 'assets');
 const outDir = join(ROOT, 'release', 'origin');
 
 const version = config.version;
-const VARIANTS = ['modern', 'legacy'];
+// Still a list, and still named `modern`: installed apps look their bundle up by key.
+const VARIANTS = ['modern'];
 
 function sha256(buffer) {
     return createHash('sha256').update(buffer).digest('hex');
@@ -48,8 +43,8 @@ function bundlePath(variant) {
 
 // Versioned asset paths are immutable, so a version can only be published once.
 // Republishing one with different content is a silent, permanent update failure:
-// latest.json advertises the new digest while the edge keeps serving the old bundle,
-// so every TV downloads it, fails the digest check, and gives up forever.
+// latest.json advertises the new digest while the edge keeps serving the old bundle, so
+// every TV downloads it, fails the digest check, and gives up forever.
 async function preflight() {
     let published;
 
@@ -95,7 +90,6 @@ function stage() {
     const versionDir = join(outDir, version);
     ensure(versionDir);
 
-    // Userscript bundles.
     const bundles = {};
     VARIANTS.forEach((variant) => {
         const file = bundlePath(variant);
@@ -115,14 +109,12 @@ function stage() {
         ui.ok(variant, `${ui.bytes(buffer.length)} · ${bundles[variant].sha256.slice(0, 16)}`);
     });
 
-    // Display-name fallback for webviews without Intl.DisplayNames.
     const namesFile = join(assetsDir, 'language-names.json');
     if (existsSync(namesFile)) {
         copyFileSync(namesFile, join(versionDir, 'language-names.json'));
         ui.ok('language names', ui.bytes(readFileSync(namesFile).length));
     }
 
-    // The one mutable file.
     const manifest = {
         version,
         origin: config.origin,

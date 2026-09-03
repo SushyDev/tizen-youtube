@@ -1,9 +1,5 @@
 'use strict';
 
-// Update checks are driven by /__tube/state, which the shell hits once per launch.
-// Verifies that a launch triggers a check, and that repeated launches inside the
-// debounce window do not hammer the origin.
-
 const http = require('http');
 const net = require('net');
 const { mkdtempSync } = require('fs');
@@ -23,7 +19,6 @@ const origin = http.createServer((req, res) => {
     if (req.url === '/latest.json') {
         manifestRequests++;
         res.setHeader('content-type', 'application/json');
-        // No bundles listed: the check runs, finds nothing applicable, gives up cleanly.
         return res.end(JSON.stringify({ version: '0.0.0', bundles: {} }));
     }
     res.statusCode = 404;
@@ -46,9 +41,9 @@ function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Spawns the real service on the real port, so it cannot share a machine with a
-// running `npm run dev` — the other service would answer every request here and the
-// failure would read as "a launch triggers no update check".
+// Spawns the real service on the real port, so it cannot share a machine with a running
+// `npm run dev` — the other service would answer every request here and the failure would
+// read as "a launch triggers no update check".
 function proxyPortIsFree() {
     return new Promise((resolve) => {
         const probe = net.createServer();
@@ -90,17 +85,15 @@ origin.listen(0, '127.0.0.1', async () => {
                 !!state.script && typeof state.script.version === 'string',
                 JSON.stringify(state.script));
             check('state reports the bundle variant',
-                state.script.variant === 'legacy' || state.script.variant === 'modern',
+                state.script.variant === 'modern',
                 JSON.stringify(state.script));
 
-            // Give the fire-and-forget check time to reach the origin.
             return wait(600);
         })
         .then(() => {
             check('a launch triggers an update check', manifestRequests >= 1, `${manifestRequests} requests`);
             const after = manifestRequests;
 
-            // Five more launches inside the debounce window.
             return get('/__tube/state')
                 .then(() => get('/__tube/state'))
                 .then(() => get('/__tube/state'))

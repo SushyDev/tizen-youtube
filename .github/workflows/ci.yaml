@@ -1,7 +1,5 @@
-# Everything that can be checked without a television.
-#
-# The build matters here: ui/build.js refuses CSS a Tizen webview would silently
-# drop, and service/build/check-node4.js refuses syntax Tizen 3's Node cannot parse.
+# The build matters here: ui/build.js refuses CSS a Tizen webview would silently drop, and
+# service/build/check-syntax.js refuses syntax the oldest Node it targets cannot parse.
 
 name: CI
 
@@ -32,8 +30,8 @@ jobs:
       - name: Versions agree
         run: npm run version:check
 
-      # The placeholder origin is fine here: both bundles ship inside the .wgt.
-      # Only `release` and `package --release` refuse it.
+      # The placeholder origin is fine here: only `release` and `package --release`
+      # refuse it.
       - name: Build
         run: npm run build
         env:

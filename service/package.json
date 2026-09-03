@@ -7,14 +7,13 @@
   "scripts": {
     "build": "node build/build.js",
     "check:node4": "node build/check-node4.js dist/index.js",
-    "test": "node test/rewrite-parity.js && node test/routing.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js"
+    "test": "node test/rewrite-parity.js && node test/routing.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js && node test/segments.js && node test/webm.js"
   },
   "dependencies": {
     "@patrickkfkan/peer-dial": "^0.1.3",
-    "adbhost": "^0.0.2",
-    "chrome-remote-interface": "^0.25.7",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "googlevideo": "^4.1.1",
     "node-fetch": "^2.7.0",
     "regenerator-runtime": "^0.14.1",
     "uuid": "^11.1.0"

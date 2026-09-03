@@ -1,11 +1,11 @@
-// Deliberately not the key the reference used: stored settings win over defaults, and
-// localStorage on youtube.com is shared with every other modification on the TV.
+import { DEV_TOOLS } from './dev/tools.js';
+
+// Not the key the reference used: localStorage on youtube.com is shared with every
+// other modification on the TV.
 const CONFIG_KEY = 'tube.settings';
 
-// The icon types the guide renderer tags its entries with; anything named here is
-// dropped. What is left: search, home, subscriptions, library and more.
 const HIDDEN_SIDEBAR_ITEMS = [
-  'YOUTUBE_SHORTS_FILL_24',  // shorts
+  'YOUTUBE_SHORTS_FILL_24',
   'TROPHY',                  // sports
   'NEWS',
   'YOUTUBE_MUSIC',
@@ -16,12 +16,9 @@ const HIDDEN_SIDEBAR_ITEMS = [
 ];
 
 const defaultConfig = {
-  // Blocking
   enableAdBlock: true,
 
   enableSponsorBlock: true,
-  // Off: a message over the picture every few minutes defeats the point of skipping
-  // quietly in the first place.
   enableSponsorBlockToasts: false,
   enableSponsorBlockSponsor: true,
   enableSponsorBlockIntro: true,
@@ -34,37 +31,30 @@ const defaultConfig = {
   enableSponsorBlockHighlight: true,
   sponsorBlockManualSkips: ['intro', 'outro', 'filler'],
 
-  // DeArrow's crowd-sourced titles read as a broken YouTube, and its thumbnails arrive
-  // late over a slow TV connection.
   enableDeArrow: false,
   enableDeArrowThumbnails: false,
 
-  // Playback
-  // "Highest" is an instruction rather than a resolution: the top of whatever the video
-  // actually offers, which naming one cannot promise.
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
+  reportPlaybackStats: true,
+  bypassMediaSource: false,
+  nativePlaybackContainer: 'dash',
+  enableDevBridge: DEV_TOOLS,
   videoSpeed: 1,
+  rememberPlaybackSpeed: false,
   speedSettingsIncrement: 0.25,
 
-  // What is on screen
   enableShorts: false,
   disabledSidebarContents: HIDDEN_SIDEBAR_ITEMS,
   disableChannelsOnSidebar: false,
 
-  // Off by default: on an LCD, #0f0f0f and #000000 look the same and the second is
-  // only a loss of contrast.
   enableOledTheme: false,
 
-  // YouTube treats a TV as a low-end device and disables animations and long-press.
   enableFixedUI: true,
   enableLongPress: true,
   enablePreviews: true,
   enableHqThumbnails: true,
 
-  // Overlays and interruptions that appear over a video you were watching.
-  // The shopping panel is merchandise sold over the picture, which is the one thing
-  // an app that drops adverts should not be leaving in.
   hideShoppingAction: true,
   enableHideEndScreenCards: false,
   enablePaidPromotionOverlay: true,
@@ -79,28 +69,19 @@ const defaultConfig = {
   hideWatchedVideosPages: [],
   sortSubscriptionsByAlphabet: true,
 
-  // Player controls
   enablePatchingVideoPlayer: true,
   enablePreviousNextButtons: true,
   enableSpeedControlsButton: true,
   enableMPButton: true,
   enableSwapMPWithPIP: false,
-  // Paying the uploader and asking a chatbot about the video.
   enableSuperThanksButton: false,
   enableAIAskButton: false,
 
-  // Subtitles
   enableShowUserLanguage: true,
   enableShowOtherLanguages: false,
 
-  // Startup. The page is stored as the command that opens it, which is what the
-  // settings row offers; the literal has to match what settingsModel.js builds.
   launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
-  reloadHomeOnStartup: true,
-
-  // Theme
-  focusContainerColor: '#0f0f0f',
-  routeColor: '#0f0f0f'
+  reloadHomeOnStartup: true
 };
 
 // Runs before anything else in the userscript, so a throw here takes the whole
@@ -125,9 +106,8 @@ export function configRead(key) {
 export function configWrite(key, value) {
   localConfig[key] = value;
 
-  // Only what differs from the defaults is stored. Writing the whole object would
-  // freeze every default at whatever it was the first time anything was changed, and a
-  // later change to one would never reach anybody who already has the app.
+  // Only the difference from the defaults, or a later change to a default would never
+  // reach anybody who already has the app.
   const changed = {};
   Object.keys(localConfig).forEach((name) => {
     if (localConfig[name] !== defaultConfig[name]) changed[name] = localConfig[name];
@@ -159,7 +139,7 @@ export const configChangeEmitter = {
     this.listeners[type].forEach(cb => {
       try {
         cb.call(this, event);
-      } catch (_) { /* one bad listener must not stop the others */ }
+      } catch (_) { }
     });
   }
 };

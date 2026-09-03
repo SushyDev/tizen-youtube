@@ -266,8 +266,8 @@ class SponsorBlockHandler {
       return;
     }
 
-    // A timeupdate can fire right before an already-scheduled skip, so look back a
-    // little and, at worst, skip at a negative interval (immediately).
+    // A timeupdate can fire right before an already-scheduled skip, so look back a little
+    // and, at worst, skip at a negative interval (immediately).
     const nextSegments = this.segments.filter(
       (seg) =>
         seg.segment[0] > this.video.currentTime - 0.3 &&
@@ -388,8 +388,8 @@ class SponsorBlockHandler {
 }
 
 // Declared with var, not let: two consecutive hashchange events would leave the second
-// call seeing the pre-update value and initialising SponsorBlockHandler twice. Noticed
-// on Chromium 38.
+// call seeing the pre-update value and initialising SponsorBlockHandler twice. Noticed on
+// Chromium 38.
 window.sponsorblock = null;
 
 window.addEventListener(

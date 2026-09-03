@@ -1,8 +1,3 @@
-// Human-readable language and region names. Chrome 81+ (Tizen 7 and up) ships
-// Intl.DisplayNames and needs no data. Older webviews fall back to a static map fetched
-// from the origin and cached, rather than the 33KB the reference compiled into every
-// bundle for every TV.
-
 import { assetUrl } from './origin.js';
 
 const CACHE_KEY = 'tube-display-names';
@@ -20,7 +15,6 @@ const hasIntl = (function () {
 const intlLanguage = hasIntl ? new Intl.DisplayNames(['en'], { type: 'language' }) : null;
 const intlRegion = hasIntl ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
 
-// Populated only on webviews without Intl.DisplayNames.
 let fallbackData = null;
 
 function primeFallback() {
@@ -33,7 +27,6 @@ function primeFallback() {
             return;
         }
     } catch (e) {
-        // Fall through to the network.
     }
 
     fetch(assetUrl('language-names.json'))
@@ -43,15 +36,13 @@ function primeFallback() {
             fallbackData = data;
             try {
                 window.localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-            } catch (e) { /* storage unavailable */ }
+            } catch (e) { }
         })
-        .catch(() => { /* callers already degrade to the raw code */ });
+        .catch(() => { });
 }
 
 primeFallback();
 
-// Both accessors stay synchronous and degrade to the code itself, which every call
-// site already treats as the miss case.
 export function displayLanguage(code) {
     if (!code) return code;
 
@@ -59,7 +50,7 @@ export function displayLanguage(code) {
         try {
             const name = intlLanguage.of(code);
             if (name && name !== code) return name;
-        } catch (e) { /* unknown tag */ }
+        } catch (e) { }
     }
 
     if (fallbackData && fallbackData.language && fallbackData.language.standard) {
@@ -76,7 +67,7 @@ export function displayRegion(code) {
         try {
             const name = intlRegion.of(String(code).toUpperCase());
             if (name && name !== code) return name;
-        } catch (e) { /* unknown region */ }
+        } catch (e) { }
     }
 
     if (fallbackData && fallbackData.region) {

@@ -446,6 +446,12 @@ with the tooling    118.7 kB
 without it           98.9 kB     no reference left to any dev endpoint
 ```
 
+The service has no equivalent, so what it carries has to be removed rather than gated. Three
+pieces were: a SABR protocol trace, a probe reporting what Node on this set supports, and an
+endpoint that replayed player calls with the app's own identity — which meant keeping the
+account's bearer token and cookie in the service's memory. Each answered one question, each
+answer is written down above, and all three are gone.
+
 So there is nothing to fork. The same commit builds either, and the one to hand somebody is
 the one built without the flag:
 

@@ -20,32 +20,23 @@ const media = require('./stream.js');
 // pipeline has died and reloads — but decoding two 2160p60 streams is more than this set
 // can do, and the one nobody watches wins because it is not also writing to disk.
 //
-// Slowed for as long as it is worth slowing, and then let go.
-//
-// Holding only the first dozen chunks barely helped: the reply then ran at full speed for
-// the rest of its twelve megabytes, which is most of them. Pacing the whole body at a fixed
-// rate was tried before that and was worse — a reply took over a minute, connections
-// accumulated, and the proxy and the debug bridge, which share a process with the stream
-// being watched, stopped answering at all.
-//
-// So both, bounded. A chunk is held back a tenth of a second, which is about five megabits
-// a second against the twenty-five the picture needs — and no reply is paced for longer
-// than twenty seconds however large it is, so nothing can accumulate the way it did. Only
-// while this app is actually serving a picture: with nothing to protect, there is nothing
-// to slow down for.
-const HOLD_MS = 100;
-const PACE_FOR = 20000;
-const MOST_HELD_AT_ONCE = 3;
+// Held back only at the start of a response, and never for long. An earlier version paced
+// the whole body at a fixed rate: a twelve-megabyte reply then took over a minute, those
+// connections accumulated, and the proxy and the debug bridge — which share a process with
+// the stream being watched — stopped answering at all.
+const HOLD_MS = 250;
+const HOLD_FOR_FIRST = 12;
+const MOST_HELD_AT_ONCE = 2;
 
 let holding = 0;
 
-/** Slows a response while the picture needs the line, then lets it run. */
+/** Slows the opening of a response, then lets it run. */
 function held(source) {
     if (holding >= MOST_HELD_AT_ONCE) return source;
 
     holding += 1;
 
-    const began = Date.now();
+    let chunks = 0;
     let done = false;
 
     const release = () => {
@@ -59,11 +50,8 @@ function held(source) {
     source.on('close', release);
 
     source.on('data', () => {
-        if (done) return undefined;
-
-        // Long enough. Letting it finish at its own speed is what keeps these from piling
-        // up, and by now the picture has had the line for the stretch that mattered.
-        if (Date.now() - began > PACE_FOR) return release();
+        chunks += 1;
+        if (done || chunks > HOLD_FOR_FIRST) return release();
 
         source.pause();
         setTimeout(() => source.resume(), HOLD_MS);

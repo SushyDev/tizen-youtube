@@ -131,7 +131,6 @@ function collect() {
 
             let value;
             try {
-                // eslint-disable-next-line no-eval
                 value = eval(command.source);
             } catch (e) {
                 answer(command.id, command.source, { error: String(e && e.message || e) });

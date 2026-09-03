@@ -11,11 +11,6 @@ import { onRequest, onResponse } from './json.js';
 //
 // The player leaves it out.
 
-// A client version to ask as. The encrypted ladder is an experiment YouTube runs against
-// accounts on the `tv` client, so the version is the only part of it this app can vary.
-// Empty means ask as ourselves; a year-old version was measured and changed nothing.
-const ASK_AS_VERSION = '';
-
 // The timestamp belongs to the player script the page is running, so it is remembered
 // from a request the page made rather than invented.
 let timestamp = 0;
@@ -43,39 +38,19 @@ onRequest('playerRequest', ['videoId', 'context'], (body) => {
 
     if (content.signatureTimestamp) timestamp = content.signatureTimestamp;
 
-    if (!wanted()) return undefined;
-
-    const client = body.context.client || {};
-    const needsTime = !content.signatureTimestamp && timestamp;
-    const needsVersion = ASK_AS_VERSION && client.clientVersion !== ASK_AS_VERSION;
-
-    if (!needsTime && !needsVersion) return undefined;
+    if (!wanted() || content.signatureTimestamp || !timestamp) return undefined;
 
     if (!announced) {
         announced = true;
         note('innertube', `repairing player requests with signatureTimestamp ${timestamp}`);
     }
 
-    const repaired = Object.assign({}, body);
-
-    if (needsTime) {
-        repaired.playbackContext = Object.assign({}, playback, {
+    return Object.assign({}, body, {
+        playbackContext: Object.assign({}, playback, {
             contentPlaybackContext: Object.assign({}, content, { signatureTimestamp: timestamp })
-        });
-    }
-
-    if (needsVersion) {
-        repaired.context = Object.assign({}, body.context, {
-            client: Object.assign({}, client, { clientVersion: ASK_AS_VERSION })
-        });
-    }
-
-    return repaired;
+        })
+    });
 });
-
-export function knownTimestamp() {
-    return timestamp;
-}
 
 // How many times one video may be sent back to the player endpoint.
 //

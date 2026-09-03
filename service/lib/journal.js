@@ -50,4 +50,4 @@ function clear() {
     lines.length = 0;
 }
 
-module.exports = { KEEP, clear, fromPage, note, open, read, service, wanted };
+module.exports = { clear, fromPage, note, open, read, service, wanted };

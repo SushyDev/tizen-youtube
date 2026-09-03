@@ -177,4 +177,4 @@ function segmentIndex(buffer, total, ranges) {
     return { init: { start: 0, end: points[0].start - 1 }, segments: usable };
 }
 
-module.exports = { elements, segmentIndex, vint };
+module.exports = { segmentIndex };

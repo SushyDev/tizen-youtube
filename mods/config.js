@@ -81,10 +81,7 @@ const defaultConfig = {
   enableShowOtherLanguages: false,
 
   launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
-  reloadHomeOnStartup: true,
-
-  focusContainerColor: '#0f0f0f',
-  routeColor: '#0f0f0f'
+  reloadHomeOnStartup: true
 };
 
 // Runs before anything else in the userscript, so a throw here takes the whole

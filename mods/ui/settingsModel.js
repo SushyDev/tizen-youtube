@@ -63,7 +63,8 @@ const QUALITIES = ['highest', 'auto', '2160p', '1440p', '1080p', '720p', '480p',
 
 const CONTAINERS = [
   { label: 'DASH', value: 'dash' },
-  { label: 'HLS', value: 'hls' }
+  { label: 'HLS', value: 'hls' },
+  { label: 'Plain file', value: 'mp4' }
 ];
 
 const CODECS = [
@@ -203,7 +204,8 @@ const GROUPS = [
         SCREEN),
       Choice('nativePlaybackContainer', 'Stream description',
         'How smooth 4K playback describes the stream to the set. The same picture either '
-        + 'way \u2014 sets differ in which one they start and seek better on',
+        + 'way \u2014 sets differ in which one they play most evenly. A plain file has no '
+        + 'description at all, and cannot be seeked',
         SCREEN, CONTAINERS, 'Format')
     ]
   },

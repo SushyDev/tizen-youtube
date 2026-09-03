@@ -18,11 +18,17 @@ const service = () => `${window.location.origin}/dash`;
 // playing something else first and swapping reads as a black screen and a spinner.
 // Which description to hand over. Read at each hand-out rather than once, so changing it
 // takes effect on the next video instead of the next launch.
+const DESCRIPTIONS = {
+    hls: 'master.m3u8',
+    mp4: 'progressive.mp4',
+    dash: 'manifest.mpd'
+};
+
 function describedAs() {
     try {
-        return configRead('nativePlaybackContainer') === 'hls' ? 'master.m3u8' : 'manifest.mpd';
+        return DESCRIPTIONS[configRead('nativePlaybackContainer')] || DESCRIPTIONS.dash;
     } catch (e) {
-        return 'manifest.mpd';
+        return DESCRIPTIONS.dash;
     }
 }
 

@@ -57,7 +57,9 @@ const defaultConfig = {
   // How that stream is described to the set. Both are handed over as a plain URL and both
   // are played by the set's own pipeline; only the description differs. DASH is what this
   // was built on; HLS is the better-trodden path on a Samsung, being what broadcast apps
-  // ship, and is here to be measured against it rather than assumed better.
+  // ship, and is here to be measured against it rather than assumed better. A plain file
+  // is neither: no manifest, no playlist, nothing for the set to decide — and so no
+  // seeking either, which is why it is a measurement rather than a default.
   nativePlaybackContainer: 'dash',
   // Publishes readings on the network and runs evaluate requests, while debugging.
   enableDevBridge: true,

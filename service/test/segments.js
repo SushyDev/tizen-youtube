@@ -411,6 +411,99 @@ check('ordinary colour is left unsaid',
     dash.manifest(shaped(SDR_FORMAT)).indexOf('SupplementalProperty') === -1, 'stated bt709 needlessly');
 check('the page is told the colour so it can correct the panel',
     dash.describe(shaped(HDR_FORMAT)).video.colour.transfer === 'smpte2084 (PQ)', 'colour missing');
+// Two tracks joined into one file. Built from the smallest boxes that carry the fields the
+// join rewrites, because what is being checked is the renumbering and nothing else.
+const mux = require('../lib/mux.js');
+
+const atom = (type, body) => {
+    const header = Buffer.alloc(8);
+    header.writeUInt32BE(body.length + 8, 0);
+    header.write(type, 4, 'latin1');
+    return Buffer.concat([header, body]);
+};
+
+const u32 = (value) => { const b = Buffer.alloc(4); b.writeUInt32BE(value, 0); return b; };
+
+// version 0: creation, modification, track_ID, reserved, duration
+const tkhd = (id) => atom('tkhd', Buffer.concat([u32(0), u32(0), u32(0), u32(id), u32(0), u32(0)]));
+const trex = (id) => atom('trex', Buffer.concat([u32(0), u32(id), u32(1), u32(0), u32(0), u32(0)]));
+const mvhd = () => atom('mvhd', Buffer.concat([u32(0), Buffer.alloc(96)]));
+
+const initFor = (id) => Buffer.concat([
+    atom('ftyp', Buffer.from('isom')),
+    atom('moov', Buffer.concat([mvhd(), atom('trak', tkhd(id)), atom('mvex', trex(id))]))
+]);
+
+// Segments as the index gives them: a byte range and a span of time.
+const seg = (number, startMs, durationMs, start, end) => ({ number, startMs, durationMs, start, end });
+
+const videoIndex = [seg(1, 0, 5000, 0, 999), seg(2, 5000, 5000, 1000, 2999)];
+const audioIndex = [seg(1, 0, 4000, 0, 99), seg(2, 4000, 4000, 100, 299), seg(3, 8000, 4000, 300, 349)];
+
+const shape = mux.describeFile(initFor(1), initFor(1), videoIndex, audioIndex);
+const inMoov = require('../lib/mp4.js').boxes(shape.head)
+    .filter((one) => one.type === 'moov')
+    .map((one) => require('../lib/mp4.js').boxes(shape.head.subarray(one.body, one.end)))[0] || [];
+
+check('joining two tracks keeps the file type',
+    require('../lib/mp4.js').boxes(shape.head).some((one) => one.type === 'ftyp'), 'lost the ftyp');
+check('and produces two tracks where there was one each',
+    inMoov.filter((one) => one.type === 'trak').length === 2, 'wrong number of traks');
+check('the sound is renumbered so the two do not collide',
+    shape.head.indexOf(Buffer.from([0, 0, 0, mux.AUDIO_TRACK])) !== -1, 'no track two anywhere');
+check('the head carries a segment index, so a seek can name a moment',
+    require('../lib/mp4.js').boxes(shape.head).some((one) => one.type === 'sidx'), 'no sidx');
+
+// The sound belonging to a stretch of picture goes in front of it, and sound that outlasts
+// the last picture joins the last group rather than claiming a span of time of its own.
+check('each picture is preceded by the sound that belongs with it',
+    shape.groups.map((one) => one.parts.map((part) => part.kind[0] + part.number).join('')).join(' ')
+        === 'a1a2v1 a3v2', 'grouped wrongly');
+check('the file knows its own length before anything is fetched',
+    shape.total === shape.head.length + 1000 + 2000 + 100 + 200 + 50, 'wrong total');
+check('and where every fragment lands in it',
+    shape.parts[0].offset === shape.head.length
+        && shape.parts[1].offset === shape.head.length + 100, 'wrong offsets');
+
+// Without a duration the element reports NaN, offers nothing as seekable, and answers a
+// seek by guessing a byte offset from a length it does not have.
+check('the file says how long it runs, for as long as both tracks have something',
+    shape.durationMs === 10000, 'wrong duration');
+check('and says it where a fragmented file says it',
+    require('../lib/mp4.js').boxes(shape.head)
+        .filter((one) => one.type === 'moov')
+        .map((one) => require('../lib/mp4.js').boxes(shape.head.subarray(one.body, one.end)))[0]
+        .some((one) => one.type === 'mvex'), 'no mvex to carry it');
+
+// version+flags, then track_ID: what a fragment carries and what has to be rewritten.
+const fragment = Buffer.concat([
+    atom('moof', Buffer.concat([
+        atom('mfhd', Buffer.concat([u32(0), u32(1)])),
+        atom('traf', atom('tfhd', Buffer.concat([u32(0), u32(1)])))
+    ])),
+    atom('mdat', Buffer.from('media'))
+]);
+
+const moved = mux.retrack(fragment, mux.AUDIO_TRACK, 7);
+
+check('a fragment keeps its size when it is renumbered',
+    moved.length === fragment.length, 'the offsets inside it would have moved');
+check('and carries the track it was given',
+    moved.readUInt32BE(moved.indexOf(Buffer.from('tfhd')) + 4 + 4) === mux.AUDIO_TRACK, 'not renumbered');
+check('and its place in the sequence',
+    moved.readUInt32BE(moved.indexOf(Buffer.from('mfhd')) + 4 + 4) === 7, 'sequence not written');
+
+check('a range is read as the bytes it asks for',
+    JSON.stringify(mux.rangeOf('bytes=100-199', 1000)) === '{"from":100,"to":199}', 'misread');
+check('an open-ended range runs to the end',
+    JSON.stringify(mux.rangeOf('bytes=900-', 1000)) === '{"from":900,"to":999}', 'misread');
+check('a suffix range counts back from the end',
+    JSON.stringify(mux.rangeOf('bytes=-100', 1000)) === '{"from":900,"to":999}', 'misread');
+check('a range past the end is refused rather than served',
+    mux.rangeOf('bytes=2000-', 1000).unsatisfiable === true, 'served nonsense');
+check('no range at all means the whole file',
+    mux.rangeOf(undefined, 1000) === null && mux.rangeOf('bytes=-', 1000) === null, 'invented a range');
+
 // The same session, described the other way. Both descriptions point at the same files, so
 // what is checked here is that the description is well-formed and says the same things.
 const hlsMaster = require('../lib/hls.js').master(shaped(HDR_FORMAT));

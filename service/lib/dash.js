@@ -7,8 +7,10 @@
 
 const express = require('express');
 const { createReadStream } = require('fs');
+const { readFile } = require('fs/promises');
 
 const hls = require('./hls.js');
+const mux = require('./mux.js');
 const journal = require('./journal.js');
 const sabr = require('./sabr.js');
 const stream = require('./stream.js');
@@ -207,6 +209,13 @@ function attach(app) {
     // has to, because the player asks for one the moment the response lands. This waits,
     // then points at the real thing, so every relative URL inside the manifest resolves
     // against the session that answered.
+    app.get('/dash/by-video/:videoId/progressive.mp4', (req, res) => {
+        stream.awaitVideo(req.params.videoId).then(
+            (session) => res.redirect(302, `/dash/${session.id}/progressive.mp4`),
+            (error) => res.status(404).send(error.message)
+        );
+    });
+
     // The same wait, for a set being handed HLS instead. Which description the page asks
     // for is the page's choice; both point at the same segments.
     app.get('/dash/by-video/:videoId/master.m3u8', (req, res) => {
@@ -269,6 +278,148 @@ function attach(app) {
 
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
         return res.send(playlist);
+    });
+
+    // Both tracks as one plain file, which is the whole point: no manifest, no playlist,
+    // nothing for the set to parse and make decisions about. It is handed bytes in order
+    // and plays them, and on this hardware that is the only one of the three descriptions
+    // which presents a 2160p60 picture cleanly.
+    //
+    // Seekable, because it has to be — a part-watched video that cannot resume is no use to
+    // anybody. Every rewrite the muxer makes replaces four bytes with four bytes, and every
+    // fragment's length is already in the segment index, so the file's whole shape is known
+    // before any of it has been fetched: a real Content-Length, real byte ranges, and a
+    // `sidx` in the head so the set can ask for a moment rather than guess at a byte.
+    const described = new Map();
+
+    // Which request for a session is the live one. A seek makes the set open another before
+    // it has closed the last, and it opens several in a burst while it settles on where it
+    // wants to be — four inside a third of a second, measured. Each one was starting its own
+    // walk through the file and asking the same track to fetch from a different place, so
+    // they aborted one another's downloads in turn and the element was left with nothing at
+    // all: readyState 0, the clock parked, no picture.
+    //
+    // Only the newest matters. The ones before it are abandoned where they stand.
+    const serving = new Map();
+
+    const shapeOf = async (session) => {
+        const held = described.get(session.id);
+        if (held) return held;
+
+        const video = session.tracks.video;
+        const audio = session.tracks.audio;
+        if (!video || !audio || !video.index || !audio.index) return null;
+
+        await Promise.all([video.reach(0), audio.reach(0)]);
+
+        const shape = mux.describeFile(
+            await readFile(video.file(0)),
+            await readFile(audio.file(0)),
+            video.index,
+            audio.index
+        );
+
+        if (shape) described.set(session.id, shape);
+        return shape;
+    };
+
+    app.get('/dash/:id/progressive.mp4', async (req, res) => {
+        const session = find(req, res);
+        if (!session) return undefined;
+
+        if (!session.ready) return res.status(503).send('the stream is still opening');
+
+        let shape;
+        try {
+            shape = await shapeOf(session);
+        } catch (error) {
+            return res.status(503).end();
+        }
+
+        if (!shape) return res.status(404).end();
+
+        const asked = mux.rangeOf(req.get('range'), shape.total);
+
+        if (asked && asked.unsatisfiable) {
+            res.setHeader('Content-Range', `bytes */${shape.total}`);
+            return res.status(416).end();
+        }
+
+        const from = asked ? asked.from : 0;
+        const to = asked ? asked.to : shape.total - 1;
+
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Content-Length', to - from + 1);
+
+        if (asked) {
+            res.setHeader('Content-Range', `bytes ${from}-${to}/${shape.total}`);
+            res.status(206);
+        }
+
+        if (req.method === 'HEAD') return res.end();
+
+        const mine = (serving.get(session.id) || 0) + 1;
+        serving.set(session.id, mine);
+
+        // A request the set walks away from should stop costing anything.
+        let gone = false;
+        res.on('close', () => { gone = true; });
+
+        const current = () => !gone && !res.writableEnded && serving.get(session.id) === mine;
+
+        journal.service('progressive', `${session.id}: `
+            + `${asked ? `bytes ${from}-${to}` : 'the whole file'} of ${shape.total}`);
+
+        // Where the head still has something to say, it goes first.
+        if (from < shape.head.length) {
+            res.write(shape.head.subarray(from, Math.min(shape.head.length, to + 1)));
+        }
+
+        const send = async (at) => {
+            if (!current()) return res.end();
+            if (at >= shape.parts.length) return res.end();
+
+            const part = shape.parts[at];
+
+            // Behind what was asked for, or past the end of it.
+            if (part.offset + part.size - 1 < from) return send(at + 1);
+            if (part.offset > to) return res.end();
+
+            const track = session.tracks[part.kind];
+            track.want(part.number);
+
+            try {
+                await track.reach(part.number);
+            } catch (error) {
+                return res.end();
+            }
+
+            // Another request arrived while this one waited for bytes; it decides now.
+            if (!current()) return res.end();
+
+            let fragment;
+            try {
+                fragment = await readFile(track.file(part.number));
+            } catch (error) {
+                return res.end();
+            }
+
+            // Read whole rather than piped: two four-byte fields are rewritten in every
+            // fragment, and a stream would hand them out before they were changed.
+            const id = part.kind === 'video' ? mux.VIDEO_TRACK : mux.AUDIO_TRACK;
+            const written = mux.retrack(fragment, id, at + 1);
+
+            const begin = Math.max(0, from - part.offset);
+            const finish = Math.min(written.length, to - part.offset + 1);
+
+            const room = res.write(written.subarray(begin, finish));
+            if (room) return send(at + 1);
+
+            return new Promise((drained) => res.once('drain', drained)).then(() => send(at + 1));
+        };
+
+        return send(0);
     });
 
     // One track as a plain file, for a browser that will not parse a manifest. Desktop

@@ -35,9 +35,7 @@ export function startsAt(videoId, seconds) {
  * the seek lands. MediaSource never showed that, because the player only ever gave it the
  * segments around the position it wanted.
  */
-function addressFor(videoId) {
-    const address = manifestFor(videoId);
-
+function startsFrom(videoId) {
     let at = resumeAt.get(videoId) || 0;
     try {
         at = Math.max(at, player().getCurrentTime() || 0);
@@ -45,7 +43,14 @@ function addressFor(videoId) {
         // The player has not got that far; whatever the page said stands.
     }
 
-    return at > 1 ? `${address}#t=${Math.floor(at)}` : address;
+    return at > 1 ? at : 0;
+}
+
+function addressFor(videoId) {
+    const address = manifestFor(videoId);
+    const at = startsFrom(videoId);
+
+    return at ? `${address}#t=${Math.floor(at)}` : address;
 }
 
 // How long to let the player apply a change before reading back what it settled on. The
@@ -442,6 +447,17 @@ function openSession(request) {
             // nothing has asked it to change. Gating on it never asks, so it never switches.
             hdr: true,
             audioXtags: wantedAudio(request.formats),
+
+            // Where the picture is wanted from, said to the service as well as to the
+            // element. The element is told in a fragment, which a server never sees — so
+            // without this the download starts at the beginning of the video while the
+            // element asks for a segment three minutes in. Serving that means abandoning
+            // the download and starting another one there, and at 2160p60 a segment is
+            // eighteen megabytes: measured at ten seconds from the ask to the bytes,
+            // which is longer than this television's player will wait. It gave up, and a
+            // part-watched video fell back to the default player every time.
+            startMs: Math.floor(startsFrom(request.videoId) * 1000),
+
             fresh: changed.delete(request.videoId)
         }, request))
     })

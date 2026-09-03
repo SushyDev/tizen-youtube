@@ -712,6 +712,18 @@ async function open(params) {
     session.durationMs = Math.min(span(tracks.video.index), span(tracks.audio.index));
     session.ready = true;
 
+    // A part-watched video begins where it was left, and the element is told so in the
+    // address' fragment — which no server ever sees. Left to itself the download runs from
+    // the beginning while the element asks for a segment minutes in, and serving that means
+    // abandoning this download and starting another one there. At 2160p60 that cost ten
+    // seconds from the ask to the bytes, and the television's player gives up well before
+    // then: every part-watched video fell back to the default player.
+    //
+    // Moved here instead, while the element is still fetching and parsing the manifest, so
+    // the restart is already under way by the time it asks. Not before the indexes are
+    // read: naming a position takes a segment index to name it in.
+    beginAt(session, Number(params.startMs) || 0);
+
     journal.service('open', `${id}: video ${chosen.video.itag} ${chosen.video.height}p, `
         + `audio ${chosen.audio.itag} xtags ${JSON.stringify(chosen.audio.xtags || '')}, `
         + `${tracks.video.index.length} segments, ${Math.round(session.durationMs / 1000)}s`);
@@ -756,6 +768,29 @@ function align(session, kind, number) {
     if (other.have.has(match.number) || other.reachable(match.number)) return;
 
     other.seekTo(match.number);
+}
+
+/**
+ * Moves both tracks to the segment holding a moment, before anything has asked for one.
+ *
+ * Nothing is awaited: the restart happens on the download's own loop, and what the element
+ * asks for meanwhile is served the same way it always was.
+ */
+function beginAt(session, startMs) {
+    if (!startMs || startMs <= 0) return;
+
+    Object.keys(session.tracks).forEach((kind) => {
+        const track = session.tracks[kind];
+        if (!track.index) return;
+
+        const at = track.index.filter((segment) => segment.startMs + segment.durationMs > startMs)[0];
+        if (!at || at.number === track.index[0].number) return;
+
+        // So read-ahead is measured from where the picture is wanted rather than from the
+        // start of the video, which would have the download stop before reaching it.
+        track.want(at.number);
+        track.seekTo(at.number);
+    });
 }
 
 /** Everything needed to send one segment, once it is on disk. */

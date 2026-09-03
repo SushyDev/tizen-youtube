@@ -410,7 +410,7 @@ check('and so is the transfer curve',
 check('ordinary colour is left unsaid',
     dash.manifest(shaped(SDR_FORMAT)).indexOf('SupplementalProperty') === -1, 'stated bt709 needlessly');
 check('the page is told the colour so it can correct the panel',
-    dash.describe(shaped(HDR_FORMAT)).video.colour.transfer === 'smptest2084', 'colour missing');
+    dash.describe(shaped(HDR_FORMAT)).video.colour.transfer === 'smpte2084 (PQ)', 'colour missing');
 check('an eight-bit mp4 still wins an even tie',
     stream.pick(REAL.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
         'video', 2160).itag === 401, 'preferred webm needlessly');

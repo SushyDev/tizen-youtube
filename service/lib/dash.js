@@ -41,6 +41,15 @@ function colourProperties(format) {
         + property('MatrixCoefficients', CICP.COLOR_PRIMARIES_BT2020);
 }
 
+// What the stats panel calls the two HDR curves. The response names them as the standards
+// do — SMPTE ST 2084, ARIB STD-B67 — and stripping the prefix leaves `smptest2084`, which
+// reads like a typo beside the panel's own rows. This row is written over the panel's, so
+// it says what the panel would have said.
+const CURVES = {
+    smptest2084: 'smpte2084 (PQ)',
+    arib_std_b67: 'arib-std-b67 (HLG)'
+};
+
 /** What the response says about a format's colour, in words the page can show. */
 function colourOf(format) {
     const colour = format.colorInfo || {};
@@ -51,7 +60,9 @@ function colourOf(format) {
         .replace('COLOR_TRANSFER_CHARACTERISTICS_', '')
         .toLowerCase();
 
-    return { primaries: name(colour.primaries), transfer: name(colour.transferCharacteristics) };
+    const transfer = name(colour.transferCharacteristics);
+
+    return { primaries: name(colour.primaries), transfer: CURVES[transfer] || transfer };
 }
 
 function codecsOf(mimeType) {

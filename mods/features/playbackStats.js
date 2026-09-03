@@ -235,11 +235,14 @@ function pipelineOf(video) {
  * measured in, rather than multiplied by an assumed rate into frames nobody dropped.
  */
 function said(tally) {
-    if (tally.rate) return `@ ${tally.rate.toFixed(2)} fps`;
-
     // Sub-second precision would suggest a confidence this does not have.
     const lost = lostBy(tally);
-    return lost >= 0.05 ? `~${lost.toFixed(1)}s lost` : '~no time lost';
+    const time = lost >= 0.05 ? `~${lost.toFixed(1)}s lost` : '~no time lost';
+
+    // Two different facts, and where both are known both are worth saying. A measured
+    // rate below the rung's own says frames are not arriving; lost time says the clock
+    // stopped. A stream can do either without the other.
+    return tally.rate ? `@ ${tally.rate.toFixed(2)} fps · ${time}` : time;
 }
 
 function showRate(video, tally, wall) {
@@ -312,7 +315,24 @@ export function sample(video) {
     measureRate(video, tally, current.wall);
     showRate(video, tally, current.wall);
 
+    latest = {
+        lost: +lostBy(tally).toFixed(3),
+        window: WINDOW,
+        rate: tally.rate ? +tally.rate.toFixed(2) : null,
+        claimed: tally.fps,
+        pipeline: pipelineOf(video)
+    };
+
     tally.previous = step.reseed ? null : current;
+}
+
+// What the last sample worked out, for anything measuring this app rather than watching
+// it. The panel says the same thing, but reading it off the screen means parsing it back
+// out of a sentence.
+let latest = null;
+
+export function measured() {
+    return latest;
 }
 
 // Sampled on a timer that runs only while playing. timeupdate would be tidier, but the
@@ -365,41 +385,29 @@ function watch(video) {
     if (!video.paused) start();
 }
 
-/** Substitutes derived counts when the renderer reports none, in the standard shape. */
+/**
+ * Watches playback so the time it loses can be reported. Nothing is substituted.
+ *
+ * This used to answer `getVideoPlaybackQuality` with counts derived from lost time —
+ * `dropped = lost × fps` — because the renderer answers zero on this hardware and the
+ * panel's row shows a dash. That was a mistake, and an expensive one. Frames that were
+ * never decoded or discarded were reported as dropped; a stall at startup was charged as
+ * hundreds of them; and because the honest measure of lost time cancels as the clock
+ * catches up, the "count" could fall as well as rise. A number that goes down is not a
+ * count, and a viewer looking at a clean picture is right to disbelieve it.
+ *
+ * So the row keeps whatever the renderer actually knows, which here is nothing, and the
+ * truth is put beside it in the units it was measured in.
+ */
 export function install() {
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
-    if (!proto || !proto.getVideoPlaybackQuality || proto.getVideoPlaybackQuality.__tube) return;
+    if (!proto) return;
 
     // Captured at the document, so a video the page creates later needs no polling.
     document.addEventListener('play', (event) => {
         if (event.target instanceof window.HTMLVideoElement) watch(event.target);
     }, true);
-
-    const original = proto.getVideoPlaybackQuality;
-
-    function getVideoPlaybackQuality() {
-        const real = original.call(this);
-
-        // The renderer is counting: its numbers are the true ones.
-        if (!real || real.totalVideoFrames > 0) return real;
-
-        watch(this);
-
-        const tally = tallyFor(this);
-        const dropped = Math.round(lostBy(tally) * tally.fps);
-
-        return {
-            creationTime: real.creationTime,
-            totalVideoFrames: Math.round(tally.played * tally.fps) + dropped,
-            droppedVideoFrames: dropped,
-            corruptedVideoFrames: 0,
-            // Derived, not counted.
-            tubeDerived: true
-        };
-    }
-
-    getVideoPlaybackQuality.__tube = true;
-    proto.getVideoPlaybackQuality = getVideoPlaybackQuality;
 }
+
 
 if (typeof window !== 'undefined' && configRead('reportPlaybackStats')) install();

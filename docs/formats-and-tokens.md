@@ -185,15 +185,92 @@ graded for it, then eight bits on a tie, then MP4 on a tie. Nothing is refused f
 
 ## Reading the numbers
 
-**Nothing counts frames on the enhanced player.** Verified by calling the pristine
-`getVideoPlaybackQuality` — taken from a fresh iframe our patch never touched — on a video
-playing at 264 seconds: `totalVideoFrames 0, droppedVideoFrames 0`. The platform pipeline
-decodes and the browser counts nothing, so every figure in the panel is ours, fed back into
-YouTube's own row. `use.game.mode="true"` in config.xml would make the renderer count, and
-is deliberately absent because it *causes* dropped frames.
+**Nothing counts frames on the enhanced player, and there is no source we are missing.**
 
-So what is reported is **time the picture was trying to advance and did not**, over the last
-thirty seconds. Two mistakes were made getting there and both looked convincing:
+YouTube's own TV player was pulled apart to check. `tv-player-ias-tcl.js` does exactly two
+things and then gives up:
+
+```js
+G.getVideoPlaybackQuality = function () {
+    if (window.HTMLVideoElement && this.D instanceof window.HTMLVideoElement
+        && this.D.getVideoPlaybackQuality) return this.D.getVideoPlaybackQuality();
+    if (this.D) {
+        var v = this.D, q = v.webkitDroppedFrameCount;
+        if (v = v.webkitDecodedFrameCount) return { droppedVideoFrames: q || 0, totalVideoFrames: v };
+    }
+    return {};
+};
+```
+
+and the panel row is built from it directly:
+
+```js
+l = "-";
+J.totalVideoFrames && (l = (J.droppedVideoFrames || 0) + " dropped of " + J.totalVideoFrames);
+```
+
+Measured on the set while the enhanced player was playing: `getVideoPlaybackQuality()` gives
+`{total: 0, dropped: 0, corrupted: 0}`, `webkitDecodedFrameCount` and
+`webkitDroppedFrameCount` are `0`, `webkitVideoDecodedByteCount` is `0`, and
+`requestVideoFrameCallback` exists but never fires — zero callbacks in five seconds of
+playing video. Stock YouTube would print a dash here for the same reason we do: the media
+never passes through the web engine's decoder, so the web engine has nothing to count.
+
+### Game mode counts, and turns the enhanced player off
+
+`use.game.mode="true"` in config.xml does make the renderer count, and the counts are real:
+sixty frames a second decoded, drops that arrive in bursts, all of it moving on its own.
+
+It also stops the platform playing a URL. Handed our manifest the element takes the `src`
+and then does nothing at all: `readyState 0`, `networkState 0` — *empty*, not "no source"
+and not an error — so nothing ever loads and nothing ever fails. After twenty-five seconds
+of being asked again the page gives up and plays the video its own way.
+
+Three cold starts each way, same code, same video, minutes apart:
+
+| Package | Pipeline it reached | Frames counted |
+|---|---|---|
+| with `use.game.mode` | default, all three times | real |
+| without it | enhanced, all three times | none |
+
+So the two cannot be had together. The key is not in config.xml, and a package built with
+it is for measuring, never for watching:
+
+```
+TUBE_GAME_MODE=1 npm run package -- --unsigned
+```
+
+which adds the key to the staged copy only, so the file in the repository stays the file
+that ships.
+
+### What the measuring build was able to prove
+
+Four minutes of 2160p60 through the player's own MediaSource pipeline, with the renderer
+counting for real:
+
+```
+590 dropped of 14386 decoded    4.10% dropped, 60.23 fps
+66 of 195 seconds lost none     worst second lost 38 frames
+media clock lost nothing        240.00s advanced over 238.8s of wall time
+```
+
+Two things follow, and they matter more than the percentage.
+
+The first is that **the premise this whole app rests on is now measured rather than
+inferred**: MediaSource really does drop frames at 2160p60 on this hardware, four per
+hundred, in bursts, continuously.
+
+The second is that **lost time is not a frame count and must never be shown as one**. Over
+those same four minutes the time-based figure read `0.000s`. It was not wrong — the clock
+genuinely kept perfect time — it simply cannot see this. A dropped frame is one the decoder
+never presents; the clock does not stop for it, and no arithmetic over the clock will find
+it. So what the panel says is time, in the units it was measured in, and the frames row is
+left saying whatever the renderer knows, which here is nothing.
+
+### How the numbers used to mislead
+
+`playbackStats` used to answer `getVideoPlaybackQuality` itself, deriving `dropped = lost ×
+fps`. Two mistakes were made getting there and both looked convincing:
 
 - charging each 250 ms sample's shortfall as it happened. Sampling jitter is zero-mean, so
   summing the shortfalls of a signal whose total shortfall is zero gave a large positive
@@ -203,11 +280,13 @@ thirty seconds. Two mistakes were made getting there and both looked convincing:
   "dropped frames" displayed for four minutes while nothing at all was being lost.
 
 A viewer watching a clean picture while a number climbs is right to stop believing the
-number, and did.
+number, and did. Nothing is substituted now.
 
 The buffer figure came from `getStatsForNerds`, which is the *player's* buffer — a buffer
 nothing plays from once this app feeds the element. It read `0.00 s` for half a minute
-while the video played on. It comes from the element now.
+while the video played on. It comes from the element now. The codecs and colour rows had
+the same fault and are corrected from what is actually being served: left alone the panel
+said `opus (251)` through four minutes of AAC.
 
 ## Startup
 
@@ -221,12 +300,31 @@ app appears faster because it starts on a low rung and climbs, where this commit
 top rung immediately. Closing that gap means offering more than one representation and
 letting the platform adapt, which is a real feature rather than a tuning change.
 
-## How the numbers used to mislead
+## Two ways the enhanced player was being lost
 
-`playbackStats` derives its counts when the renderer reports none: `dropped = lost × fps`.
-A stall therefore prints as hundreds of dropped frames. A drop count also says nothing about
-how the picture *looks* — a stream can hold zero drops and still artifact badly.
+Both were found while trying to measure it, and both made it fall back silently — which
+looks from the sofa like the app simply not working as well as it did yesterday.
 
-Stats-for-nerds reports the codecs, colour and protection of what the *player* selected,
-which stops being what reaches the decoder the moment we take over. Those rows are rewritten
-to the truth; without that, every measurement read off the panel has to be thrown away.
+**A cold start took the encrypted ladder.** Opening a video as the first thing a session
+does takes the streams embedded in the watch-next payload, which are the encrypted set on
+every video. Removing them is what sends the app back to the player endpoint, where the
+ordinary ladder is — but that removal was guarded by having already served something, a
+condition a cold start cannot meet. So the first video of every session played through the
+default player, and the enhanced one only ever appeared after something else had already
+worked. Measured: hash-routed straight to a watch page, `21 otf, drm formats`, default
+player, buffer at zero and a hundred and fifty frames dropped in twenty seconds. It is a
+budget of two asks per video now, so the first video gets the same chance as the second.
+
+**The resume position was told to the element and not to the service.** A part-watched
+video is handed `manifest.mpd#t=180`, and a fragment is the one part of a URL a server
+never sees. The download therefore ran from the beginning while the element asked for a
+segment three minutes in; serving that means abandoning the download and starting another
+one there, which at 2160p60 is an eighteen-megabyte segment and was measured at ten seconds
+from the ask to the bytes. The television's player gives up well before then — it went to
+`readyState 4` on a buffer that ended at 47s with the clock parked at 180, and stayed there.
+The position is sent with the open request now, so the restart is already under way while
+the element is still fetching the manifest.
+
+Seeking during playback still costs about twenty seconds to settle at 2160p60, for the same
+reason: one segment is large and the stream has to be restarted to reach it. It recovers
+rather than wedging, which it did not before, but it is not yet good.

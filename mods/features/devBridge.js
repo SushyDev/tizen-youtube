@@ -1,4 +1,6 @@
 import { configRead, configChangeEmitter } from '../config.js';
+import { measured } from './playbackStats.js';
+import { servingNow } from './nativePlayback.js';
 
 // Pushes playback readings to the service, which publishes them to the network. What
 // goes in the snapshot is decided here, and nothing comes back the other way. Only
@@ -39,8 +41,23 @@ function reading() {
         // What it is playing.
         intrinsic: video.videoWidth + 'x' + video.videoHeight,
         resolution: stats.resolution || null,
-        codecs: stats.codecs || null,
-        colour: stats.color || null,
+
+        // What is being decoded, which once this app feeds the element is not what the
+        // player selected. Left to `getStatsForNerds` this said `opus (251)` through four
+        // minutes of AAC — the panel on screen is corrected, and a measurement taken from
+        // here was reading the uncorrected rows.
+        codecs: (function () {
+            const now = servingNow();
+            if (!now || !now.video || !now.audio) return stats.codecs || null;
+            return `${now.video.codecs} (${now.video.itag}) / ${now.audio.codecs} (${now.audio.itag})`;
+        }()),
+        colour: (function () {
+            const now = servingNow();
+            if (now && now.video && now.video.colour) {
+                return `${now.video.colour.transfer} / ${now.video.colour.primaries}`;
+            }
+            return stats.color || null;
+        }()),
         // From the element, not the player. `getStatsForNerds` reports the player's own
         // buffer, which once the picture comes from this app is a buffer nothing is
         // playing from — it read 0.00s for half a minute while the video played on.
@@ -67,10 +84,17 @@ function reading() {
         preferred: configRead('preferredVideoQuality'),
 
         // Whether anything is counting frames, which is the question this was built for.
+        // `derived` should now always be false: nothing is substituted, so a non-zero
+        // count here is the platform renderer's own and a zero means it counts nothing.
         frames: stats.dims_and_frames || null,
         decoded: quality ? quality.totalVideoFrames : null,
         dropped: quality ? quality.droppedVideoFrames : null,
+        corrupted: quality ? quality.corruptedVideoFrames : null,
         derived: !!(quality && quality.tubeDerived),
+
+        // What this app worked out on its own, beside what the renderer says, so the two
+        // can be compared without reading either off the screen.
+        measured: measured(),
 
         // Whether it is actually playing.
         evaluated: lastEval,

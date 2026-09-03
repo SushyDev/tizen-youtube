@@ -123,20 +123,34 @@ export function knownTimestamp() {
  * Removing what cannot be served is what sends it back to the call that can be. The
  * response is the object the app itself is about to read, so this edits it in place.
  */
-// Whether asking again has ever been worth it. Taking the streams away sends the app back
-// to the player endpoint, which only helps if that endpoint answers with something this
-// app can serve. Where it never does — every response encrypted — the app is left with no
-// streams at all, asks again, is answered the same way, and gives up with an error.
+// How many times one video may be sent back to the player endpoint.
 //
-// So this proves itself first: until one serveable response has been seen, nothing is
-// taken away.
-let everServed = false;
+// Taking the streams away only helps if that endpoint answers with something this app can
+// serve. Where it never does — every response encrypted — the app would be left with no
+// streams at all, ask again, be answered the same way, and give up with an error.
+//
+// This used to be guarded by having seen one serveable response *at some point*, which is
+// a condition a cold start cannot meet. Opening a video straight from the launch screen
+// takes the streams embedded in the watch-next payload, which are the encrypted set on
+// every video, and with nothing served yet they were kept — so the first video of every
+// session played through the default player, and the enhanced one only ever appeared
+// after something else had already worked. Measured on the set: hash-routed straight to a
+// watch page, `21 otf, drm formats`, default player, buffer at zero and a hundred and
+// fifty frames dropped in twenty seconds.
+//
+// A budget rather than a proof, so the first video of a session gets the same chance as
+// the second, and a video that genuinely has nothing to serve still falls back after two.
+const ASK_AGAIN_AT_MOST = 2;
+
+const asked = new Map();
 
 onResponse('playerRequest', ['streamingData'], (response) => {
     if (!wanted()) return;
 
     const formats = (response.streamingData || {}).adaptiveFormats;
     if (!Array.isArray(formats) || !formats.length) return;
+
+    const videoId = (response.videoDetails || {}).videoId || 'this video';
 
     // Only when there is nothing here worth keeping. A response that carries an ordinary
     // picture is the one this app wants, and taking it away would be the opposite of help.
@@ -146,13 +160,23 @@ onResponse('playerRequest', ['streamingData'], (response) => {
         && format.type !== 'FORMAT_STREAM_TYPE_OTF');
 
     if (servable) {
-        everServed = true;
+        asked.delete(videoId);
         return;
     }
 
-    if (!everServed) return;
+    const spent = asked.get(videoId) || 0;
 
-    const videoId = (response.videoDetails || {}).videoId || 'this video';
+    if (spent >= ASK_AGAIN_AT_MOST) {
+        if (spent === ASK_AGAIN_AT_MOST) {
+            asked.set(videoId, spent + 1);
+            note('innertube', `${videoId} is answered with nothing serveable however it is `
+                + 'asked; letting the page play what it was given');
+        }
+        return;
+    }
+
+    asked.set(videoId, spent + 1);
+
     note('innertube', `dropping ${formats.length} unplayable formats for ${videoId}; `
         + 'the app has to ask the player endpoint again');
 

@@ -1,7 +1,8 @@
-// What the derived frame counts actually detect, since they are the only ones reported
-// on a set whose renderer counts nothing.
+// What the accounting actually detects. Nothing on this hardware counts frames, so what is
+// reported is time the picture was trying to advance and did not — and these are the ways
+// that measurement went wrong before.
 import * as stats from '../features/playbackStats.js';
-import { account, lostBy, TOLERANCE, install, sample } from '../features/playbackStats.js';
+import { account, lostBy, TOLERANCE, install } from '../features/playbackStats.js';
 
 // A step reports what was expected of it and what arrived; the loss is the difference, and
 // over many steps it is the difference of the totals, so jitter cancels instead of adding up.
@@ -98,54 +99,33 @@ const at = (wall, media, over) => Object.assign(
     check('the first sample counts nothing', step.played === 0 && shortfall(step) === 0, JSON.stringify(step));
 }
 
-// The counts have to reach getVideoPlaybackQuality(), because that is what the player
-// reads to build the stats line. Zeroes there show as a dash, however well they are kept.
+// Nothing is substituted into getVideoPlaybackQuality any more. Deriving frame counts from
+// lost time reported frames that were never decoded or discarded, charged a startup stall as
+// hundreds of them, and — because the honest measure of lost time cancels as the clock
+// catches up — could fall as well as rise. A number that goes down is not a count.
 {
-    const listeners = {};
     const video = {
         currentTime: 0, playbackRate: 1, paused: false, seeking: false, readyState: 4,
         videoWidth: 3840, videoHeight: 2160,
-        addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); }
+        addEventListener() {}
     };
 
-    let native = { totalVideoFrames: 0, droppedVideoFrames: 0, creationTime: 0 };
+    const native = { totalVideoFrames: 0, droppedVideoFrames: 0, creationTime: 0 };
 
     global.window = { HTMLVideoElement: function () {} };
     global.window.HTMLVideoElement.prototype.getVideoPlaybackQuality = function () { return native; };
     global.document = { addEventListener() {}, querySelector() { return null; } };
 
+    const before = global.window.HTMLVideoElement.prototype.getVideoPlaybackQuality;
     install();
+    const after = global.window.HTMLVideoElement.prototype.getVideoPlaybackQuality;
 
-    const proto = global.window.HTMLVideoElement.prototype;
-    check('the patch is installed on the prototype', proto.getVideoPlaybackQuality.__tube === true);
-
-    // Two samples a second apart, the video advancing only 0.8s of it.
-    const quality = () => proto.getVideoPlaybackQuality.call(video);
-    const realNow = Date.now;
-    let clock = 1000000;
-    Date.now = () => clock;
-
-    sample(video);
-    clock += 1000;
-    video.currentTime = 0.8;
-    sample(video);
-
-    Date.now = realNow;
-
-    const derived = quality();
-    check('a renderer counting nothing gets derived counts',
-        derived.tubeDerived === true && derived.totalVideoFrames > 0, JSON.stringify(derived));
-    check('lost time becomes dropped frames',
-        derived.droppedVideoFrames > 0, JSON.stringify(derived));
-
-    native = { totalVideoFrames: 120, droppedVideoFrames: 3, creationTime: 0 };
-    const real = quality();
-    check('a renderer that counts is passed through untouched',
-        real.totalVideoFrames === 120 && real.droppedVideoFrames === 3 && !real.tubeDerived,
-        JSON.stringify(real));
+    check('the renderer is left to answer for itself', after === before,
+        'getVideoPlaybackQuality was replaced');
+    check('and what it says is passed through unchanged',
+        after.call(video).droppedVideoFrames === 0, 'a count was invented');
 }
 
-const failed = results.filter((r) => !r).length;
 
 // Sampling jitter is zero-mean, and charging each sample's shortfall as it happens turns it
 // into a large positive total. Measured against thirty seconds of the television's own
@@ -236,5 +216,6 @@ check('a stall is reported while it is recent',
 check('and ages out once playback has been fine for the window',
     overTime(5, stats.WINDOW + 5) < 0.3, `${overTime(5, stats.WINDOW + 5).toFixed(2)}s`);
 
+const failed = results.filter((ok) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

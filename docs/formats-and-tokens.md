@@ -339,29 +339,31 @@ app appears faster because it starts on a low rung and climbs, where this commit
 top rung immediately. Closing that gap means offering more than one representation and
 letting the platform adapt, which is a real feature rather than a tuning change.
 
-## Three ways to describe the same stream
+## Two ways to describe the same stream
 
-The same segments, described three ways, all handed over as a plain URL and all played by
+The same segments, described two ways, both handed over as a plain URL and both played by
 the set's own pipeline rather than through MediaSource. Judged on the television:
 
 | | Startup, cold | Watching it | Seeking |
 |---|---|---|---|
 | DASH | 7.1 s | **judders** | ~20 s, recovers |
-| HLS | **0.8 s** warm | judders, dropping frames | untested |
 | Plain file | 9.0 s | **smooth and judder free** | exact, instant |
 
-All three serve byte-identical segments, so the difference is entirely in what the set does
-with the description. Judged by eye on the judder test, the plain file is the only one of
-the three that plays it cleanly — which is the whole reason it exists.
+Both serve byte-identical segments, so the difference is entirely in what the set does with
+the description. Judged by eye on the judder test, the plain file is the only one that plays
+it cleanly — which is the whole reason it exists.
 
-HLS commits far faster — a VOD playlist can be read end to end, where an MPD leaves the set
-working out what it has — and it presents worse.
+The plain file has no description at all: no manifest, nothing for the set to parse and
+decide about. It is handed bytes and plays them. Its cost is about two seconds more to
+start, because the muxer must have both tracks' initialisation segments *and* the first
+fragments, in order, before a byte goes out, where a manifest lets the set fetch them in
+parallel.
 
-The plain file has no description at all: no manifest, no playlist, nothing for the set to
-parse and decide about. It is handed bytes and plays them, and it is the only one of the
-three that plays the judder test cleanly. Its cost is about two seconds more to start,
-because the muxer must have both tracks' initialisation segments *and* the first fragments,
-in order, before a byte goes out, where a manifest lets the set fetch them in parallel.
+HLS was built and measured as a third description and then removed. It commits far faster
+— a VOD playlist can be read end to end, where an MPD leaves the set working out what it
+has — and it presents worse: judder and dropped frames on the same material. It also
+reports the whole remaining playlist as buffered, which made every buffer figure taken on it
+incomparable with DASH's.
 
 ### What the plain file can and cannot carry
 
@@ -394,11 +396,9 @@ been told anything, and answering the address with a redirect to the manifest do
 — the set commits to reading an MP4 from the address it was given and will not take a
 manifest in its place.
 
-Two things about HLS confuse a measurement taken on it. It reports the whole remaining
-playlist as buffered — two hundred seconds at the start of a five-minute video — so the
-buffer figure is not comparable with DASH's. And `video.buffered` on the DASH path is not
-trustworthy either: it read dry, and negative, through forty seconds a viewer called
-perfectly smooth. Neither figure survives contact with what is actually on screen.
+`video.buffered` on the DASH path is not trustworthy: it read dry, and negative, through
+forty seconds a viewer called perfectly smooth. The figure does not survive contact with
+what is actually on screen.
 
 ## Two ways the enhanced player was being lost
 
@@ -479,16 +479,16 @@ rewritten to carry the userscript. One navigation, no restart. The cost is that 
 stands between the page and youtube.com for everything that is not media — media never
 touches it, since the service fetches googlevideo directly and serves `/dash/` locally.
 
-**The debugger path** relaunches the app in debug mode and attaches to it, so the page is a
-real `https://www.youtube.com` with no proxy in the request path at all. Relaunching means
-the open window has to close first, which is why the shell calls `application.exit()`. That
-exit is the restart, and it is paid *before* anything is known — the window must be gone for
-the relaunch to replace it, so a set where attaching does not work pays the whole cost and
-lands on the proxy anyway.
+**The debugger path** relaunched the app in debug mode and attached over the TV's own sdb
+daemon, so the page was a real `https://www.youtube.com` with no proxy in the request path
+at all. Relaunching means the open window has to close first, so the shell called
+`application.exit()`. That exit is the restart, and it was paid *before* anything was known
+— the window had to be gone for the relaunch to replace it, so a set where attaching does
+not work paid the whole cost and landed on the proxy regardless.
 
-Which is this one: it reports a reachable daemon, exits, never attaches, and comes back on
-the proxy. So the debugger is not offered, and a launch is one navigation. `OFFER_DEBUGGER`
-in the service turns it back on for developing against a real origin.
+Which is this one: it reported a reachable daemon, exited, never attached, and came back on
+the proxy. That is the restart before YouTube appeared, on every single launch. The path is
+now removed, and a launch is one navigation.
 
 ## The video is fetched twice
 

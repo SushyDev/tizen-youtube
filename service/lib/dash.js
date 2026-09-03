@@ -4,10 +4,8 @@ const express = require('express');
 const { createReadStream } = require('fs');
 const { open, readFile } = require('fs/promises');
 
-const hls = require('./hls.js');
 const mux = require('./mux.js');
 const journal = require('./journal.js');
-const sabr = require('./sabr.js');
 const stream = require('./stream.js');
 
 // The set reads these to decide whether to switch the panel into HDR; without them it
@@ -167,11 +165,6 @@ function attach(app) {
         );
     });
 
-    app.get('/dash/selection', (_, res) => {
-        const session = sabr.observed.session;
-        res.json({ selected: (session && session.selected) || [] });
-    });
-
     app.post('/dash/close', express.json({ limit: '8kb' }), (req, res) => {
         stream.close((req.body || {}).id).then(
             (closed) => res.json({ ok: true, closed }),
@@ -188,13 +181,6 @@ function attach(app) {
     app.get('/dash/by-video/:videoId/progressive.mp4', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
             (session) => res.redirect(302, `/dash/${session.id}/progressive.mp4`),
-            (error) => res.status(404).send(error.message)
-        );
-    });
-
-    app.get('/dash/by-video/:videoId/master.m3u8', (req, res) => {
-        stream.awaitVideo(req.params.videoId).then(
-            (session) => res.redirect(302, `/dash/${session.id}/master.m3u8`),
             (error) => res.status(404).send(error.message)
         );
     });
@@ -225,32 +211,6 @@ function attach(app) {
 
         res.setHeader('Content-Type', 'application/dash+xml');
         res.send(manifest(session));
-    });
-
-    app.get('/dash/:id/master.m3u8', (req, res) => {
-        const session = find(req, res);
-        if (!session) return;
-
-        if (!session.ready) return res.status(503).send('the stream is still opening');
-
-        const playlist = hls.master(session);
-        if (!playlist) return res.status(404).end();
-
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        return res.send(playlist);
-    });
-
-    app.get('/dash/:id/:kind.m3u8', (req, res) => {
-        const session = find(req, res);
-        if (!session) return;
-
-        if (!session.ready) return res.status(503).send('the stream is still opening');
-
-        const playlist = hls.media(session, req.params.kind);
-        if (!playlist) return res.status(404).end();
-
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        return res.send(playlist);
     });
 
     // Beyond this the set asks for the first chunk of a plain file and then consumes nothing,
@@ -418,44 +378,6 @@ function attach(app) {
         };
 
         return send(0);
-    });
-
-    // One track as a plain file, for a browser that plays fragmented MP4 from a URL but has
-    // no DASH of its own. This is what makes the page testable off the television.
-    app.get('/dash/:id/:kind.mp4', (req, res) => {
-        const session = find(req, res);
-        if (!session) return;
-
-        const track = session.tracks[req.params.kind];
-        if (!track || !track.index) return res.status(404).end();
-
-        res.setHeader('Content-Type', typeOf(track.format.mimeType));
-        res.setHeader('Accept-Ranges', 'none');
-
-        const pour = async (number) => {
-            if (res.writableEnded || number > track.index[track.index.length - 1].number) return res.end();
-
-            try {
-                await track.reach(number);
-            } catch (error) {
-                return res.end();
-            }
-
-            track.want(number);
-            createReadStream(track.file(number))
-                .on('end', () => pour(number + 1))
-                .on('error', () => res.end())
-                .pipe(res, { end: false });
-
-            return undefined;
-        };
-
-        return track.reach(0).then(
-            () => createReadStream(track.file(0))
-                .on('end', () => pour(track.index[0].number))
-                .pipe(res, { end: false }),
-            () => res.status(503).end()
-        );
     });
 
     app.get('/dash/:id/:kind/init.mp4', (req, res) => {

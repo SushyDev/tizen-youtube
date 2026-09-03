@@ -469,25 +469,6 @@ check('a range past the end is refused rather than served',
 check('no range at all means the whole file',
     mux.rangeOf(undefined, 1000) === null && mux.rangeOf('bytes=-', 1000) === null, 'invented a range');
 
-const hlsMaster = require('../lib/hls.js').master(shaped(HDR_FORMAT));
-const hlsMedia = require('../lib/hls.js').media(shaped(HDR_FORMAT), 'video');
-
-check('the master playlist names the audio and the video',
-    hlsMaster.indexOf('#EXT-X-MEDIA:TYPE=AUDIO') !== -1 && /\nvideo\.m3u8/.test(hlsMaster),
-    'a track is missing');
-check('wide colour is stated as a video range',
-    hlsMaster.indexOf('VIDEO-RANGE=PQ') !== -1, 'said the wrong range');
-check('ordinary colour is stated as SDR',
-    require('../lib/hls.js').master(shaped(SDR_FORMAT)).indexOf('VIDEO-RANGE=SDR') !== -1,
-    'said the wrong range');
-check('the media playlist names the initialisation segment',
-    hlsMedia.indexOf('#EXT-X-MAP:URI="video/init.mp4"') !== -1, 'no map');
-check('and every segment after it, ending',
-    /#EXTINF:[\d.]+,\nvideo\/\d+\.m4s/.test(hlsMedia) && hlsMedia.indexOf('#EXT-X-ENDLIST') !== -1,
-    'not a complete vod playlist');
-check('the target duration covers the longest segment',
-    /#EXT-X-TARGETDURATION:(\d+)/.exec(hlsMedia)[1] >= 5, 'too short to be legal');
-
 check('an eight-bit mp4 still wins an even tie',
     stream.pick(REAL.concat([{ itag: 401, mimeType: 'video/mp4; codecs="av01.0.13M.08"', height: 2160, fps: 60 }]),
         'video', 2160).itag === 401, 'preferred webm needlessly');

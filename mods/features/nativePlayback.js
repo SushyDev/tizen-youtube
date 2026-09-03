@@ -10,7 +10,6 @@ import { feed } from './mediaFeeder.js';
 const service = () => `${window.location.origin}/dash`;
 
 const DESCRIPTIONS = {
-    hls: 'master.m3u8',
     mp4: 'progressive.mp4',
     dash: 'manifest.mpd',
 

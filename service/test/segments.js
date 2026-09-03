@@ -493,12 +493,17 @@ check('and carries the track it was given',
 check('and its place in the sequence',
     moved.readUInt32BE(moved.indexOf(Buffer.from('mfhd')) + 4 + 4) === 7, 'sequence not written');
 
+const asRange = (header, total) => {
+    const read = mux.rangeOf(header, total);
+    return read ? `${read.from}-${read.to}${read.open ? ' open' : ''}` : String(read);
+};
+
 check('a range is read as the bytes it asks for',
-    JSON.stringify(mux.rangeOf('bytes=100-199', 1000)) === '{"from":100,"to":199}', 'misread');
-check('an open-ended range runs to the end',
-    JSON.stringify(mux.rangeOf('bytes=900-', 1000)) === '{"from":900,"to":999}', 'misread');
-check('a suffix range counts back from the end',
-    JSON.stringify(mux.rangeOf('bytes=-100', 1000)) === '{"from":900,"to":999}', 'misread');
+    asRange('bytes=100-199', 1000) === '100-199', 'misread');
+check('a range naming only a start is open, and answered with what is sensible',
+    asRange('bytes=900-', 1000) === '900-999 open', 'misread');
+check('a suffix range counts back from the end and is not open',
+    asRange('bytes=-100', 1000) === '900-999', 'misread');
 check('a range past the end is refused rather than served',
     mux.rangeOf('bytes=2000-', 1000).unsatisfiable === true, 'served nonsense');
 check('no range at all means the whole file',

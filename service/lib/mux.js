@@ -316,7 +316,9 @@ function rangeOf(header, total) {
 
     if (from > to || from >= total) return { unsatisfiable: true };
 
-    return { from, to };
+    // Whether the caller named an end. One that did not is asking for "the rest", which is
+    // a request to be answered with a sensible amount rather than with everything.
+    return { from, to, open: !hasLast };
 }
 
 module.exports = {

@@ -290,6 +290,16 @@ function attach(app) {
     // fragment's length is already in the segment index, so the file's whole shape is known
     // before any of it has been fetched: a real Content-Length, real byte ranges, and a
     // `sidx` in the head so the set can ask for a moment rather than guess at a byte.
+    // How much of the file one open-ended range is answered with.
+    //
+    // A set asking `bytes=0-` for a nine-hundred-megabyte file was answered with all of it,
+    // and could not cope: it took the head, waited on the first fragment, gave up and asked
+    // for the whole thing again — three times over, never reaching a picture. Bounded, it
+    // finishes a response and asks for the next, which is what a progressive reader is
+    // built to do. Large enough to hold several seconds of 2160p60, small enough that the
+    // first of them arrives promptly.
+    const MAX_SPAN = 24 * 1024 * 1024;
+
     const described = new Map();
 
     // Which request for a session is the live one. A seek makes the set open another before
@@ -346,7 +356,13 @@ function attach(app) {
         }
 
         const from = asked ? asked.from : 0;
-        const to = asked ? asked.to : shape.total - 1;
+
+        // A request naming both ends is answered exactly; one that only names a start is
+        // answered with as much as is sensible to send at once.
+        const wanted = asked ? asked.to : shape.total - 1;
+        const to = asked && asked.open
+            ? Math.min(wanted, from + MAX_SPAN - 1)
+            : wanted;
 
         res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Accept-Ranges', 'bytes');

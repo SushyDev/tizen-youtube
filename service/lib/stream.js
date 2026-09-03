@@ -614,6 +614,20 @@ async function fill(track, params, chosen, using) {
         if (track.abort) {
             try { track.abort(); } catch (e) { /* already stopped */ }
         }
+
+        // The server closed while there is still video left to fetch, and nobody asked it
+        // to stop. SABR hands over a portion at a time and expects to be asked again, so
+        // this is an ordinary end and not a finished download — but nothing was waiting to
+        // notice: a segment inside the read-ahead window counts as arriving on its own, so
+        // the element waited for one that nothing was fetching any more.
+        //
+        // Measured on the television: the stream closed after two hundred and five
+        // megabytes of a nine-hundred-megabyte video, and playback froze at 15.38 seconds
+        // with the buffer holding three and a half and the service perfectly idle.
+        if (!track.stopped && !track.restartAt && !track.failure && track.index) {
+            const last = track.index[track.index.length - 1].number;
+            if (track.next <= last) track.restartAt = track.next;
+        }
     }
 }
 

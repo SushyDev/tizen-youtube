@@ -155,6 +155,39 @@ function clockStopsOnPlay(videoId) {
     };
 
     video.addEventListener('timeupdate', playing);
+    forgetWhenFinished(video);
+}
+
+// Elements already being watched for the end of a video, so the listener goes on once each.
+const watchingForEnd = new WeakSet();
+
+/**
+ * Lets go of a video once it has finished, so playing it again opens it again.
+ *
+ * A video is only opened when the response naming it arrives for one this app is not
+ * already holding — the page loads responses for what it might play next, and the same one
+ * arrives more than once, so acting on every one of them would reopen a stream mid-play.
+ * But a video that has run to its end is still held, so playing it a second time was
+ * ignored: no session was opened, the element was never handed an address, and the page
+ * played it through MediaSource. Which is what "repeat does not work" looks like, and what
+ * a viewer would then see is the frame drops this app exists to avoid.
+ */
+function forgetWhenFinished(video) {
+    if (watchingForEnd.has(video)) return;
+    watchingForEnd.add(video);
+
+    video.addEventListener('ended', () => {
+        const finished = playerVideo();
+        if (!finished || !opened.has(finished)) return;
+
+        note('stream', `${finished} finished; letting go so it can be played again`);
+
+        const held = opened.get(finished);
+        opened.delete(finished);
+        handedAt.delete(finished);
+        if (serving && serving.videoId === finished) serving = null;
+        if (held) closeSession(held);
+    });
 }
 
 // Set when a change is what caused the video to be loaded again, so the service knows to

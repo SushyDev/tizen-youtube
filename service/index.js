@@ -51,6 +51,23 @@ function maybeCheckForUpdate() {
     );
 }
 
+// Whether to offer the debugger path at all.
+//
+// Attaching to the page means relaunching the app in debug mode, and that means the window
+// that is open has to close first — so taking this path always costs an exit and a
+// relaunch before YouTube appears. The proxy path costs one navigation and no restart, and
+// delivers the same userscript; what it costs instead is standing between the page and
+// youtube.com for every request that is not media.
+//
+// Off, because the exit is paid before anything is known: the shell has to close for the
+// relaunch to replace it, so a set where attaching does not work pays the whole cost and
+// lands on the proxy regardless. Measured on a QE65S93DATXXN, which reports a reachable
+// daemon and then never attaches.
+//
+// Turn it on to develop against a real youtube.com origin, where the proxy is out of the
+// request path entirely.
+const OFFER_DEBUGGER = false;
+
 // A failed injection, remembered for as long as this service runs.
 //
 // The shell has already exited by the time one fails, so the service brings the app back
@@ -98,7 +115,7 @@ app.get('/__tube/state', (_, res) => {
         }
 
         res.json({
-            canInject: state.canConnectToDaemon,
+            canInject: OFFER_DEBUGGER && state.canConnectToDaemon,
             isConnecting: state.isConnecting,
             injectionFailed,
             ip: state.ip,

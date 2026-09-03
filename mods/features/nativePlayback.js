@@ -530,6 +530,18 @@ function openSession(request) {
             // part-watched video fell back to the default player every time.
             startMs: Math.floor(startsFrom(request.videoId) * 1000),
 
+            // Whether this will be read as one file rather than segment by segment. A
+            // plain file is served from its beginning on demand — the head first, then
+            // the fragments in order — so moving the download to the resume position
+            // before anything has been asked for puts it where the first request is not.
+            // The two then pull against each other: the head request drags the download
+            // back to the start, the resume pushes it forward again, and a watched video
+            // loads without ever playing.
+            //
+            // A manifest is the opposite: the element asks for the segment it wants
+            // straight away, so having the download already there is the whole point.
+            wholeFile: describedAs(request.videoId) === DESCRIPTIONS.mp4,
+
             fresh: changed.delete(request.videoId)
         }, request))
     })

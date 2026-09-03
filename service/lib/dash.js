@@ -7,7 +7,7 @@
 
 const express = require('express');
 const { createReadStream } = require('fs');
-const { readFile } = require('fs/promises');
+const { open, readFile } = require('fs/promises');
 
 const hls = require('./hls.js');
 const mux = require('./mux.js');
@@ -357,6 +357,52 @@ function attach(app) {
         return shape;
     };
 
+    // One fragment, out to the client, without holding it in memory.
+    //
+    // Everything the muxer rewrites lives in the `moof` at the front — a track id and a
+    // sequence number, a few kilobytes in — and the `mdat` behind it is untouched. Reading
+    // the whole fragment to change eight bytes meant two copies of it in memory at once:
+    // thirty megabytes for one 2160p60 fragment, on a set that is decoding at the same
+    // time. So the head is read and rewritten, and the rest is streamed off the disk.
+    /** A write that waits when the client is not keeping up, rather than piling into memory. */
+    const pushed = (res, chunk) => (res.write(chunk)
+        ? Promise.resolve()
+        : new Promise((drained) => res.once('drain', drained)));
+
+    async function pourFragment(res, file, id, sequence, begin, finish) {
+        const handle = await open(file, 'r');
+        let headLength = 0;
+
+        try {
+            const header = Buffer.alloc(8);
+            await handle.read(header, 0, 8, 0);
+
+            // The `moof` is the first box of a fragment; anything else is not one this
+            // wrote, and the safe answer is to send the bytes untouched.
+            if (header.toString('latin1', 4, 8) === 'moof') headLength = header.readUInt32BE(0);
+
+            if (headLength && begin < headLength) {
+                const head = Buffer.alloc(headLength);
+                await handle.read(head, 0, headLength, 0);
+
+                const rewritten = mux.retrack(head, id, sequence);
+                await pushed(res, rewritten.subarray(begin, Math.min(headLength, finish)));
+            }
+        } finally {
+            await handle.close();
+        }
+
+        const start = Math.max(begin, headLength);
+        if (start >= finish) return;
+
+        await new Promise((done, failed) => {
+            createReadStream(file, { start, end: finish - 1 })
+                .on('error', failed)
+                .on('end', done)
+                .pipe(res, { end: false });
+        });
+    }
+
     app.get('/dash/:id/progressive.mp4', async (req, res) => {
         const session = find(req, res);
         if (!session) return undefined;
@@ -444,25 +490,17 @@ function attach(app) {
             // Another request arrived while this one waited for bytes; it decides now.
             if (!current()) return res.end();
 
-            let fragment;
+            const id = part.kind === 'video' ? mux.VIDEO_TRACK : mux.AUDIO_TRACK;
+            const begin = Math.max(0, from - part.offset);
+            const finish = Math.min(part.size, to - part.offset + 1);
+
             try {
-                fragment = await readFile(track.file(part.number));
+                await pourFragment(res, track.file(part.number), id, at + 1, begin, finish);
             } catch (error) {
                 return res.end();
             }
 
-            // Read whole rather than piped: two four-byte fields are rewritten in every
-            // fragment, and a stream would hand them out before they were changed.
-            const id = part.kind === 'video' ? mux.VIDEO_TRACK : mux.AUDIO_TRACK;
-            const written = mux.retrack(fragment, id, at + 1);
-
-            const begin = Math.max(0, from - part.offset);
-            const finish = Math.min(written.length, to - part.offset + 1);
-
-            const room = res.write(written.subarray(begin, finish));
-            if (room) return send(at + 1);
-
-            return new Promise((drained) => res.once('drain', drained)).then(() => send(at + 1));
+            return send(at + 1);
         };
 
         return send(0);

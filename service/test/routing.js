@@ -16,7 +16,7 @@ function check(name, ok, detail) {
 
 const app = proxy.create('7.0');
 app.get('/__tube/state', (_, res) => res.json({ marker: 'service-endpoint' }));
-app.get('/__tube/inject', (_, res) => res.status(501).json({ marker: 'inject' }));
+app.get('/dash/open', (_, res) => res.status(501).json({ marker: 'dash' }));
 proxy.attachFallback(app);
 
 const server = app.listen(0, '127.0.0.1', () => {
@@ -41,13 +41,13 @@ const server = app.listen(0, '127.0.0.1', () => {
             check('/__tube/state is served by the service, not the proxy',
                 !!parsed && parsed.marker === 'service-endpoint',
                 `got ${res.body.slice(0, 60)}`);
-            return get('/__tube/inject');
+            return get('/dash/open');
         })
         .then((res) => {
             let parsed = null;
             try { parsed = JSON.parse(res.body); } catch (e) { }
-            check('/__tube/inject is served by the service, not the proxy',
-                res.status === 501 && !!parsed && parsed.marker === 'inject',
+            check('/dash routes are served by the service, not the proxy',
+                res.status === 501 && !!parsed && parsed.marker === 'dash',
                 `status ${res.status}, body ${res.body.slice(0, 60)}`);
             return get('/__tube/userScript.js');
         })

@@ -278,10 +278,6 @@ const boot = async () => {
                 }
                 if (state.ip) say('state', `device ${state.ip}`);
 
-                say('state', `canInject=${state.canInject ? 1 : 0} ` +
-                             `connecting=${state.isConnecting ? 1 : 0} ` +
-                             `lastInjectFailed=${state.injectionFailed ? 1 : 0}`);
-
                 if (state.script && state.script.error) {
                     say('loader', `no userscript: ${state.script.error}`, 'bad');
                     say('loader', 'youtube will load unmodified', 'warn');
@@ -296,52 +292,13 @@ const boot = async () => {
                 }
             }
 
-            // A debug attempt that already failed will fail again, and retrying loops.
-            if (state.injectionFailed) {
-                say('inject', 'skipped, the last attempt failed', 'warn');
-                return useProxy(state, args);
-            }
-
-            if (state.canInject && !state.isConnecting) return useDebugger(state, args);
-
-            if (state.canInject && state.isConnecting) {
-                if (!announcedWait) {
-                    say('inject', 'another launch is already connecting, waiting for it', 'note');
-                    announcedWait = true;
-                }
-            } else if (!state.canInject) {
-                say('inject', 'unavailable, developer mode is off', 'warn');
-                return useProxy(state, args);
-            }
+            return useProxy(state, args);
         }
 
         if (now() > deadline) return giveUp(state, args);
 
         await wait(POLL_INTERVAL);
     }
-};
-
-// Injection relaunches this app under the debugger, so exiting makes room for it. If the
-// relaunch never happens the service brings the app back on the proxy path.
-const useDebugger = async (state, args) => {
-    say('inject', 'available, developer mode is on', 'ok');
-    say('inject', `asking the service to attach on ${state.ip || 'loopback'}`);
-
-    try {
-        await ask(`/__tube/inject${args ? `?${args}` : ''}`);
-        say('inject', 'accepted, relaunching under the debugger');
-    } catch (e) {
-        // The request not returning cleanly does not mean it did not land.
-        say('inject', 'no reply, which usually means it landed anyway');
-    }
-
-    summarise();
-
-    if (!onTv) return hold('inject', 'would exit now and let the debugger take over');
-
-    say('tube', 'handing over to the debugger; this window is about to be replaced');
-    handOver();
-    application.exit();
 };
 
 const useProxy = (state, args) => {

@@ -69,17 +69,18 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 
 ## How it works
 
-**Injection.** Two paths, chosen at launch by asking the service which is
-available. With Developer Mode on, `shell:0 debug <appId>` over the TV's own sdb
-daemon relaunches this app under the Chrome DevTools Protocol, and the
-userscript is evaluated straight into youtube.com with `Page.setBypassCSP` — no
-proxying, no rewriting. With it off, youtube.com is proxied through
-`localhost:8099` so a plain script tag can inject instead; that path rewrites
-media and static hosts and renames the `__Secure-` / `__Host-` cookie prefixes,
-because the page is now plain HTTP. `service/lib/proxy.js` carries that rewrite
-table **unchanged** from the reference — it is empirically derived, every rule
-is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
-diverges.
+**Injection.** youtube.com is proxied through `localhost:8099`, so a plain
+script tag carries the userscript in. That path rewrites media and static hosts
+and renames the `__Secure-` / `__Host-` cookie prefixes, because the page is now
+plain HTTP. `service/lib/proxy.js` carries that rewrite table **unchanged** from
+the reference — it is empirically derived, every rule is load bearing, and
+`service/test/rewrite-parity.js` fails if our output ever diverges.
+
+Attaching over the TV's own sdb daemon instead, and evaluating the script with
+`Page.setBypassCSP`, was the other way in. It is gone: attaching means relaunching
+the app, so the exit is paid before anything is known, and a set that reports a
+reachable daemon and then never attaches — this one — paid it on every launch and
+landed on the proxy regardless.
 
 **One bundle.** Polyfills in a browser bundle are parsed on *every* launch, and
 with the floor at Tizen 5 there is no set left that needs any: core-js, the
@@ -143,14 +144,13 @@ environment variables that nothing in a build sets:
 | `TUBE_PLATFORM_VERSION` | What the loader reports as the set's version when there is no platform to ask. Defaults to `6.5`. One bundle is served whatever it says, so this now only changes what `/__tube/state` reports |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
-Only DIAL discovery and debugger injection need real hardware, and those report
-clearly instead of crashing. Point the dev server at a set with
-`TUBE_TV=192.168.2.9 npm run dev`.
+Only DIAL discovery needs real hardware, and it reports clearly instead of
+crashing. Point the dev server at a set with `TUBE_TV=192.168.2.9 npm run dev`.
 
 `npm run dev:boot` is the other half: the boot screen exists to disappear, so
 looking at it needs a stand-in that answers and never hands over. That is
 `ui/dev/service.js`, and each state `boot.js` can meet is a query string —
-`?boot=debugger`, `?boot=failed`, `?boot=slow`, `?boot=script`.
+`?boot=slow`, `?boot=script`.
 
 The service binds `:8099` either way, so `npm test` and `npm run dev` cannot
 run at the same time; the test suite says so rather than failing obscurely.
@@ -161,10 +161,9 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `mods/features/` | Adblock, SponsorBlock, quality, queueing, subtitles |
 | `mods/ui/` | The settings panel drawn over YouTube's own |
 | `service/index.js` | Routes, and the once-per-launch update check |
-| `service/lib/injector.js` | CDP injection over loopback sdb |
 | `service/lib/proxy.js` | The rewrite table, carried unchanged |
 | `service/lib/loader.js` | Which bundle a TV gets, and from where |
-| `service/lib/ports.js` | 8099 proxy, 8095 DIAL, 26101 sdb, 8001 Smart View |
+| `service/lib/ports.js` | 8099 proxy, 8095 DIAL, 8097 diagnostics |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 

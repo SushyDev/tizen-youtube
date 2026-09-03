@@ -45,11 +45,11 @@
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
     <tizen:profile name="tv-samsung"/>
 
-    <!-- injector.js and dial.js derive this id from the package id, so the suffix must match. -->
+    <!-- dial.js derives this id from the package id, so the suffix must match. -->
     <tizen:service id="tUb3Xq7Lm9.TubeService">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>
-        <tizen:description>Injection, proxy fallback and DIAL discovery.</tizen:description>
+        <tizen:description>The proxy, media streaming and DIAL discovery.</tizen:description>
     </tizen:service>
 
     <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>

@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@patrickkfkan/peer-dial": "^0.1.3",
-    "adbhost": "^0.0.2",
-    "chrome-remote-interface": "^0.25.7",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "googlevideo": "^4.1.1",

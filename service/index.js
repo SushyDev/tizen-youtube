@@ -6,7 +6,6 @@ require('./lib/postmortem.js').watch();
 
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
-const injector = require('./lib/injector.js');
 const proxy = require('./lib/proxy.js');
 const devbridge = require('./lib/devbridge.js');
 const dash = require('./lib/dash.js');
@@ -42,92 +41,26 @@ function maybeCheckForUpdate() {
     );
 }
 
-// Off, because the exit is paid before anything is known: the shell has to close for the
-// relaunch to replace it, so a set where attaching does not work pays the whole cost and
-// lands on the proxy anyway. Measured on a QE65S93DATXXN, which reports a reachable
-// daemon and then never attaches.
-const OFFER_DEBUGGER = false;
-
-// Once per lifetime, not for a minute: the service outlives app launches, so on a set
-// where the debugger never attaches a shorter memory had always expired by the next one,
-// and every start of the app paid for an exit and a relaunch that bought nothing.
-let injectionFailed = false;
-
-function relaunchApp(reason) {
-    injectionFailed = true;
-    injector.stopConnecting();
-    console.error(`Injection failed (${reason}); reopening the app on the proxy path.`);
-
-    if (!isTV) return;
-
-    const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
-    tizen.application.launch(
-        appId,
-        () => console.log('Reopened the app.'),
-        (err) => console.error(`Could not reopen the app: ${err.message}`)
-    );
-}
-
 app.get('/__tube/state', (_, res) => {
     maybeCheckForUpdate();
 
-    injector.canConnectToDaemon().then((state) => {
-        let script = null;
-        try {
-            const resolved = loader.resolve(platformVersion);
-            script = { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
-        } catch (e) {
-            script = { error: e.message };
-        }
-
-        res.json({
-            canInject: OFFER_DEBUGGER && state.canConnectToDaemon,
-            isConnecting: state.isConnecting,
-            injectionFailed,
-            ip: state.ip,
-            platformVersion,
-            variant: loader.variantFor(platformVersion),
-            script,
-
-            proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
-                ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
-                : '')
-        });
-    });
-});
-
-app.get('/__tube/inject', (req, res) => {
-    if (!isTV) {
-        return res.status(501).json({ error: 'Injection needs a TV; this service is running off-device.' });
+    let script = null;
+    try {
+        const resolved = loader.resolve(platformVersion);
+        script = { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
+    } catch (e) {
+        script = { error: e.message };
     }
 
-    const args = req.originalUrl.split('?')[1] || '';
-    const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
+    res.json({
+        platformVersion,
+        variant: loader.variantFor(platformVersion),
+        script,
 
-    // The debug launch has to replace a window that is already gone, so wait for the shell to
-    // exit — and give up, rather than polling for the life of the service.
-    const startedWaiting = Date.now();
-
-    const waitForExit = setInterval(() => {
-        if (Date.now() - startedWaiting > 10000) {
-            clearInterval(waitForExit);
-            return relaunchApp('the app never closed');
-        }
-
-        tizen.application.getAppsContext((contexts) => {
-            if (contexts.some((context) => context.appId === appId)) return;
-
-            clearInterval(waitForExit);
-
-            injector.startDebugger(args).then(
-                // `false` means the daemon refused: a failure even though nothing threw.
-                (attached) => { if (!attached) relaunchApp('sdb would not accept a connection'); },
-                (err) => relaunchApp(err.message)
-            );
-        });
-    }, 50);
-
-    res.json({ ok: true });
+        proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
+            ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
+            : '')
+    });
 });
 
 devbridge.attach(app);
@@ -150,7 +83,7 @@ const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
 app.listen(ports.PROXY, BIND, () => {
     console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
     if (!isTV) {
-        console.log('Running off-TV: proxy and userscript are live; DIAL and injection are disabled.');
+        console.log('Running off-TV: proxy and userscript are live; DIAL is disabled.');
     }
 });
 

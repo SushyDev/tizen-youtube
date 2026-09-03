@@ -1,9 +1,7 @@
 // A television, for styling the boot log against. Each scenario is a real path through
 // `boot.js`, selected by the query string:
 //
-//   /                 developer mode off, the proxy path
-//   /?boot=debugger   developer mode on, injection
-//   /?boot=failed     injection already failed once
+//   /                 the proxy path
 //   /?boot=slow       the service never answers, and it gives up
 //   /?boot=script     the userscript could not be resolved
 
@@ -19,21 +17,9 @@ const BASE = {
 };
 
 const SCENARIOS = {
-    proxy: { ...BASE, canInject: false, isConnecting: false, injectionFailed: false },
+    proxy: { ...BASE },
 
-    debugger: { ...BASE, canInject: true, isConnecting: false, injectionFailed: false },
-
-    failed: { ...BASE, canInject: true, isConnecting: false, injectionFailed: true },
-
-    connecting: { ...BASE, canInject: true, isConnecting: true, injectionFailed: false },
-
-    script: {
-        ...BASE,
-        canInject: false,
-        isConnecting: false,
-        injectionFailed: false,
-        script: { error: 'no cached bundle and the origin is unreachable' }
-    }
+    script: { ...BASE, script: { error: 'no cached bundle and the origin is unreachable' } }
 
     // `slow` is deliberately absent: it is the absence of an answer, handled below.
 };
@@ -62,11 +48,6 @@ const devService = ({ enabled }) => ({
 
             response.setHeader('content-type', 'application/json; charset=utf-8');
             response.setHeader('access-control-allow-origin', '*');
-
-            if (path === '/__tube/inject') {
-                say(`inject requested (${wanted})`);
-                return response.end(JSON.stringify({ ok: true }));
-            }
 
             response.end(JSON.stringify(state));
         });

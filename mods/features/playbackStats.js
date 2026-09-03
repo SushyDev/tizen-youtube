@@ -13,31 +13,48 @@ const MAX_GAP = 2;
 
 const DEFAULT_FPS = 60;
 
-/** What one sample interval adds, in seconds. `reseed` drops the baseline. */
+/**
+ * What one sample interval adds, in seconds. `reseed` drops the baseline.
+ *
+ * Both sides are returned rather than their difference, and the difference is taken over
+ * the totals instead. Charging each sample's shortfall as it happens is what made this
+ * unusable: only lag is charged, nothing credits the samples that catch up, and the
+ * sampling timer's jitter is zero-mean — so summing the shortfalls of a signal whose total
+ * shortfall is zero yields a large positive number.
+ *
+ * Measured against thirty seconds of this television's own playback: the media clock
+ * advanced 29.751s against 29.751s expected — perfect — while the per-sample sum came to
+ * 0.694s, which the old code reported as forty-one dropped frames. The deficit of the
+ * totals is 0.000s. A one-second stall injected into the same data still shows in full.
+ */
 export function account(previous, current) {
-    const none = { played: 0, lost: 0, reseed: false };
+    const none = { played: 0, expected: 0, advanced: 0, reseed: false };
+    const drop = { played: 0, expected: 0, advanced: 0, reseed: true };
 
     // A pause is not lost time and a seek's jump is not progress.
-    if (!current || current.paused || current.seeking) return { played: 0, lost: 0, reseed: true };
+    if (!current || current.paused || current.seeking) return drop;
     if (!previous) return none;
 
     const wall = (current.wall - previous.wall) / 1000;
-    if (wall <= 0 || wall > MAX_GAP) return { played: 0, lost: 0, reseed: true };
+    if (wall <= 0 || wall > MAX_GAP) return drop;
 
     const advanced = current.media - previous.media;
     const expected = wall * (previous.rate || 1);
 
     // A backwards or wildly forward jump is a seek or a loop, whoever asked for it.
-    if (advanced < 0 || advanced > expected * 4) return { played: 0, lost: 0, reseed: true };
+    if (advanced < 0 || advanced > expected * 4) return drop;
 
-    const missing = expected - advanced;
+    return { played: Math.min(advanced, expected), expected, advanced, reseed: false };
+}
 
-    return {
-        played: Math.min(advanced, expected),
-        // Starving counts too: trying to play and not playing is what a viewer notices.
-        lost: missing > TOLERANCE ? missing : 0,
-        reseed: false
-    };
+/**
+ * Time the picture was trying to advance and did not.
+ *
+ * The deficit of the totals: exact, and self-correcting, because a sample that lags and a
+ * sample that catches up cancel — which is what jitter does and what a stall does not.
+ */
+export function lostBy(tally) {
+    return Math.max(0, tally.expected - tally.advanced);
 }
 
 // One tally per element, or the start page's preview lands on the watch player's line.
@@ -46,7 +63,7 @@ const tallies = new WeakMap();
 function tallyFor(video) {
     let tally = tallies.get(video);
     if (!tally) {
-        tally = { played: 0, lost: 0, fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null, rate: 0, rateFrames: 0, rateAt: 0, node: null, label: null, lookedAt: 0 };
+        tally = { played: 0, expected: 0, advanced: 0, fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null, rate: 0, rateFrames: 0, rateAt: 0, node: null, label: null, lookedAt: 0 };
         tallies.set(video, tally);
     }
     return tally;
@@ -58,8 +75,16 @@ const EMA = 0.3;
 const MAX_PLAUSIBLE_FPS = 200;
 
 function measureRate(video, tally, wall) {
-    const quality = video.getVideoPlaybackQuality && video.getVideoPlaybackQuality();
-    if (!quality) return;
+    // The renderer's own count, never the substitute below it. Reading the patched one
+    // meant averaging numbers this module had invented from `fps` moments earlier, so the
+    // figure shown as a measured frame rate reduced algebraically to the rate the player
+    // claimed. Where the renderer counts nothing there is no rate to report, and saying so
+    // is better than laundering a claim.
+    const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
+    const real = proto && proto.getVideoPlaybackQuality;
+    const quality = real ? real.call(video) : null;
+
+    if (!quality || !quality.totalVideoFrames) return;
 
     const frames = quality.totalVideoFrames;
     const elapsed = wall - tally.rateAt;
@@ -105,6 +130,8 @@ const CORRECTED = {
 
 /** The value beside a label, when the panel has written that row. */
 function valueBeside(label) {
+    if (!searchable()) return null;
+
     const all = document.querySelectorAll('div');
 
     for (let i = 0; i < all.length; i++) {
@@ -148,7 +175,13 @@ function correctRows(video) {
     });
 }
 
+// Off the television this file is imported for its accounting alone, where there is no
+// document to search.
+const searchable = () => typeof document !== 'undefined' && !!document.querySelectorAll;
+
 function framesNode() {
+    if (!searchable()) return null;
+
     const all = document.querySelectorAll('div, span, pre');
     for (let i = 0; i < all.length; i++) {
         const node = all[i];
@@ -168,9 +201,25 @@ function pipelineOf(video) {
     return String(video.currentSrc || '').indexOf('/dash/') !== -1 ? 'enhanced' : 'default';
 }
 
-function showRate(video, tally, wall) {
-    if (!tally.rate) return;
+/**
+ * What this module can honestly say about playback.
+ *
+ * Where the renderer counts frames, the rate is measured and the panel's own dropped-of
+ * row is the truth. Where it counts nothing — which is this television, because
+ * `use.game.mode` is left out of config.xml after it was found to drop frames — there is no
+ * frame count to be had. What can be measured is *time*: how long the picture failed to
+ * advance while it was trying to. That is the number reported, in the units it was
+ * measured in, rather than multiplied by an assumed rate into frames nobody dropped.
+ */
+function said(tally) {
+    if (tally.rate) return `@ ${tally.rate.toFixed(2)} fps`;
 
+    // Sub-second precision would suggest a confidence this does not have.
+    const lost = lostBy(tally);
+    return lost >= 0.05 ? `~${lost.toFixed(1)}s lost` : '~no time lost';
+}
+
+function showRate(video, tally, wall) {
     if (!tally.node || !tally.node.isConnected) {
         if (wall - tally.lookedAt < FIND_EVERY) return;
         tally.lookedAt = wall;
@@ -185,7 +234,7 @@ function showRate(video, tally, wall) {
         tally.node.parentNode.insertBefore(tally.label, tally.node.nextSibling);
     }
 
-    tally.label.textContent = `  @ ${tally.rate.toFixed(2)} fps · ${pipelineOf(video)} player`;
+    tally.label.textContent = `  ${said(tally)} · ${pipelineOf(video)} player`;
 
     correctRows(video);
 }
@@ -229,7 +278,8 @@ export function sample(video) {
 
     const step = account(tally.previous, current);
     tally.played += step.played;
-    tally.lost += step.lost;
+    tally.expected += step.expected;
+    tally.advanced += step.advanced;
     frameRate(video, tally);
     measureRate(video, tally, current.wall);
     showRate(video, tally, current.wall);
@@ -264,7 +314,8 @@ function watch(video) {
     const restart = () => {
         stop();
         tally.played = 0;
-        tally.lost = 0;
+        tally.expected = 0;
+        tally.advanced = 0;
         tally.width = -1;
         tally.height = -1;
         tally.rate = 0;
@@ -306,7 +357,7 @@ export function install() {
         watch(this);
 
         const tally = tallyFor(this);
-        const dropped = Math.round(tally.lost * tally.fps);
+        const dropped = Math.round(lostBy(tally) * tally.fps);
 
         return {
             creationTime: real.creationTime,

@@ -34,17 +34,9 @@ const ASK_AS_VERSION = '';
 // made is the only way to have the right one without parsing that script.
 let timestamp = 0;
 
-// The attestation the page minted, which is the other half of the answer. Signed out, a
-// request carrying one is offered the ordinary ladder and a request without one is offered
-// the encrypted set — measured on the set, four videos in a row:
-//
-//     with a 102-byte token  →  34 indexed, abr offered
-//     with no token          →  19, 21, 33 formats, all OTF, all DRM
-//
-// The page mints one at startup and attaches it to the first player request it makes. Every
-// request after that goes out without it, so the video someone actually chooses is the one
-// that comes back unplayable.
-let attestation = null;
+// Said once: the rewrite runs on every player request and a line each would bury the
+// journal in one sentence.
+let announced = false;
 
 const wanted = () => {
     try {
@@ -60,43 +52,48 @@ const isPlayerRequest = (body) => Boolean(body
     && body.videoId
     && !body.licenseRequest);
 
+/**
+ * Repairs a player request that is missing the signature timestamp.
+ *
+ * Removing the proof-of-origin token was tried here, on a measurement that showed the
+ * encrypted ladder arriving with the field present and the ordinary one with it absent —
+ * four times in a row, same video, same minute, through the app's own credentials. It does
+ * not replicate: repeated later, the same body gave the encrypted ladder ten times out of
+ * ten either way. The window that produced it was not something this code controlled, and
+ * most likely belonged to a different account being signed in at the time.
+ *
+ * So nothing is taken out. What is known about the encrypted ladder is in
+ * docs/formats-and-tokens.md, and none of it is reachable from here.
+ */
 onRequest('playerRequest', ['videoId', 'context'], (body) => {
     if (!isPlayerRequest(body)) return undefined;
 
     const playback = body.playbackContext || {};
     const content = playback.contentPlaybackContext || {};
 
-    const integrity = body.serviceIntegrityDimensions || {};
-
-    // The page does send both, on some of its requests. Remembering them is what lets the
-    // rest be repaired.
+    // The timestamp belongs to the player script the page is running, so it is remembered
+    // from a request the page made rather than invented.
     if (content.signatureTimestamp) timestamp = content.signatureTimestamp;
-    if (integrity.poToken) attestation = integrity.poToken;
 
     if (!wanted()) return undefined;
 
     const client = body.context.client || {};
     const needsTime = !content.signatureTimestamp && timestamp;
-    const needsToken = !integrity.poToken && attestation;
     const needsVersion = ASK_AS_VERSION && client.clientVersion !== ASK_AS_VERSION;
 
-    if (!needsTime && !needsToken && !needsVersion) return undefined;
+    if (!needsTime && !needsVersion) return undefined;
 
-    note('innertube', `repairing ${body.videoId}: adding ${needsTime ? 'timestamp' : ''}`
-        + `${needsTime && needsToken ? ' and ' : ''}${needsToken ? 'attestation' : ''}`);
+    if (!announced) {
+        announced = true;
+        note('innertube', `repairing player requests with signatureTimestamp ${timestamp}`);
+    }
 
-    // A copy: the request is the player's, and it holds its own references to what it
-    // passed in.
     const repaired = Object.assign({}, body);
 
     if (needsTime) {
         repaired.playbackContext = Object.assign({}, playback, {
             contentPlaybackContext: Object.assign({}, content, { signatureTimestamp: timestamp })
         });
-    }
-
-    if (needsToken) {
-        repaired.serviceIntegrityDimensions = Object.assign({}, integrity, { poToken: attestation });
     }
 
     if (needsVersion) {
@@ -113,10 +110,6 @@ export function knownTimestamp() {
     return timestamp;
 }
 
-/** Whether an attestation has been seen this session. */
-export function haveAttestation() {
-    return Boolean(attestation);
-}
 
 /**
  * Drops media the app cannot play, so it goes and asks for media it can.

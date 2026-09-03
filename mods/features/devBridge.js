@@ -6,7 +6,12 @@ import { configRead, configChangeEmitter } from '../config.js';
 
 const INTERVAL = 1000;
 
+// Commands are looked for more often than readings are pushed: a reading every second is
+// plenty, but waiting a second to be asked a question makes an hour of poking unbearable.
+const LISTEN_EVERY = 200;
+
 let timer = null;
+let listener = null;
 
 const servedByService = () => /^http:\/\/localhost:\d+$/.test(window.location.origin);
 
@@ -67,17 +72,67 @@ function reading() {
 // What the last evaluate returned, carried out in the reading.
 let lastEval = null;
 
+// How long to wait on an expression that answers with a promise. Most of what is worth
+// asking this page is asynchronous — a request, a decode, a frame — and making every
+// question a two-step dance through a global was most of the friction in using this.
+const AWAIT_FOR = 25000;
+
+/** Whatever it returned, resolved if it needs resolving, and always answered. */
+function settle(value) {
+    if (!value || typeof value.then !== 'function') return Promise.resolve(value);
+
+    return Promise.race([
+        Promise.resolve(value),
+        new Promise((_, fail) => setTimeout(() => fail(new Error('timed out waiting for a promise')), AWAIT_FOR))
+    ]);
+}
+
+/** Said as text, without throwing on something that cannot be stringified. */
+function describe(value) {
+    if (typeof value === 'undefined') return 'undefined';
+
+    try {
+        return JSON.stringify(value);
+    } catch (e) {
+        try {
+            return String(value);
+        } catch (also) {
+            return '[unprintable]';
+        }
+    }
+}
+
+function answer(id, source, outcome) {
+    lastEval = Object.assign({ source }, outcome);
+
+    if (!id) return;
+
+    fetch('/__tube/dev/result', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(Object.assign({ id }, outcome))
+    }).catch(() => { /* nothing waiting for it */ });
+}
+
 function collect() {
     fetch('/__tube/dev/commands')
         .then((response) => response.json())
         .then((body) => (body.commands || []).forEach((command) => {
             if (command.action !== 'eval') return;
+
+            let value;
             try {
-                const value = eval(command.source);
-                lastEval = { source: command.source, value: JSON.stringify(value) };
+                // eslint-disable-next-line no-eval
+                value = eval(command.source);
             } catch (e) {
-                lastEval = { source: command.source, error: String(e && e.message) };
+                answer(command.id, command.source, { error: String(e && e.message || e) });
+                return;
             }
+
+            settle(value).then(
+                (settled) => answer(command.id, command.source, { value: describe(settled) }),
+                (failure) => answer(command.id, command.source, { error: String(failure && failure.message || failure) })
+            );
         }))
         .catch(() => { /* the service is not answering */ });
 }
@@ -102,7 +157,10 @@ function apply(enabled) {
         .catch(() => { /* nothing to report to */ });
 
     clearInterval(timer);
-    timer = enabled ? setInterval(() => { push(); collect(); }, INTERVAL) : null;
+    clearInterval(listener);
+
+    timer = enabled ? setInterval(push, INTERVAL) : null;
+    listener = enabled ? setInterval(collect, LISTEN_EVERY) : null;
 }
 
 apply(configRead('enableDevBridge'));

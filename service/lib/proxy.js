@@ -250,7 +250,30 @@ const TELLING = [
     'content-type', 'user-agent', 'cookie'
 ];
 
+// DEV INSTRUMENTATION — temporary, remove before release.
+//
+// The credentials the app's own player calls carry. Held so a question can be asked with
+// exactly the identity the app has, which is the only way to test the authenticated path:
+// the page's transport attaches these from inside the bundle, and nothing in the page can
+// reach it. Never sent anywhere but back to YouTube, and never read out over the bridge.
+const credentials = { at: 0, headers: null };
+
+function keepCredentials(headers) {
+    if (!headers.authorization) return;
+
+    credentials.at = Date.now();
+    credentials.headers = {};
+
+    ['authorization', 'cookie', 'x-goog-authuser', 'x-goog-pageid', 'x-goog-visitor-id',
+        'x-youtube-client-name', 'x-youtube-client-version', 'x-youtube-bootstrap-logged-in',
+        'user-agent', 'origin', 'referer', 'content-type'].forEach((name) => {
+        if (headers[name] !== undefined) credentials.headers[name] = headers[name];
+    });
+}
+
 function notePlayerCall(headers, buffer) {
+    keepCredentials(headers);
+
     try {
         const body = JSON.parse(buffer.toString('utf8'));
         if (!body.videoId || body.licenseRequest) return;
@@ -407,6 +430,37 @@ function attachFallback(app) {
     return app;
 }
 
+/**
+ * Asks YouTube something as the app itself.
+ *
+ * DEV only. `path` is an innertube path and `body` the request; the credentials the app's
+ * own player last used are attached. Without this the authenticated path cannot be varied
+ * at all — a request made from the page carries cookies but no bearer, which is a different
+ * client as far as YouTube is concerned and is answered differently.
+ */
+function asPlayer(path, body) {
+    if (!credentials.headers) return Promise.resolve({ error: 'no player call seen yet — open a video first' });
+
+    const headers = Object.assign({}, credentials.headers, {
+        'content-type': 'application/json',
+        host: 'www.youtube.com',
+        'accept-encoding': 'gzip, deflate'
+    });
+
+    return fetch(`https://www.youtube.com${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        agent: agentFor('https://www.youtube.com')
+    })
+        .then((response) => response.text().then((text) => ({ status: response.status, text })))
+        .catch((error) => ({ error: error.message }));
+}
+
+/** How old the held credentials are, so a caller knows whether to expect them to work. */
+const credentialsAge = () => (credentials.headers ? Date.now() - credentials.at : null);
+
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes
+    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
+    asPlayer, credentialsAge
 };

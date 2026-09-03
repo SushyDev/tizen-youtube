@@ -11,6 +11,7 @@ const cors = require('cors');
 const ports = require('./ports.js');
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
+const proxy = require('./proxy.js');
 const sabr = require('./sabr.js');
 
 // Readings older than this say so rather than being served as if current.
@@ -26,6 +27,45 @@ let server = null;
 let latest = null;
 let receivedAt = 0;
 let queue = [];
+
+// Answers waiting to be collected, by the id of the question. An asker that has given up
+// leaves one behind, so they are dropped once they are older than anyone would wait.
+const answers = new Map();
+const ANSWER_KEPT = 60000;
+
+function forget() {
+    const now = Date.now();
+    answers.forEach((held, id) => {
+        if (now - held.at > ANSWER_KEPT) answers.delete(id);
+    });
+}
+
+/** Asks the page something and waits for what it says. */
+function ask(source, seconds) {
+    const id = crypto.randomBytes(8).toString('hex');
+    const deadline = Date.now() + (Math.min(Number(seconds) || 30, 120) * 1000);
+
+    queue.push({ action: 'eval', source, id });
+
+    return new Promise((resolve) => {
+        const look = () => {
+            const held = answers.get(id);
+            if (held) {
+                answers.delete(id);
+                return resolve(held.answer);
+            }
+
+            if (Date.now() > deadline) {
+                return resolve({ id, error: 'the page did not answer — is it open, with diagnostics on?' });
+            }
+
+            setTimeout(look, 50);
+            return undefined;
+        };
+
+        look();
+    });
+}
 
 /** The page's half, on this service's origin. Registered before the proxy's catch-all. */
 function attach(app) {
@@ -45,6 +85,17 @@ function attach(app) {
         const pending = queue;
         queue = [];
         res.json({ commands: pending });
+    });
+
+    // The page answering a question it was asked. Kept by id so an answer reaches whoever
+    // asked rather than being matched by comparing the source text, which two questions
+    // asked in the same second could both claim.
+    app.post('/__tube/dev/result', express.json({ limit: '4mb' }), (req, res) => {
+        const answer = req.body || {};
+        if (answer.id) answers.set(String(answer.id), { at: Date.now(), answer });
+
+        forget();
+        res.json({ received: true });
     });
 
     // The app opens and closes it; nothing on the network can.
@@ -140,6 +191,32 @@ function start() {
                 classFields: compiles('return class { #x = 1; get x() { return this.#x; } }')
             }
         });
+    });
+
+    // One question, one answer, on one connection. Everything else here reads a reading
+    // pushed on a timer; this waits for the page to actually run something and say what it
+    // returned — including when what it returns is a promise.
+    app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), (req, res) => {
+        if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
+
+        const source = String(req.body || '').trim();
+        if (!source) return res.status(400).json({ error: 'nothing to evaluate' });
+
+        return ask(source, req.query.seconds).then((answer) => res.json(answer));
+    });
+
+    // DEV: ask YouTube something with the app's own identity. The page cannot do this —
+    // its fetch carries cookies but no bearer, which YouTube answers as a different client.
+    app.post('/asplayer', express.json({ limit: '1mb' }), (req, res) => {
+        if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
+
+        const path = String((req.body || {}).path || '/youtubei/v1/player?prettyPrint=false');
+        const body = (req.body || {}).body;
+        if (!body) return res.status(400).json({ error: 'no body' });
+
+        return proxy.asPlayer(path, body).then((answer) => res.json(
+            Object.assign({ credentialsAgeMs: proxy.credentialsAge() }, answer)
+        ));
     });
 
     app.get('/stats', (_, res) => res.json(snapshot()));

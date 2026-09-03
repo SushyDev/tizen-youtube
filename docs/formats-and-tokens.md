@@ -442,9 +442,21 @@ cookie the request carried.
 off a setting, so a minifier drops it rather than skipping it:
 
 ```
-with the tooling     117.2 kB
-without it            97.6 kB     no reference left to any dev endpoint
+with the tooling    118.7 kB
+without it           98.9 kB     no reference left to any dev endpoint
 ```
+
+So there is nothing to fork. The same commit builds either, and the one to hand somebody is
+the one built without the flag:
+
+```
+npm run package -- --unsigned          for a tester, through Tizen Homebrew
+TUBE_DEV=1 npm run package -- --unsigned   to keep the bridge and drive it from .dev/
+```
+
+Checked by grepping the built bundle for `__tube/dev/commands`, `__tube/dev/report`,
+`__tube/dev/log`, `playerProbe` and the debug token: none of them appear in a build made
+without the flag.
 
 The service half follows: its journal is written only while the bridge is open, and the
 bridge opens only when the page asks for it — which a build without the tooling never does,

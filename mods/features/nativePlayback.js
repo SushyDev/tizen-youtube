@@ -24,15 +24,57 @@ const DESCRIPTIONS = {
     dash: 'manifest.mpd'
 };
 
-function describedAs() {
+// Beyond this the set will not play a plain file at all — it asks for the first chunk and
+// then consumes nothing, with no error to notice. Measured by bisection on the television:
+// 553MB plays, 684MB does not. So a video too large for one is described as a manifest
+// instead, which has no such limit, and the viewer gets a picture rather than a black
+// screen. The number is the service's; this is the same one, because the choice of address
+// has to be made before the service is asked anything.
+const PLAIN_FILE_LIMIT = 600 * 1024 * 1024;
+
+// Roughly how large each video would be as one plain file, worked out from the response
+// that named its formats — which the page holds well before the player asks for an address,
+// where the size the service could report arrives too late to decide anything.
+const plainFileBytes = new Map();
+
+/** What one format weighs, said outright where the response says it and estimated where not. */
+const weigh = (format, durationMs) => Number(format.contentLength)
+    || Math.round(((format.bitrate || 0) / 8) * (durationMs / 1000));
+
+function noteSize(request) {
+    const ceiling = asked.get(request.videoId) || preferredHeight();
+    const formats = request.formats || [];
+
+    // The same order the service picks in, near enough for a limit measured in hundreds of
+    // megabytes: the tallest mp4 picture within the ceiling, and the heaviest mp4 sound.
+    const video = formats
+        .filter((one) => /^video\/mp4/.test(one.mimeType || '') && one.height
+            && (!ceiling || one.height <= ceiling))
+        .sort((a, b) => (b.height - a.height) || ((b.fps || 0) - (a.fps || 0)))[0];
+
+    const audio = formats
+        .filter((one) => /^audio\/mp4/.test(one.mimeType || ''))
+        .sort((a, b) => weigh(b, request.durationMs) - weigh(a, request.durationMs))[0];
+
+    plainFileBytes.set(request.videoId,
+        (video ? weigh(video, request.durationMs) : 0) + (audio ? weigh(audio, request.durationMs) : 0));
+}
+
+function describedAs(videoId) {
+    let wanted;
     try {
-        return DESCRIPTIONS[configRead('nativePlaybackContainer')] || DESCRIPTIONS.dash;
+        wanted = DESCRIPTIONS[configRead('nativePlaybackContainer')] || DESCRIPTIONS.dash;
     } catch (e) {
         return DESCRIPTIONS.dash;
     }
+
+    if (wanted !== DESCRIPTIONS.mp4) return wanted;
+
+    const bytes = plainFileBytes.get(videoId) || 0;
+    return bytes > PLAIN_FILE_LIMIT ? DESCRIPTIONS.dash : wanted;
 }
 
-const manifestFor = (videoId) => `${service()}/by-video/${encodeURIComponent(videoId)}/${describedAs()}`;
+const manifestFor = (videoId) => `${service()}/by-video/${encodeURIComponent(videoId)}/${describedAs(videoId)}`;
 
 // Where the player means to begin, by video: a part-watched one resumes where it was left.
 const resumeAt = new Map();
@@ -621,6 +663,8 @@ if (typeof window !== 'undefined') {
         // answer — the service holds that request until the stream behind it is ready.
         opened.set(request.videoId, null);
         handedAt.delete(request.videoId);
+
+        noteSize(request);
 
         note('player', `response for ${request.videoId}: ${request.formats.length} formats, `
             + `${Math.round(request.durationMs / 1000)}s, asked ${asked.get(request.videoId) || 'none'}, `

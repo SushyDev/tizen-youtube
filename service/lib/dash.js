@@ -175,7 +175,13 @@ function describe(session) {
         videoId: session.videoId,
         durationMs: session.durationMs,
         video: track(session.tracks.video),
-        audio: track(session.tracks.audio)
+        audio: track(session.tracks.audio),
+
+        // Whether this one can be served as a plain file. Roughly, since the head is a
+        // couple of kilobytes against hundreds of megabytes of media.
+        plainFileBytes: [session.tracks.video, session.tracks.audio]
+            .reduce((total, one) => total + (one.index || [])
+                .reduce((bytes, segment) => bytes + (segment.end - segment.start + 1), 0), 0)
     };
 }
 
@@ -211,6 +217,11 @@ function attach(app) {
     // against the session that answered.
     app.get('/dash/by-video/:videoId/progressive.mp4', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
+            // Answering this with a redirect to the manifest was tried, for a file too
+            // large to play as one — and refused: the set commits to reading an MP4 from
+            // the address it was given and will not take a manifest in its place. So the
+            // choice belongs to the page, which makes it from the sizes the player response
+            // carries. This stays a plain file or nothing.
             (session) => res.redirect(302, `/dash/${session.id}/progressive.mp4`),
             (error) => res.status(404).send(error.message)
         );
@@ -300,6 +311,19 @@ function attach(app) {
     // first of them arrives promptly.
     const MAX_SPAN = 24 * 1024 * 1024;
 
+    // (declared above the routes so both the by-video redirect and the file itself use it)
+    // How large a plain file this television will play at all.
+    //
+    // Measured by bisection, opening the same videos at different rungs: 63MB, 205MB,
+    // 221MB, 385MB and 553MB all play; 684MB, 971MB and 1135MB never start — the set asks
+    // for the first chunk, the service delivers it, and the element consumes nothing and
+    // reports nothing. Fragment size is not what decides it: one file plays with 9.0MB
+    // fragments and another fails with 9.6MB and three times the total.
+    //
+    // So the size is known before anything is handed over, and a file over it is not
+    // offered. The page asks for a manifest instead, which has no such limit.
+    const MAX_FILE = 600 * 1024 * 1024;
+
     const described = new Map();
 
     // Which request for a session is the live one. A seek makes the set open another before
@@ -347,6 +371,12 @@ function attach(app) {
         }
 
         if (!shape) return res.status(404).end();
+
+        if (shape.total > MAX_FILE) {
+            journal.service('progressive', `${session.id}: ${Math.round(shape.total / 1048576)}MB `
+                + 'is more than this set will play as a plain file; ask for the manifest');
+            return res.status(413).end();
+        }
 
         const asked = mux.rangeOf(req.get('range'), shape.total);
 

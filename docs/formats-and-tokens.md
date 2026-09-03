@@ -331,20 +331,47 @@ app appears faster because it starts on a low rung and climbs, where this commit
 top rung immediately. Closing that gap means offering more than one representation and
 letting the platform adapt, which is a real feature rather than a tuning change.
 
-## DASH and HLS
+## Three ways to describe the same stream
 
-The same segments, described two ways, both handed over as a plain URL and both played by
-the set's own pipeline. Judged on the television:
+The same segments, described three ways, all handed over as a plain URL and all played by
+the set's own pipeline rather than through MediaSource. Judged on the television:
 
-| | Startup, warm | Watching it |
-|---|---|---|
-| DASH | 6–14 s | smooth |
-| HLS | **0.8 s** | juddery, dropping frames |
+| | Startup, cold | Watching it | Seeking |
+|---|---|---|---|
+| DASH | 7.1 s | smooth on some videos, not on others | ~20 s, recovers |
+| HLS | **0.8 s** warm | juddery, dropping frames | untested |
+| Plain file | 9.0 s | **clean on the video that shows drops most plainly** | exact, instant |
 
 HLS commits far faster — a VOD playlist can be read end to end, where an MPD leaves the set
-working out what it has — and it presents worse. So DASH is what ships and HLS is offered
-beside it under Playback › Stream description, for the next set, and for whoever wants to
-measure the trade rather than take this on trust.
+working out what it has — and it presents worse.
+
+The plain file has no description at all: no manifest, no playlist, nothing for the set to
+parse and decide about. It is handed bytes and plays them, and it is the only one of the
+three that plays the judder test cleanly. Its cost is about two seconds more to start,
+because the muxer must have both tracks' initialisation segments *and* the first fragments,
+in order, before a byte goes out, where a manifest lets the set fetch them in parallel.
+
+### What the plain file can and cannot carry
+
+Measured by bisection, opening the same videos at different rungs:
+
+```
+plays:  63MB · 205MB · 221MB · 385MB · 553MB
+fails:  684MB · 971MB · 1135MB
+```
+
+Over roughly six hundred megabytes the set asks for the first chunk, the service delivers
+it, and the element consumes nothing and reports nothing — no error, no retry, no picture.
+Fragment size is not what decides it: one file plays with 9.0MB fragments and another fails
+with 9.6MB and three times the total. Neither is HDR: an HDR video plays as a plain file at
+1080p and at 1440p, and fails at 2160p, where the same video is 926MB.
+
+So the page works the size out from the `contentLength` the player response already carries
+and asks for a manifest instead when a plain file would be too large. It has to be decided
+there: the element asks for an address the moment the response lands, before the service has
+been told anything, and answering the address with a redirect to the manifest does not work
+— the set commits to reading an MP4 from the address it was given and will not take a
+manifest in its place.
 
 Two things about HLS confuse a measurement taken on it. It reports the whole remaining
 playlist as buffered — two hundred seconds at the start of a five-minute video — so the

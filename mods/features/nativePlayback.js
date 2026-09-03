@@ -93,14 +93,21 @@ export function startsAt(videoId, seconds) {
  * the seek lands. MediaSource never showed that, because the player only ever gave it the
  * segments around the position it wanted.
  */
+/**
+ * Where the page says this video begins, and nothing else.
+ *
+ * The player's own clock used to be taken as well, as the larger of the two, to catch a
+ * resume the page had not announced. At the moment a video is opened that clock still holds
+ * the *previous* state: replaying a video that has just finished reads fifty-two seconds
+ * off it and moves the download to the last segment, while the element starts from the
+ * beginning and waits for a segment nothing is fetching. Watched on the television, a
+ * replay stopped at 1.46 seconds and stayed there.
+ *
+ * So only what the page said. A resume it does not announce costs the wait it always cost —
+ * the download reaching that point on its own — rather than a video that never plays.
+ */
 function startsFrom(videoId) {
-    let at = resumeAt.get(videoId) || 0;
-    try {
-        at = Math.max(at, player().getCurrentTime() || 0);
-    } catch (e) {
-        // The player has not got that far; whatever the page said stands.
-    }
-
+    const at = resumeAt.get(videoId) || 0;
     return at > 1 ? at : 0;
 }
 

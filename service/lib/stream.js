@@ -30,14 +30,14 @@ const INDEX_WAIT = 10000;
 // hundreds of megabytes while it decodes 2160p60.
 const READ_AHEAD = 10;
 
-// And how much of the disk that window may take.
+// Budgeting that window in bytes rather than segments was tried, at forty-eight megabytes,
+// so that ten segments of 2160p60 HDR could not put a hundred and fifty on the disk. It
+// stops the download partway through a file the plain-file path is serving in one
+// response: a sixty-three megabyte video hesitated hard at about thirty-nine seconds, which
+// is where forty-eight megabytes of it falls, and repeated retries left playback at zero.
 //
-// Counting segments alone means the window is whatever the bitrate makes it: ten segments
-// of 1080p is thirty megabytes, and ten of 2160p60 HDR is a hundred and fifty — on a set
-// that is decoding 2160p60 at the same time. The count still applies, but this decides
-// first, so the window is about as large in bytes wherever it is opened, and a video the
-// television cannot spare the room for simply reads less far ahead.
-const AHEAD_BYTES = 48 * 1024 * 1024;
+// The count alone, then, until the window can be bounded without starving a reader that is
+// already past it.
 
 // What it is allowed to get ahead by at the very beginning. Without this the download runs
 // flat out for the first ten seconds — saturating the link and writing several megabytes a
@@ -158,35 +158,9 @@ class Track {
         }
     }
 
-    /**
-     * How many segments ahead this track may run, from where the download has reached.
-     *
-     * Whichever is smaller: a fixed number of them, or as many as fit in the byte budget.
-     * Sizes come from the index, so this is known without having fetched any of them.
-     */
-    get allowedAhead() {
-        if (!this.index) return READ_AHEAD;
-
-        let bytes = 0;
-        let count = 0;
-
-        for (let at = 0; at < this.index.length && count < READ_AHEAD; at++) {
-            const segment = this.index[at];
-            if (segment.number < this.next) continue;
-
-            bytes += segment.end - segment.start + 1;
-            if (bytes > AHEAD_BYTES) break;
-            count += 1;
-        }
-
-        // At least one, or a video whose segments are each larger than the whole budget
-        // would never fetch anything.
-        return Math.max(1, count);
-    }
-
     /** Whether a segment will arrive on its own before long, or needs the stream moved. */
     reachable(number) {
-        return number >= this.next && number <= this.next + this.allowedAhead;
+        return number >= this.next && number <= this.next + READ_AHEAD;
     }
 
     file(number) {
@@ -268,7 +242,7 @@ class Track {
         // Measured from where the download has reached, not from the highest segment ever
         // held: after a seek backwards the old high numbers are still on disk and would say
         // the download is far ahead of a player that has gone back behind it.
-        const allowed = Math.min(this.allowedAhead, READ_AHEAD_AT_FIRST + this.behind);
+        const allowed = Math.min(READ_AHEAD, READ_AHEAD_AT_FIRST + this.behind);
         return this.next - this.behind >= allowed;
     }
 
@@ -903,7 +877,7 @@ async function clean() {
 }
 
 module.exports = {
-    AHEAD_BYTES, HEAD_BYTES, IDLE_TIMEOUT, KEEP_BEHIND, MEDIA_DIR, READ_AHEAD, READ_AHEAD_AT_FIRST,
+    HEAD_BYTES, IDLE_TIMEOUT, KEEP_BEHIND, MEDIA_DIR, READ_AHEAD, READ_AHEAD_AT_FIRST,
     SEGMENT_WAIT, SWEEP_INTERVAL, Track,
     align, awaitVideo, busy, clean, close, fill, indexed, locate, open, pick, sessions, span, stateFor, sweep
 };

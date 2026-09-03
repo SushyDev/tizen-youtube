@@ -370,6 +370,15 @@ Fragment size is not what decides it: one file plays with 9.0MB fragments and an
 with 9.6MB and three times the total. Neither is HDR: an HDR video plays as a plain file at
 1080p and at 1440p, and fails at 2160p, where the same video is 926MB.
 
+Retested after the file was made to read in time order, the chunking removed and the
+pre-seek corrected — all of which were candidates for it. It is none of them: a
+nine-hundred-megabyte file still asks for itself over and over and never plays. The limit
+is the set's, and it stands.
+
+That is what keeps 2160p60 HDR off the smooth path, since those are the largest files there
+are. The same video at 1440p is 553MB and plays as a plain file; at 2160p it is 926MB and
+does not.
+
 So the page works the size out from the `contentLength` the player response already carries
 and asks for a manifest instead when a plain file would be too large. It has to be decided
 there: the element asks for an address the moment the response lands, before the service has

@@ -226,7 +226,7 @@ Every instrument was tried, on the set, while a 2160p60 stream played from our o
 | `webkitDecodedFrameCount` / `webkitDroppedFrameCount` | `0` |
 | `webkitVideoDecodedByteCount` | `0` |
 | `requestVideoFrameCallback` | exists, fires zero times in five seconds |
-| canvas `drawImage` + `getImageData` | **tainted**, on a same-origin stream |
+| canvas `drawImage` + `getImageData` | readable with `crossOrigin`, and every pixel black |
 | `captureStream()` | **hangs the page**; readings stop and only a restart recovers it |
 | `webapis` | one key, the ad framework — `$WEBAPIS/…/webapis.js` cannot resolve from an http origin |
 | every vendor-prefixed member of the element | nothing but the two zeroed counters above |
@@ -236,11 +236,19 @@ They all fail for one reason. On this path the picture never enters the web engi
 platform decodes to a hardware overlay and scans it out to the panel. There are no frames
 in the engine to count, no pixels for a canvas to read, and no callback to fire.
 
-The canvas is the proof. The same probe, on the same page, against the *default* player —
-where MediaSource makes the engine do the decoding — captures happily at 60.2 Hz and taints
-nothing. Point it at the enhanced player and it is refused as cross-origin data on a stream
-served from `http://localhost:8099` to a page on `http://localhost:8099`. It is not
-CORS; it is that the picture is not the engine's to give.
+The canvas is the proof, and it took two attempts to read correctly. Against the enhanced
+player it is first refused as cross-origin data — on a stream served from
+`http://localhost:8099` to a page on `http://localhost:8099`, which is not how CORS works
+and should have been the clue. Asking for it with `crossOrigin="anonymous"` clears the
+refusal: the canvas can be read. It comes back black. A probe playing the same stream,
+decoding, at 5.15 seconds, sampled two hundred and thirty-five times across four seconds:
+every pixel zero, not one frame different from the last.
+
+So it is not permission and never was. The frames are not in the engine to be read — the
+picture goes decoder, hardware overlay, panel, and the compositor never hands it to the
+page. Which is the same reason it is smooth, and the same reason nothing counts it. The
+same probe against the *default* player, where MediaSource makes the engine do the
+decoding, captures happily at 60.2 Hz.
 
 So on the enhanced path there is no count to be had from inside the page, and the honest
 instruments are the media clock — which cannot see a dropped frame, since the clock does not

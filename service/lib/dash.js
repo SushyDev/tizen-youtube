@@ -8,6 +8,7 @@
 const express = require('express');
 const { createReadStream } = require('fs');
 
+const hls = require('./hls.js');
 const journal = require('./journal.js');
 const sabr = require('./sabr.js');
 const stream = require('./stream.js');
@@ -206,6 +207,15 @@ function attach(app) {
     // has to, because the player asks for one the moment the response lands. This waits,
     // then points at the real thing, so every relative URL inside the manifest resolves
     // against the session that answered.
+    // The same wait, for a set being handed HLS instead. Which description the page asks
+    // for is the page's choice; both point at the same segments.
+    app.get('/dash/by-video/:videoId/master.m3u8', (req, res) => {
+        stream.awaitVideo(req.params.videoId).then(
+            (session) => res.redirect(302, `/dash/${session.id}/master.m3u8`),
+            (error) => res.status(404).send(error.message)
+        );
+    });
+
     app.get('/dash/by-video/:videoId/manifest.mpd', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
             (session) => res.redirect(302, `/dash/${session.id}/manifest.mpd`),
@@ -233,6 +243,32 @@ function attach(app) {
 
         res.setHeader('Content-Type', 'application/dash+xml');
         res.send(manifest(session));
+    });
+
+    app.get('/dash/:id/master.m3u8', (req, res) => {
+        const session = find(req, res);
+        if (!session) return;
+
+        if (!session.ready) return res.status(503).send('the stream is still opening');
+
+        const playlist = hls.master(session);
+        if (!playlist) return res.status(404).end();
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        return res.send(playlist);
+    });
+
+    app.get('/dash/:id/:kind.m3u8', (req, res) => {
+        const session = find(req, res);
+        if (!session) return;
+
+        if (!session.ready) return res.status(503).send('the stream is still opening');
+
+        const playlist = hls.media(session, req.params.kind);
+        if (!playlist) return res.status(404).end();
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        return res.send(playlist);
     });
 
     // One track as a plain file, for a browser that will not parse a manifest. Desktop

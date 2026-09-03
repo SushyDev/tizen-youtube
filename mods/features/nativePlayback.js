@@ -16,7 +16,17 @@ const service = () => `${window.location.origin}/dash`;
 // Where the player is pointed, from the first moment it asks. The stream behind it is still
 // opening then, so the service holds the request — a short wait reads as loading, where
 // playing something else first and swapping reads as a black screen and a spinner.
-const manifestFor = (videoId) => `${service()}/by-video/${encodeURIComponent(videoId)}/manifest.mpd`;
+// Which description to hand over. Read at each hand-out rather than once, so changing it
+// takes effect on the next video instead of the next launch.
+function describedAs() {
+    try {
+        return configRead('nativePlaybackContainer') === 'hls' ? 'master.m3u8' : 'manifest.mpd';
+    } catch (e) {
+        return 'manifest.mpd';
+    }
+}
+
+const manifestFor = (videoId) => `${service()}/by-video/${encodeURIComponent(videoId)}/${describedAs()}`;
 
 // Where the player means to begin, by video: a part-watched one resumes where it was left.
 const resumeAt = new Map();
@@ -308,11 +318,42 @@ function reconcileAudio(videoId) {
 }
 
 /** Everything but this one is media nobody is watching, still being fetched. */
+/**
+ * Makes the element let go of a stream that is no longer being served.
+ *
+ * The player is handed a URL once and keeps it. Close the session behind that URL — which
+ * is what leaving a video does — and the element goes on asking for segments nobody is
+ * fetching any more: it sat at `readyState 4` on a dead address, the picture black behind
+ * the player's own controls, and the service refused a segment thirty seconds later to an
+ * element that had already given up. The player never asked for another URL because
+ * nothing told it the one it had was finished.
+ *
+ * Emptying the element is what tells it. The player treats that as the source going away
+ * and attaches again, which is the moment we can hand it a live one.
+ */
+function letGo(videoId) {
+    const video = document.querySelector('video');
+    if (!video) return;
+
+    const mine = `/by-video/${encodeURIComponent(videoId)}/`;
+    if (String(video.currentSrc || video.src).indexOf(mine) === -1) return;
+
+    note('element', `${videoId} is no longer being served; letting the element go of it`);
+
+    video.removeAttribute('src');
+    try {
+        video.load();
+    } catch (e) {
+        // The element is mid-teardown; the player will attach again regardless.
+    }
+}
+
 function keepOnly(videoId) {
     opened.forEach((id, held) => {
         if (held === videoId) return;
 
         opened.delete(held);
+        letGo(held);
         if (id) closeSession(id);
     });
 }

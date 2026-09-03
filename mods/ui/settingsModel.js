@@ -61,6 +61,11 @@ const QUALITIES = ['highest', 'auto', '2160p', '1440p', '1080p', '720p', '480p',
     value: quality
   }));
 
+const CONTAINERS = [
+  { label: 'DASH', value: 'dash' },
+  { label: 'HLS', value: 'hls' }
+];
+
 const CODECS = [
   { label: 'Any', value: 'any' },
   { label: 'VP9', value: 'vp9' },
@@ -195,7 +200,11 @@ const GROUPS = [
         'Plays through the set\u2019s own decoder instead of the browser\u2019s. Much smoother at '
         + '2160p60. The set decodes it silently at anything but normal speed, so playback at '
         + 'another speed goes back to the ordinary player until it is set to normal again',
-        SCREEN)
+        SCREEN),
+      Choice('nativePlaybackContainer', 'Stream description',
+        'How smooth 4K playback describes the stream to the set. The same picture either '
+        + 'way \u2014 sets differ in which one they start and seek better on',
+        SCREEN, CONTAINERS, 'Format')
     ]
   },
   {

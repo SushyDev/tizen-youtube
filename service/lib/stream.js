@@ -163,6 +163,11 @@ class Track {
         if (this.have.has(number)) return Promise.resolve();
         if (this.failure) return Promise.reject(this.failure);
 
+        // Nothing is fetching this any more, so waiting the full segment timeout only
+        // delays the answer. The element asking is one the page has moved on from, and it
+        // is better told at once than left holding the request for half a minute.
+        if (this.stopped) return Promise.reject(new Error(`${this.kind} is no longer being fetched`));
+
         // Behind the stream, or so far ahead that waiting for it to arrive in order would
         // be a stall rather than a wait.
         if (number > 0 && this.index && !this.reachable(number)) this.seekTo(number);

@@ -207,6 +207,39 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
+// The same question on the way in, which is asked by a different route.
+//
+// Suppressing it by pushing YouTube's own "last fired" record a week ahead works only for
+// the three prompts that record ran through, and the account carousel a signed-in set with
+// several accounts is shown is not one of them: it arrives as a command, and it arrived on
+// every launch regardless of the setting. Answering it takes a remote, so an app left to
+// start on its own — a test, a schedule, anything not sitting in front of it — got as far
+// as the carousel and no further.
+//
+// These are the triggers that mean "before anything has been asked for", as against the
+// ones that mean a real answer is needed: a locked account, a PIN, an upgrade.
+const ON_ARRIVAL = [
+    'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
+    'ACCOUNT_EVENT_TRIGGER_WHO_FALLBACK',
+    'ACCOUNT_EVENT_TRIGGER_APP_WELCOME',
+    'ACCOUNT_EVENT_TRIGGER_WELCOME_BACK'
+];
+
+const skipWhosWatchingOnArrival = (command) => {
+    const request = command.requestAccountSelectorCommand;
+
+    const trigger = request
+        && request.identityActionContext
+        && request.identityActionContext.eventTrigger;
+
+    if (!trigger || ON_ARRIVAL.indexOf(trigger) === -1) return PASS;
+    if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return PASS;
+
+    // Nothing put in its place: whoever was watching last is still signed in, and the app
+    // carries on to wherever it was going.
+    return false;
+};
+
 /**
  * What the viewer settled on, which is not the same as what they moved over.
  *
@@ -269,7 +302,8 @@ const INTERPRETERS = [
     dressPlaybackSettings,
     forgetMiniPlayer,
     runCommandBatch,
-    skipWhosWatchingOnExit
+    skipWhosWatchingOnExit,
+    skipWhosWatchingOnArrival
 ];
 
 /** Wraps YouTube's resolver. False when it is not registered yet; the caller retries. */

@@ -54,6 +54,11 @@ const defaultConfig = {
   // Off by default while the player's own interface is still upset by it — a television
   // that plays everything and judders beats one that does not play.
   bypassMediaSource: false,
+  // How that stream is described to the set. Both are handed over as a plain URL and both
+  // are played by the set's own pipeline; only the description differs. DASH is what this
+  // was built on; HLS is the better-trodden path on a Samsung, being what broadcast apps
+  // ship, and is here to be measured against it rather than assumed better.
+  nativePlaybackContainer: 'dash',
   // Publishes readings on the network and runs evaluate requests, while debugging.
   enableDevBridge: true,
   videoSpeed: 1,

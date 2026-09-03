@@ -88,3 +88,69 @@ if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
         }
     }, WAIT_INTERVAL);
 }
+
+// The carousel a signed-in set with several accounts is shown on startup.
+//
+// Pushing YouTube's own "last fired" record a week ahead suppresses the three prompts that
+// record covers, and this is not one of them — it arrived on launch after launch with the
+// setting off. It is not a command either: nothing reaches `resolveCommand` for it, so
+// there is nothing to intercept. What there is, is a screen with the accounts on it, the
+// first of them the one already signed in.
+//
+// Choosing that one changes nothing about who is watching. It only gets the screen out of
+// the way of an app that was told not to ask.
+const SELECTOR = 'ytlr-account-selector';
+
+// The tile is inside a focus container, and the app acts on what it believes is focused
+// rather than on what was clicked — so the container is focused first and the key is sent
+// to the document as well as to the tile. Everything else was tried and dismissed it only
+// sometimes.
+function answerSelector() {
+    const selector = document.querySelector(SELECTOR);
+    if (!selector) return false;
+
+    const tile = selector.querySelector('ytlr-tile-renderer');
+    if (!tile) return false;
+
+    const target = (tile.closest && tile.closest('yt-focus-container')) || tile;
+
+    try {
+        target.focus();
+    } catch (error) {
+        // Not focusable on this build; the key events below still reach the app.
+    }
+
+    [document, target].forEach((node) => {
+        ['keydown', 'keypress', 'keyup'].forEach((type) => {
+            node.dispatchEvent(new KeyboardEvent(type, {
+                bubbles: true, cancelable: true, composed: true,
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13
+            }));
+        });
+    });
+
+    return true;
+}
+
+// Only while the app is starting. An account selector the viewer opened themselves, from
+// the sidebar, is one they meant to open.
+const ANSWER_WITHIN = 60000;
+
+// This runs before the page has a body, so the watch is armed on whichever of the two
+// exists first — the body, or the document while it is still being built.
+function watchForSelector() {
+    const until = Date.now() + ANSWER_WITHIN;
+
+    const watching = new MutationObserver(() => {
+        if (Date.now() > until) return watching.disconnect();
+        if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return;
+        if (answerSelector()) watching.disconnect();
+    });
+
+    watching.observe(document.body || document.documentElement, { childList: true, subtree: true });
+}
+
+if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    if (document.body) watchForSelector();
+    else document.addEventListener('DOMContentLoaded', watchForSelector, { once: true });
+}

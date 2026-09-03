@@ -301,15 +301,17 @@ function attach(app) {
     // fragment's length is already in the segment index, so the file's whole shape is known
     // before any of it has been fetched: a real Content-Length, real byte ranges, and a
     // `sidx` in the head so the set can ask for a moment rather than guess at a byte.
-    // How much of the file one open-ended range is answered with.
+    // An open-ended range is answered to the end of the file, and nothing less.
     //
-    // A set asking `bytes=0-` for a nine-hundred-megabyte file was answered with all of it,
-    // and could not cope: it took the head, waited on the first fragment, gave up and asked
-    // for the whole thing again — three times over, never reaching a picture. Bounded, it
-    // finishes a response and asks for the next, which is what a progressive reader is
-    // built to do. Large enough to hold several seconds of 2160p60, small enough that the
-    // first of them arrives promptly.
-    const MAX_SPAN = 24 * 1024 * 1024;
+    // Bounding it was tried, to twenty-four megabytes, because a set asking `bytes=0-` for a
+    // nine-hundred-megabyte file could not cope with being handed all of it. The set does
+    // not ask for the next range: it plays what it was given — twenty seconds, for a
+    // sixty-three megabyte video cut at twenty-four — then jumps to the end of the file and
+    // stops, because the duration in the header says there should have been more and there
+    // is none. Watched on the television, a fifty-two second video ended after twenty.
+    //
+    // The file it was added for never reaches here now: anything too large to play as one
+    // is asked for as a manifest instead, before a byte is served.
 
     // (declared above the routes so both the by-video redirect and the file itself use it)
     // How large a plain file this television will play at all.
@@ -432,13 +434,7 @@ function attach(app) {
         }
 
         const from = asked ? asked.from : 0;
-
-        // A request naming both ends is answered exactly; one that only names a start is
-        // answered with as much as is sensible to send at once.
-        const wanted = asked ? asked.to : shape.total - 1;
-        const to = asked && asked.open
-            ? Math.min(wanted, from + MAX_SPAN - 1)
-            : wanted;
+        const to = asked ? asked.to : shape.total - 1;
 
         res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Accept-Ranges', 'bytes');

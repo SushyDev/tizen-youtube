@@ -43,6 +43,12 @@ const QUALITIES = ['highest', 'auto', '2160p', '1440p', '1080p', '720p', '480p',
     value: quality
   }));
 
+const CONTAINERS = [
+  { label: 'DASH (recommended)', value: 'dash' },
+  { label: 'Plain file (experimental)', value: 'mp4' },
+  { label: 'MSE (standard)', value: 'mse' }
+];
+
 const CODECS = [
   { label: 'Any', value: 'any' },
   { label: 'VP9', value: 'vp9' },
@@ -168,7 +174,16 @@ const GROUPS = [
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step')
+        SKIPPING, INCREMENTS, 'Step'),
+      Switch('bypassMediaSource', 'Enhanced player',
+        'Plays through the set\u2019s own decoder instead of the browser\u2019s, which is much '
+        + 'smoother. Anything but 1x speed goes back to the ordinary player',
+        SCREEN),
+      Choice('nativePlaybackContainer', 'Stream description',
+        'Enhanced player only. How it describes the stream to the set \u2014 the same picture '
+        + 'either way. DASH is the one to use: the set fetches from the file\u2019s own index '
+        + 'and seeking works. MSE hands the stream to the browser instead and judders here',
+        SCREEN, CONTAINERS, 'Format')
     ]
   },
   {

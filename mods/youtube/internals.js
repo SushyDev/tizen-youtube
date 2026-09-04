@@ -59,6 +59,19 @@ const resolve = (command, context) => {
     return resolver ? resolver.resolveCommand(command, context) : undefined;
 };
 
+// The player's API is not the element. `#movie_player` carries the same method names and
+// answers correctly, and the app's own menus ask this instead — which is why correcting
+// the element left the quality menu reporting 720p60 over a 2160p picture. Found by the
+// methods it has, like the resolver above, so a release that renames it is still located.
+const findPlayerApi = () => {
+    const match = entries().find(([, value]) =>
+        value
+        && typeof value.getPlaybackQualityLabel === 'function'
+        && typeof value.getAvailableQualityLevels === 'function');
+
+    return match ? match[1] : null;
+};
+
 const ROUTER_MARKER = 'ytlrActionRouter';
 const ACTION_MARKER = 'this.actionName';
 
@@ -113,4 +126,7 @@ const reloadGuide = () => {
     if (run) run('reloadGuideAction');
 };
 
-export { findBySource, findByPrototype, nameOf, replace, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };
+export {
+    findBySource, findByPrototype, nameOf, replace, findResolver, resolve, findPlayerApi,
+    findActionRunner, reloadGuide, sourceOf
+};

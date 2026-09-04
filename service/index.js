@@ -6,6 +6,9 @@ postmortem.watch();
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
+const devbridge = require('./lib/devbridge.js');
+const dash = require('./lib/dash.js');
+const stream = require('./lib/stream.js');
 const dial = require('./lib/dial.js');
 
 const isTV = typeof tizen !== 'undefined';
@@ -45,6 +48,10 @@ function describeState() {
     return {
         platformVersion,
         variant: loader.variantFor(platformVersion),
+
+        // What the enhanced player is holding right now. Off by default, so this is zero
+        // for anyone who never turned it on — and the answer to "why is the set full?".
+        media: stream.holding(),
         script,
         proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
             ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
@@ -70,6 +77,18 @@ app.get('/__tube/quit', (_, res) => {
 
     setTimeout(() => process.exit(0), 100);
 });
+
+devbridge.attach(app);
+
+// Registered last so it cannot shadow the endpoints above.
+dash.attach(app);
+
+stream.clean();
+
+// `unref` is a Node convenience and not every runtime this service starts on has it.
+// Losing the timer would be a slow leak; failing to start is a black screen.
+const sweeping = setInterval(() => stream.sweep(), stream.SWEEP_INTERVAL);
+if (sweeping && typeof sweeping.unref === 'function') sweeping.unref();
 
 proxy.attachFallback(app);
 

@@ -1,3 +1,5 @@
+import './youtube/playerRequest.js';
+import './features/nativePlayback.js';
 import './features/standaloneUserscript.js';
 
 import './features/oledTheme.js';

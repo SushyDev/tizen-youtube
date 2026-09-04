@@ -1,0 +1,11 @@
+html, body {
+  background-color: #000;
+}
+
+ytlr-thumbnail-details[style*="rgb(33, 33, 33)"] {
+  background-color: #161616 !important;
+}
+
+yt-formatted-string {
+  background-color: transparent !important;
+}

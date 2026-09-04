@@ -1,0 +1,7 @@
+*, *::before, *::after {
+  transition:
+    background-color 150ms linear,
+    color 150ms linear,
+    border-color 150ms linear,
+    fill 150ms linear !important;
+}

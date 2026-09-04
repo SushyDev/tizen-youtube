@@ -71,18 +71,26 @@ readdirSync(staging).forEach((entry) => {
 
 rmSync(staging, { recursive: true, force: true });
 
-console.log('[4/5] embedding the userscript bundle');
+console.log('[4/5] embedding the userscript bundles');
 if (!existsSync(assetsDir)) mkdirSync(assetsDir);
-const bundle = join(modsDist, 'userScript.modern.js');
 
-if (!existsSync(bundle)) {
-    console.error(`      MISSING ${bundle} — build mods first (cd mods && npm run build)`);
-    console.error('      refusing to ship without it: a first launch must work offline');
+const embedded = ['modern', 'legacy'].filter((variant) => {
+    const source = join(modsDist, `userScript.${variant}.js`);
+
+    if (!existsSync(source)) {
+        console.error(`      MISSING ${source} — build mods first (cd mods && npm run build)`);
+        return false;
+    }
+
+    copyFileSync(source, join(assetsDir, `userScript.${variant}.js`));
+    console.log(`      dist/assets/userScript.${variant}.js  ${Math.round(readFileSync(source).length / 1024)}kB`);
+    return true;
+});
+
+if (embedded.length !== 2) {
+    console.error('      refusing to ship without both bundles: a first launch must work offline');
     process.exit(1);
 }
-
-copyFileSync(bundle, join(assetsDir, 'userScript.modern.js'));
-console.log(`      dist/assets/userScript.modern.js  ${Math.round(readFileSync(bundle).length / 1024)}kB`);
 
 console.log('[5/5] verifying the syntax floor');
 run('node', [join(__dirname, 'check-syntax.js'), join(outDir, 'index.js')]);

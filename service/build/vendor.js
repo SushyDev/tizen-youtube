@@ -21,7 +21,19 @@ async function build() {
     const bundle = await rollup({
         input: ENTRY,
         plugins: [nodeResolve({ preferBuiltins: true }), commonjs()],
-        external: (id) => id.startsWith('node:') || require('module').builtinModules.includes(id)
+        external: (id) => id.startsWith('node:') || require('module').builtinModules.includes(id),
+
+        // Rollup answers an import it cannot resolve by leaving it external and warning, so a
+        // missing dependency writes a stub of bare requires, exits 0, and ncc inlines a bundle
+        // that dies on its first require — a television that waits 20s and shows a black screen.
+        // Fail here instead, where the message is readable.
+        onwarn(warning) {
+            if (warning.code === 'UNRESOLVED_IMPORT') {
+                throw new Error(`${warning.exporter} could not be resolved — run npm install`);
+            }
+
+            console.warn(`      ${warning.message}`);
+        }
     });
 
     const { output } = await bundle.write({ file: outFile, format: 'cjs', exports: 'named' });

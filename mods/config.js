@@ -32,7 +32,7 @@ const defaultConfig = {
 
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
-  bypassMediaSource: false,
+  bypassMediaSource: true,
   nativePlaybackContainer: 'dash',
   videoSpeed: 1,
   speedSettingsIncrement: 0.25,

@@ -36,6 +36,13 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
+// Components carry their custom-element name as a static. Asking for that name holds across
+// a release that renames the minified export, and it is the same name the row shows in the DOM.
+const findComponent = (tag) => {
+    const match = entries().find(([, value]) => typeof value === 'function' && value.S === tag);
+    return match ? match[1] : null;
+};
+
 const nameOf = (target) => {
     const match = entries().find(([, value]) => value === target);
     return match ? match[0] : null;
@@ -127,6 +134,6 @@ const reloadGuide = () => {
 };
 
 export {
-    findBySource, findByPrototype, nameOf, replace, findResolver, resolve, findPlayerApi,
-    findActionRunner, reloadGuide, sourceOf
+    findBySource, findByPrototype, findComponent, nameOf, replace, findResolver, resolve,
+    findPlayerApi, findActionRunner, reloadGuide, sourceOf
 };

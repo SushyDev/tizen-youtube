@@ -26,8 +26,8 @@ const CONTRAST = 'data:image/svg+xml;charset=utf-8,'
 const Switch = (key, title, summary, image, on = true) =>
   ({ kind: 'switch', key, title, summary, image, on });
 
-const Choice = (key, title, summary, image, options, prefix) =>
-  ({ kind: 'choice', key, title, summary, image, options, prefix: prefix || title });
+const Choice = (key, title, summary, image, options, prefix, note) =>
+  ({ kind: 'choice', key, title, summary, image, options, prefix: prefix || title, note });
 
 const Set_ = (key, title, summary, image, options, invert = false) =>
   ({ kind: 'set', key, title, summary, image, options, invert });
@@ -166,6 +166,15 @@ const GROUPS = [
     id: 'tube_playback',
     title: 'Playback',
     items: [
+      Switch('bypassMediaSource', 'Enhanced player',
+        'Plays through the set\u2019s own decoder instead of the browser\u2019s, which is much '
+        + 'smoother. Anything but 1x speed goes back to the ordinary player',
+        SCREEN),
+      Choice('nativePlaybackContainer', 'Stream description',
+        'How it describes the stream to the set \u2014 the same picture either way. DASH is the '
+        + 'one to use: the set fetches from the file\u2019s own index and seeking works. MSE '
+        + 'hands the stream to the browser instead and judders here',
+        SCREEN, CONTAINERS, 'Format', 'Enhanced player only'),
       Choice('preferredVideoQuality', 'Preferred quality',
         'Applied when playback starts, falling back to the next best the video has',
         SCREEN, QUALITIES, 'Quality'),
@@ -174,16 +183,7 @@ const GROUPS = [
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step'),
-      Switch('bypassMediaSource', 'Enhanced player',
-        'Plays through the set\u2019s own decoder instead of the browser\u2019s, which is much '
-        + 'smoother. Anything but 1x speed goes back to the ordinary player',
-        SCREEN),
-      Choice('nativePlaybackContainer', 'Stream description',
-        'Enhanced player only. How it describes the stream to the set \u2014 the same picture '
-        + 'either way. DASH is the one to use: the set fetches from the file\u2019s own index '
-        + 'and seeking works. MSE hands the stream to the browser instead and judders here',
-        SCREEN, CONTAINERS, 'Format')
+        SKIPPING, INCREMENTS, 'Step')
     ]
   },
   {

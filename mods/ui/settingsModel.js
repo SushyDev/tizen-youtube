@@ -207,8 +207,10 @@ const GROUPS = [
     id: 'tube_interface',
     title: 'Interface',
     items: [
-      Switch('enableOledTheme', 'High contrast',
-        'True black instead of YouTube\u2019s near-black. Worth it on an OLED, a loss on an LCD',
+      Switch('enableOledTheme', 'OLED black',
+        'True black instead of YouTube\u2019s near-black, so an OLED switches those pixels off. '
+        + 'Only the darkness changes \u2014 anything YouTube draws through stays as see-through '
+        + 'as it was. Worth it on an OLED, a loss on an LCD',
         CONTRAST),
       Switch('enableFixedUI', 'Full-quality interface',
         'YouTube treats a television as a low-end device and turns animations off. This turns them back on',

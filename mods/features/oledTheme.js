@@ -18,18 +18,46 @@ const PALETTE = {
 };
 
 const MUTED_LABEL = '170,170,170';
-const LIFTED_LABEL = 'rgb(200, 200, 200)';
+const LIFTED_LABEL = '200, 200, 200';
 const PLATES = ['33,33,33', '55,55,55', '63,63,63'];
+
+const GLASS = ['.CgA6bd', '.clJQEe', '.RHrpge'];
+
+const nested = () => {
+    const pairs = [];
+    GLASS.forEach((outer) => GLASS.forEach((inner) => pairs.push(outer + ' ' + inner)));
+    return pairs.join(', ');
+};
 
 const GROUND_CSS =
     'html, body { background-color: #000; }\n' +
-    'ytlr-thumbnail-details[style*="rgb(33, 33, 33)"] { background-color: #161616 !important; }\n';
+    'ytlr-thumbnail-details[style*="rgb(33, 33, 33)"] { background-color: #161616 !important; }\n' +
+    GLASS.join(', ') + ' { background-color: rgba(55, 55, 55, 0.55) !important; }\n' +
+    nested() + ' { background-color: transparent !important; }\n';
 
 const SPLASH_GROUND = [40, 40, 40];
 
 const COLOUR = /rgba?\((\d+),\s*(\d+),\s*(\d+)((?:,\s*[\d.]+)?)\)/g;
 
+const TRANSLUCENT = /rgba\(\s*\d+,\s*\d+,\s*\d+,\s*(?:0?\.\d+|0)\s*\)/;
+
+function lift(value) {
+    const found = /^rgba?\((\d+),\s*(\d+),\s*(\d+)((?:,\s*[\d.]+)?)\)/.exec(value);
+    const alpha = found ? found[4] : '';
+
+    return (alpha ? 'rgba(' : 'rgb(') + LIFTED_LABEL + alpha + ')';
+}
+
 const changed = [];
+
+export function rewrites() {
+    return changed.map(([style, property, original]) => ({
+        property,
+        was: original,
+        now: style.getPropertyValue(property),
+        lostAlpha: /rgba\(/.test(original) && !/rgba\(/.test(style.getPropertyValue(property))
+    }));
+}
 const scanned = [];
 
 let ground = null;
@@ -43,6 +71,8 @@ function key(value) {
 
 function remap(value) {
     if (value.indexOf('rgb') === -1) return value;
+
+    if (TRANSLUCENT.test(value)) return value;
 
     return value.replace(COLOUR, (whole, r, g, b, alpha) => {
         const to = PALETTE[r + ',' + g + ',' + b];
@@ -67,7 +97,7 @@ function rewriteDeclarations(style) {
         const original = values[i];
 
         const next = plate && property === 'color' && key(original) === MUTED_LABEL
-            ? LIFTED_LABEL
+            ? lift(original)
             : remap(original);
 
         if (next === original) continue;

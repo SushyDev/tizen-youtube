@@ -1,21 +1,12 @@
 import { configRead } from '../config.js';
 
-// Every setting this app owns, once, in the order it is shown. Two things read this
-// file: nativeSettings.js, which turns it into rows on YouTube's own settings page, and
-// settingsOptions.js, which draws the list a row opens when its answer is one of
-// several. Nothing else knows a config key by name, so adding a setting is one entry
-// here, and it appears on the settings page grouped under the heading it is written
-// under.
-
-// YouTube's own settings illustrations. There is no other set on the device, and a row
-// without one draws a hole where the picture goes, so every item names one.
 const ART = 'https://www.gstatic.com/ytlr/img/';
 
-const BLOCKING = ART + 'restricted_mode.png';     // a crossed-out circle
+const BLOCKING = ART + 'restricted_mode.png';
 const MONEY = ART + 'purchases_and_memberships.png';
-const SKIPPING = ART + 'autoplay.png';            // an arrow, running on
-const WATCHED = ART + 'clear_watch_history.png';  // spectacles
-const LOOKING = ART + 'clear_search_history.png'; // a lens over a picture
+const SKIPPING = ART + 'autoplay.png';
+const WATCHED = ART + 'clear_watch_history.png';
+const LOOKING = ART + 'clear_search_history.png';
 const SCREEN = ART + 'living_room_pre_app_user_setting.png';
 const CONTROLS = ART + 'linked_devices.png';
 const SPEECH = ART + 'language.png';
@@ -23,8 +14,6 @@ const PRIVACY = ART + 'privacy_and_terms.png';
 const RESTART = ART + 'reset_app.png';
 const MESSAGE = ART + 'send_feedback.png';
 
-// The one picture YouTube does not have. Drawn in the same hand as the rest of them:
-// flat shapes, one accent, a stray pen stroke.
 const CONTRAST = 'data:image/svg+xml;charset=utf-8,'
   + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">'
@@ -34,22 +23,15 @@ const CONTRAST = 'data:image/svg+xml;charset=utf-8,'
     + '<path d="M74 20l7-7M81 27l7-7" stroke="#ffd25e" stroke-width="4.5" stroke-linecap="round"/>'
     + '</svg>');
 
-// A switch is a boolean. `on` is the stored value that means "On", so a setting whose
-// key is phrased as a negative — enableHideEndScreenCards — is still shown the way a
-// person thinks about it.
 const Switch = (key, title, summary, image, on = true) =>
   ({ kind: 'switch', key, title, summary, image, on });
 
-// One of several. Shows the chosen one on the row itself.
 const Choice = (key, title, summary, image, options, prefix) =>
   ({ kind: 'choice', key, title, summary, image, options, prefix: prefix || title });
 
-// Several at once, stored as an array of the chosen values. `invert` is for the one
-// setting that stores what to leave out rather than what to keep.
 const Set_ = (key, title, summary, image, options, invert = false) =>
   ({ kind: 'set', key, title, summary, image, options, invert });
 
-// Several at once, each with its own boolean key. Reads as one row, stores as many.
 const Flags = (id, title, summary, image, options) =>
   ({ kind: 'flags', id, title, summary, image, options });
 
@@ -86,7 +68,6 @@ const SEGMENTS = [
   { label: 'Jump to the highlight', key: 'enableSponsorBlockHighlight' }
 ];
 
-// The categories YouTube's own guide is built from, by the icon each entry carries.
 const SIDEBAR = [
   { label: 'Search', value: 'SEARCH' },
   { label: 'Home', value: 'WHAT_TO_WATCH' },
@@ -309,28 +290,24 @@ const GROUPS = [
   }
 ];
 
-/** The item a path — [group] or [group, item] — points at. */
 function at(path) {
   const group = GROUPS[path[0]];
   if (!group) return null;
   return path.length > 1 ? group.items[path[1]] : group;
 }
 
-/** Whether a set entry is currently chosen, inversion included. */
 function isChosen(item, value) {
   const stored = configRead(item.key) || [];
   const listed = stored.indexOf(value) !== -1;
   return item.invert ? !listed : listed;
 }
 
-/** The label of the chosen option of a choice. */
 function chosenLabel(item) {
   const current = configRead(item.key);
   const match = item.options.find((option) => option.value === current);
   return match ? match.label : item.options[0].label;
 }
 
-// "Sponsors, intros and 4 more" reads at a glance from across a room; a count does not.
 function listOf(labels, total) {
   if (labels.length === 0) return 'None';
   if (labels.length === total) return 'All';
@@ -338,7 +315,6 @@ function listOf(labels, total) {
   return `${labels.slice(0, 2).join(', ')} and ${labels.length - 2} more`;
 }
 
-/** What a set or flags row says underneath its title. */
 function chosenSummary(item) {
   if (item.kind === 'flags') {
     const chosen = item.options.filter((option) => configRead(option.key));

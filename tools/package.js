@@ -1,13 +1,5 @@
 'use strict';
 
-// Packages the .wgt, signed or not. Always builds first.
-//
-//   npm run package                signed for this machine's television
-//   npm run package -- --unsigned  signed by nobody, for Tizen Homebrew
-//
-// A signature names the television it may be installed on, and Tizen Homebrew re-signs
-// what it installs — so the unsigned .wgt installs anywhere, and a TV refuses it over sdb.
-
 const { execFileSync } = require('child_process');
 const { existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSync, writeFileSync } = require('fs');
 const { join, dirname, relative, sep } = require('path');
@@ -18,17 +10,12 @@ const { load, ROOT } = require('./config.js');
 const { which } = require('./which.js');
 const certificates = require('./certificates.js');
 
-// tizenjs's --ignore matches basenames only, so it cannot express "keep
-// service/dist/index.js but drop service/index.js". Nothing ships unless listed here.
 const APP = {
     output: 'release/tube.wgt',
     include: [
         'config.xml',
         'icon.png',
-        // The boot screen. config.xml points at ui/dist/index.html.
         'ui/dist',
-        // Both userscript bundles sit under dist/assets, which is what makes a first
-        // launch work with no network at all.
         'service/dist'
     ]
 };
@@ -57,11 +44,6 @@ function checkPrerequisites() {
         );
     }
 
-    // Left to itself tizenjs signs with the stock Tizen public distributor certificate,
-    // which expired in October 2022 and no retail Samsung TV ever trusted. Packages
-    // signed with it are refused at install with `install failed[118, -12] Invalid
-    // certificate chain`, which says nothing about which signature is at fault. Samsung
-    // mints both halves together, so the distributor p12 sits beside the author one.
     return {
         p12: found.author,
         password: found.password,
@@ -71,7 +53,6 @@ function checkPrerequisites() {
     };
 }
 
-// Copies the allowlist into an empty directory: the package as it will be read.
 function stageContents(staging) {
     APP.include.forEach((entry) => {
         const from = join(ROOT, entry);
@@ -104,8 +85,6 @@ function signWith(certificate, staging, outPath) {
     }
 }
 
-// A .wgt is a zip and the only thing tizenjs adds is the pair of signature files. Same
-// library, same options, same walk, so the two packages differ in exactly two entries.
 async function zipUnsigned(staging, outPath) {
     const zip = new JSZip();
 
@@ -113,7 +92,6 @@ async function zipUnsigned(staging, outPath) {
         readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
             const path = join(directory, entry.name);
             if (entry.isDirectory()) return add(path);
-            // config.xml has to sit at the package root, and a zip specifies '/'.
             zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
         });
     })(staging);
@@ -121,7 +99,6 @@ async function zipUnsigned(staging, outPath) {
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-// The certificate is null for an unsigned package, the only difference after staging.
 async function packageApp(certificate) {
     const staging = join(ROOT, '.package');
     const outPath = join(ROOT, APP.output);
@@ -149,13 +126,10 @@ async function packageApp(certificate) {
 async function main() {
     const unsigned = process.argv.indexOf('--unsigned') !== -1;
 
-    // A release build refuses a placeholder origin: it is baked into every TV that
-    // installs the package, so the example host means no OTA updates ever.
     const release = process.argv.indexOf('--release') !== -1;
 
     const config = load({ requireReal: release });
 
-    // Before the build, so a missing certificate costs a second rather than the whole build.
     const certificate = unsigned ? null : checkPrerequisites();
 
     ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);

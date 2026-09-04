@@ -1,8 +1,5 @@
 'use strict';
 
-// Removes every build artefact. Sources and node_modules are left alone;
-// `npm run clean -- --all` also drops node_modules.
-
 const { rmSync, existsSync, statSync } = require('fs');
 const { join } = require('path');
 
@@ -10,7 +7,6 @@ const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 
 const ARTEFACTS = [
-    // Where rollup leaves the two userscript bundles, for the service to embed.
     'dist',
     'ui/dist',
     'service/dist',

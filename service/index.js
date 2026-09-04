@@ -1,6 +1,5 @@
 'use strict';
 
-// Installed first, so a throw during startup is recorded rather than silent.
 const postmortem = require('./lib/postmortem.js');
 postmortem.watch();
 
@@ -28,7 +27,6 @@ function maybeCheckForUpdate() {
 
     lastUpdateCheck = now;
     updateInFlight = true;
-    // Deliberately not awaited: a slow or dead origin must never delay a launch.
     loader.checkForUpdate(platformVersion).then(
         () => { updateInFlight = false; },
         () => { updateInFlight = false; }
@@ -59,25 +57,20 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
-// The boot screen is replaced a frame after it works its timings out.
 app.get('/__tube/booted', (req, res) => {
-    // One line per launch, so an embedded newline could forge another entry.
     const line = String((req.query && req.query.t) || '').replace(/[\r\n]+/g, ' ').slice(0, 300);
 
     postmortem.note('boot', line);
     res.json({ ok: true });
 });
 
-// The service outlives the app, so without this it keeps streaming for a viewer who left.
 app.get('/__tube/quit', (_, res) => {
     postmortem.note('quit', 'asked to stop by the boot screen');
     res.json({ ok: true });
 
-    // Exit after the answer has gone out, or the shell waits on a socket that dies.
     setTimeout(() => process.exit(0), 100);
 });
 
-// Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);
 
 // Must match the port names in ui/src/boot.js.
@@ -87,7 +80,6 @@ const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
 function announceReady() {
     if (!isTV) return;
 
-    // The whole body, not just the sends: an uncaught throw here exits the process.
     try {
         const uiAppId = `${tizen.application.getAppInfo().packageId}.Tube`;
         const payload = [{ key: 'state', value: JSON.stringify(describeState()) }];

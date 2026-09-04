@@ -1,7 +1,3 @@
-// Builds the boot screen, then proves the television can render it. This page is the
-// app's start page: if its stylesheet is dropped, opening YouTube shows a wall of
-// unstyled black-on-white log lines.
-
 import { readFileSync } from 'fs';
 import { build } from 'vite';
 import { unsupportedCss, stylesOf } from '../tools/css-support.js';

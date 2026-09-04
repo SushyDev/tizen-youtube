@@ -2,7 +2,6 @@ import sha256 from '../tiny-sha256.js';
 import { configRead } from '../config.js';
 import { showToast } from '../ui/ytUI.js';
 
-// Copied from https://github.com/ajayyy/SponsorBlock/blob/da1a535de784540ee10166a75a3eb8537073838c/src/config.ts#L113-L134
 const barTypes = {
   sponsor: {
     color: '#00d400',
@@ -196,7 +195,7 @@ class SponsorBlockHandler {
         this.segmentsoverlay.classList.add(slider.classList[i]);
       }
       this.segmentsoverlay.style.setProperty('height', `${sliderRect.height}px`, 'important');
-      this.segmentsoverlay.style.setProperty('bottom', `${sliderRect.bottom - sliderRect.top}px`, 'important');      
+      this.segmentsoverlay.style.setProperty('bottom', `${sliderRect.bottom - sliderRect.top}px`, 'important');
     }
     this.segments.forEach((segment) => {
       const [start, end] = segment.segment;
@@ -266,8 +265,6 @@ class SponsorBlockHandler {
       return;
     }
 
-    // A timeupdate can fire right before an already-scheduled skip, so look back a
-    // little and, at worst, skip at a negative interval (immediately).
     const nextSegments = this.segments.filter(
       (seg) =>
         seg.segment[0] > this.video.currentTime - 0.3 &&
@@ -387,9 +384,6 @@ class SponsorBlockHandler {
   }
 }
 
-// Declared with var, not let: two consecutive hashchange events would leave the second
-// call seeing the pre-update value and initialising SponsorBlockHandler twice. Noticed
-// on Chromium 38.
 window.sponsorblock = null;
 
 window.addEventListener(

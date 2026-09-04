@@ -12,14 +12,11 @@ const BASE = onTv ? `http://localhost:${PORT}` : '';
 
 const GIVE_UP_AFTER = 20000;
 
-// Both are registered because the trusted port is a silent hole on this television: it
-// registers, `sendMessage` returns without error, and nothing is ever delivered.
 const READY_PORT = 'TUBE_BOOT';
 const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
 
 const BACKSTOP = 2500;
 
-// Media keys must be claimed before the player exists.
 const MEDIA_KEYS = [
     'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
     'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'MediaTrackPrevious',
@@ -38,7 +35,6 @@ const logElement = document.getElementById('log');
 
 let handedOver = false;
 
-// Oldest lines fall off the top; TV webviews handle scrollTop inconsistently.
 const MAX_LINES = 34;
 
 const say = (facility, message, tone) => {
@@ -87,7 +83,6 @@ const report = (line) => {
         request.open('GET', `${BASE}/__tube/booted?t=${encodeURIComponent(line)}`, true);
         request.send();
     } catch (e) {
-        // Diagnostics losing a launch is not a reason to delay one.
     }
 };
 
@@ -149,18 +144,14 @@ const surface = () => {
     const view = { w: window.innerWidth, h: window.innerHeight };
     const panel = { w: window.screen.width, h: window.screen.height };
 
-    // A television reports exactly 1, a desktop 1.3333333730697632.
     const ratio = Math.round((window.devicePixelRatio || 1) * 100) / 100;
 
     return {
         text: `viewport ${view.w}x${view.h}, screen ${panel.w}x${panel.h}, dpr ${ratio}`,
-        // A viewport that is not the panel renders every vw-sized element wrong.
         mismatched: view.w !== panel.w || view.h !== panel.h
     };
 };
 
-// An unset origin otherwise presents as YouTube loading with none of the modifications
-// and no explanation on screen.
 const PLACEHOLDER = /(^|\.)example\.(com|net|org|invalid)$/;
 
 const isPlaceholder = (origin) => {
@@ -177,8 +168,6 @@ const localProxyUrl = () => `${BASE}/tv` + (onTv
 
 const withArgs = (url, args) => (args ? `${url}${url.indexOf('?') === -1 ? '?' : '&'}${args}` : url);
 
-// A prelaunched app is not being composited and never gets a frame, so the timer is the
-// floor.
 const paintThen = (act) => {
     let acted = false;
 
@@ -192,7 +181,6 @@ const paintThen = (act) => {
     if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(once));
 };
 
-// A cast from a phone arrives as an app-control argument rather than a URL.
 const castArguments = () => {
     if (!onTv) return '';
 
@@ -237,8 +225,6 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
-// Registered before the service is asked for: a port that does not exist yet misses the
-// message.
 const awaitAnnouncement = () => {
     if (!onTv) return null;
 
@@ -290,8 +276,6 @@ let portState = 'not tried';
 let toldAt = 0;
 let toldBy = '';
 
-// Asked before launching: the service usually outlives the app and answers before an
-// app-control dispatch would return.
 const reachService = async () => {
     const started = now();
     const deadline = started + GIVE_UP_AFTER;
@@ -314,8 +298,6 @@ const reachService = async () => {
             serviceUpAt = now();
             return { state, asks, by: 'ask' };
         } catch (failure) {
-            // Not awaited: the service is up when it answers, not when the platform
-            // accepts the launch.
             if (!launched) {
                 launched = true;
                 launchService();
@@ -336,7 +318,6 @@ const reachService = async () => {
 
         if (now() > deadline) return { state: null, asks, by: 'gave up' };
 
-        // Capped at what is left, or "gave up after 20s" prints at 21.5s.
         const backstop = wait(Math.max(Math.min(BACKSTOP, deadline - now()), 0)).then(() => null);
 
         const told = announced ? await Promise.race([announced, backstop]) : await backstop;
@@ -374,8 +355,6 @@ const describe = (state, asks) => {
 };
 
 const boot = async () => {
-    // Started on the first line, so the shell's own synchronous platform calls happen
-    // while the service comes up rather than in front of it.
     const reaching = reachService();
     const args = castArguments();
 

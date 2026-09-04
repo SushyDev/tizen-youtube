@@ -85,12 +85,7 @@ class PreferredQualityHandler {
         }
     }
 
-    // YouTube names qualities with constants ('hd1080', 'hd2160') and labels them with
-    // numbers ('1080p'). Asking for one the video does not have is not reported — the
-    // player just keeps what it had — so every answer comes from the list it offers.
     #determineQuality(preference) {
-        // An entry the player has said it cannot play is not an answer, whichever way
-        // the preference points.
         const available = (this.#player.getAvailableQualityData() || [])
             .filter((entry) => entry && entry.isPlayable !== false);
 
@@ -98,8 +93,6 @@ class PreferredQualityHandler {
 
         const pixels = (entry) => parseInt(entry.qualityLabel, 10) || 0;
 
-        // 'highest' is an instruction, not a resolution: take the top of whatever this
-        // video offers. Unlike naming a resolution, it cannot silently do nothing.
         if (preference === 'highest') {
             return available.reduce((best, entry) => (pixels(entry) > pixels(best) ? entry : best)).quality;
         }
@@ -107,8 +100,6 @@ class PreferredQualityHandler {
         const target = parseInt(preference, 10) || 0;
         const match = available.find((entry) => pixels(entry) === target);
 
-        // The nearest below beats falling back to the maximum, which would be the
-        // opposite of what a resolution cap is for.
         if (match) return match.quality;
 
         const below = available

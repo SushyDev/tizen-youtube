@@ -1,9 +1,5 @@
 'use strict';
 
-// Why the service stopped, written where it can be read back. Nothing collects stderr on
-// a television, so a service that dies at startup is otherwise a boot screen that times
-// out.
-
 const { appendFileSync, readFileSync, statSync, renameSync } = require('fs');
 
 const LOG = process.env.TUBE_LOG || '/home/owner/share/tube/service.log';
@@ -17,7 +13,6 @@ function roll() {
     }
 }
 
-// Never throws: a failure here must not become the failure.
 function note(what, detail) {
     try {
         roll();

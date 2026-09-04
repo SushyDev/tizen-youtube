@@ -7,7 +7,6 @@ postmortem.watch();
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
-const devbridge = require('./lib/devbridge.js');
 const dial = require('./lib/dial.js');
 
 const isTV = typeof tizen !== 'undefined';
@@ -77,8 +76,6 @@ app.get('/__tube/quit', (_, res) => {
     // Exit after the answer has gone out, or the shell waits on a socket that dies.
     setTimeout(() => process.exit(0), 100);
 });
-
-devbridge.attach(app);
 
 // Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);

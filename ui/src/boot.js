@@ -401,14 +401,14 @@ const boot = async () => {
     serviceAsks = reached.asks;
     foundBy = reached.by;
 
-    if (!reached.state) return giveUp(args);
+    if (!reached.state) return giveUp();
 
     describe(reached.state, reached.asks);
 
     return useProxy(reached.state, args);
 };
 
-const useProxy = (state, args, linger) => {
+const useProxy = (state, args) => {
     const target = withArgs((state && state.proxyUrl) || localProxyUrl(), args);
 
     say('proxy', 'routing youtube.com through the local proxy');
@@ -425,15 +425,22 @@ const useProxy = (state, args, linger) => {
         window.location.href = target;
     };
 
-    return linger ? setTimeout(go, linger) : paintThen(go);
+    return paintThen(go);
 };
 
-const giveUp = (args) => {
+const giveUp = () => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
-    say('proxy', 'no state was ever read; trying the proxy blind', 'warn');
 
-    return useProxy(null, args, 400);
+    summarise();
+
+    // Nothing is served without the service: the proxy is the service, so navigating there
+    // only replaces this log with its error page and takes the reason with it.
+    say('proxy', 'not navigating — the proxy is the service, and it never came up', 'warn');
+    say('tube', 'held on this screen; press Back to close', 'note');
+
+    document.body.className = 'held';
+    return undefined;
 };
 
 const stopEverything = () => {

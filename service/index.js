@@ -1,28 +1,27 @@
 'use strict';
 
-// tube service: CDP injection when Developer Mode is on, a local proxy when it is off.
-// The shell asks which is available and goes straight there.
+// First, before anything that could fail. A television shows a service that died as a
+// boot screen that times out and nothing else, so this is where it says what happened.
+const postmortem = require('./lib/postmortem.js');
+postmortem.watch();
 
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
-const injector = require('./lib/injector.js');
 const proxy = require('./lib/proxy.js');
+const devbridge = require('./lib/devbridge.js');
 const dial = require('./lib/dial.js');
 
-// Off-TV the proxy, loader and rewrite rules still work; only DIAL and injection need
-// the platform. This is what `npm run dev` uses.
 const isTV = typeof tizen !== 'undefined';
 
-// Off-TV the variant would always come out `legacy`, so this says which TV to be.
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
 const app = proxy.create(platformVersion);
 
-// The service outlives the app and can stay resident for days, so checking only at
-// start would mean an update lands after a reboot. The shell hits /__tube/state once
-// per launch; debounced so repeated launches cannot hammer the origin.
+// The service outlives the app and can stay resident for days, so checking only at start
+// would mean an update lands after a reboot. Debounced, so repeated launches cannot
+// hammer the origin.
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
 let lastUpdateCheck = 0;
@@ -41,110 +40,123 @@ function maybeCheckForUpdate() {
     );
 }
 
-// A failed injection, remembered just long enough. The shell has already exited by the
-// time one fails, so the service brings the app back and leaves this behind — the next
-// launch takes the proxy instead of looping. Expires: developer mode gets turned back on.
-const FAILURE_MEMORY = 60 * 1000;
-
-let injectionFailedAt = 0;
-
-const injectionRecentlyFailed = () => Date.now() - injectionFailedAt < FAILURE_MEMORY;
-
-// Without this the television is left on the home row with nothing having happened.
-function relaunchApp(reason) {
-    injectionFailedAt = Date.now();
-    injector.stopConnecting();
-    console.error(`Injection failed (${reason}); reopening the app on the proxy path.`);
-
-    if (!isTV) return;
-
-    const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
-    tizen.application.launch(
-        appId,
-        () => console.log('Reopened the app.'),
-        (err) => console.error(`Could not reopen the app: ${err.message}`)
-    );
-}
-
-// The shell polls this to decide which path to take.
-app.get('/__tube/state', (_, res) => {
-    maybeCheckForUpdate();
-
-    injector.canConnectToDaemon().then((state) => {
-        // Which script this TV would run, so "did my update land?" is answerable.
-        let script = null;
-        try {
-            const resolved = loader.resolve(platformVersion);
-            script = { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
-        } catch (e) {
-            script = { error: e.message };
-        }
-
-        res.json({
-            canInject: state.canConnectToDaemon,
-            isConnecting: state.isConnecting,
-            injectionFailed: injectionRecentlyFailed(),
-            ip: state.ip,
-            platformVersion,
-            variant: loader.variantFor(platformVersion),
-            script,
-
-            // DIAL only runs on a TV, so off one there is no cast endpoint to point at.
-            proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
-                ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
-                : '')
-        });
-    });
-});
-
-// Starts the debugger and injects. The shell exits immediately after calling this.
-app.get('/__tube/inject', (req, res) => {
-    if (!isTV) {
-        return res.status(501).json({ error: 'Injection needs a TV; this service is running off-device.' });
+// The endpoint and the announcement answer with the same thing, from here, so the two can
+// never drift apart.
+function describeState() {
+    let script = null;
+    try {
+        const resolved = loader.resolve(platformVersion);
+        script = { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
+    } catch (e) {
+        script = { error: e.message };
     }
 
-    const args = req.originalUrl.split('?')[1] || '';
-    const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
+    return {
+        platformVersion,
+        variant: loader.variantFor(platformVersion),
+        script,
 
-    // The debug launch has to replace a window that is already gone, so wait for the
-    // shell to exit — and give up, rather than polling for the life of the service.
-    const startedWaiting = Date.now();
 
-    const waitForExit = setInterval(() => {
-        if (Date.now() - startedWaiting > 10000) {
-            clearInterval(waitForExit);
-            return relaunchApp('the app never closed');
-        }
+        proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
+            ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
+            : '')
+    };
+}
 
-        tizen.application.getAppsContext((contexts) => {
-            if (contexts.some((context) => context.appId === appId)) return;
+app.get('/__tube/state', (_, res) => {
+    maybeCheckForUpdate();
+    res.json(describeState());
+});
 
-            clearInterval(waitForExit);
+// The boot screen cannot keep its own timings: the page is replaced a frame after it
+// works them out. They land here instead, in a log that survives the app and can be read
+// back without the app being a debug build.
+app.get('/__tube/booted', (req, res) => {
+    // One line per launch, so a newline in it would forge another. Loopback only, but the
+    // log is the record everything else is read from and it should not be writable prose.
+    const line = String((req.query && req.query.t) || '').replace(/[\r\n]+/g, ' ').slice(0, 300);
 
-            injector.startDebugger(args).then(
-                // `false` means the daemon refused: a failure even though nothing threw.
-                (attached) => { if (!attached) relaunchApp('sdb would not accept a connection'); },
-                (err) => relaunchApp(err.message)
-            );
-        });
-    }, 50);
-
+    postmortem.note('boot', line);
     res.json({ ok: true });
 });
+
+// The boot screen asks for this when Back is pressed while it is on screen. The service is
+// `background-support="enable"` and outlives the app on purpose, which is right for a
+// viewer who is coming back and wrong for one who has deliberately left — it would go on
+// holding a stream and fetching for nobody. Loopback only, like everything else here.
+app.get('/__tube/quit', (_, res) => {
+    postmortem.note('quit', 'asked to stop by the boot screen');
+    res.json({ ok: true });
+
+    // After the answer has gone out, or the shell is left waiting on a socket that dies.
+    setTimeout(() => process.exit(0), 100);
+});
+
+devbridge.attach(app);
+
 
 // Registered last so it cannot shadow the endpoints above.
 proxy.attachFallback(app);
 
-app.listen(ports.PROXY, '127.0.0.1', () => {
+// Shared with ui/src/boot.js, and meaningless to anything else.
+const READY_PORT = 'TUBE_BOOT';
+const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
+
+// The boot screen is sitting on this rather than asking repeatedly, so it is sent from
+// inside the listen callback and nowhere earlier: the shell's next act is to navigate to
+// this port, and "the service started" is not the same claim as "the socket is bound".
+//
+// Everything here is inside a try. `requestTrustedRemoteMessagePort` throws NotFoundError
+// when nobody is listening — which is the ordinary case for a launch the shell did not ask
+// for, and for one where it has already handed over — and an uncaught throw in this
+// process is postmortem's `process.exit(1)`, which is a television showing nothing.
+function announceReady() {
+    if (!isTV) return;
+
+    // The whole body is inside this, not just the sends: `getAppInfo` and the `tizen`
+    // namespace itself can throw, this runs in the listen callback, and an uncaught throw
+    // in this process is postmortem's `process.exit(1)` — a television showing nothing.
+    // No announcement is a slower launch; a throw here is no launch at all.
+    try {
+        const uiAppId = `${tizen.application.getAppInfo().packageId}.Tube`;
+        const payload = [{ key: 'state', value: JSON.stringify(describeState()) }];
+        const said = [];
+
+        const send = (label, open) => {
+            try {
+                open(uiAppId).sendMessage(payload);
+                said.push(`${label} sent`);
+            } catch (e) {
+                said.push(`${label} ${e.name || 'Error'} ${e.message}`);
+            }
+        };
+
+        send('trusted', (id) => tizen.messageport.requestTrustedRemoteMessagePort(id, READY_PORT));
+        send('open', (id) => tizen.messageport.requestRemoteMessagePort(id, READY_PORT_OPEN));
+
+        // Nothing collects this process's stdout on a television, so it goes where it can
+        // be read back. Nobody waiting is the common case, not a fault.
+        postmortem.note('announce', said.join(', '));
+    } catch (e) {
+        postmortem.note('announce', `could not announce: ${e.name || 'Error'} ${e.message}`);
+    }
+}
+
+// Loopback on the set. Serving another machine's television means binding the network.
+const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
+
+app.listen(ports.PROXY, BIND, () => {
     console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
     if (!isTV) {
-        console.log('Running off-TV: proxy and userscript are live; DIAL and injection are disabled.');
+        console.log('Running off-TV: proxy and userscript are live; DIAL is disabled.');
     }
+
+    // First thing after the socket is bound: something may have been waiting seconds for it.
+    announceReady();
 });
 
-// DIAL discovery needs the platform to launch the app on a cast request.
 if (isTV) dial.start();
 
-// A new script is used from the next launch onward, so a bad one cannot break the
-// session that fetched it.
+// A new script is used from the next launch onward, so a bad one cannot break the session
+// that fetched it.
 setTimeout(maybeCheckForUpdate, 5000);

@@ -1,9 +1,9 @@
 import './boot.css';
 
-// Two ways in: the debugger evaluates the userscript into youtube.com, or a local
-// proxy splices it in. Every failure falls through to the proxy, so no path dead-ends.
-
 const PORT = 8099;
+
+// Only so the shell can build the proxy address itself; the DIAL server is the service's.
+const DIAL_PORT = 8095;
 
 // No `tizen` object off a television, which decides whether this file may exit.
 const platform = typeof tizen === 'undefined' ? null : tizen;
@@ -12,9 +12,26 @@ const onTv = !!application;
 
 const BASE = onTv ? `http://localhost:${PORT}` : '';
 
-// Long enough for a cold service start on a slow TV.
 const GIVE_UP_AFTER = 20000;
-const POLL_INTERVAL = 200;
+
+// The service announces itself on these the instant its socket is bound. The names are
+// shared with service/index.js and mean nothing to anything else.
+//
+// Two of them because the trusted and open APIs are different paths in the platform, and
+// on this television the trusted one is a silent hole: the port registers, the service's
+// `sendMessage` returns without error, and nothing is ever delivered. The open one works.
+// Samsung's own TV service sample uses the open one. Both are registered, because that
+// finding is one set.
+const READY_PORT = 'TUBE_BOOT';
+const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
+
+// Asking is no longer how the shell learns that a service it had to launch is up — being
+// told is. The first ask still happens, because a service that is already running answers
+// it before a launch could even be dispatched, and that is the ordinary launch. After that
+// this is a backstop and nothing more: long enough that a working announcement always
+// wins, short enough that a set which never delivers one still recovers. A cold launch
+// costs one ask with it, and fifteen without.
+const BACKSTOP = 2500;
 
 // Media keys must be claimed before the player exists.
 const MEDIA_KEYS = [
@@ -23,7 +40,6 @@ const MEDIA_KEYS = [
     'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue'
 ];
 
-// dmesg-style log: timestamp, facility, terse message. See boot.css.
 const startedAt = (window.performance && window.performance.now)
     ? window.performance.now()
     : Date.now();
@@ -39,7 +55,6 @@ let handedOver = false;
 // Oldest lines fall off the top; TV webviews handle scrollTop inconsistently.
 const MAX_LINES = 34;
 
-/** Writes one line. `tone` is omitted for the ordinary case. */
 const say = (facility, message, tone) => {
     if (handedOver) return;
 
@@ -65,33 +80,58 @@ const say = (facility, message, tone) => {
     while (logElement.childNodes.length > MAX_LINES) logElement.removeChild(logElement.firstChild);
 };
 
-// Whatever happens next paints over a black page, not over the log.
 const handOver = () => {
     handedOver = true;
     document.body.className = 'done';
 };
 
-// Whether there is anywhere to go. Off a TV only the dev server knows — see dev/tube.js.
 const canHandOver = (state) => onTv || !!(state && state.handOver);
 
-/** Reports what the TV would have done next, and stops. */
 const hold = (facility, what) => {
     say(facility, what, 'note');
     say('tube', 'held — off-TV, so nothing is handed over', 'note');
     document.body.className = 'held';
 };
 
-/** Splits startup into shell time and time spent waiting on the service. */
+// This page is replaced by YouTube a frame after it writes its last line, so its own
+// timings exist only if it says them somewhere that outlives it. The service's log is
+// that place, and it can be read back from another machine without the app being a debug
+// build — which is the only way a release launch is measurable at all.
+const report = (line) => {
+    if (!onTv) return;
+
+    try {
+        const request = new XMLHttpRequest();
+        request.open('GET', `${BASE}/__tube/booted?t=${encodeURIComponent(line)}`, true);
+        request.send();
+    } catch (e) {
+        // Diagnostics losing a launch is not a reason to delay one.
+    }
+};
+
+// The shell's own work and the service coming up now overlap, so these are spans measured
+// from the same origin rather than one after the other. `keys` is inside `shell`, and is
+// here because twelve synchronous platform calls are the likeliest thing left in front of
+// the handover.
 const summarise = () => {
     const total = now();
-    const shell = shellReadyAt;
-    const service = serviceUpAt ? serviceUpAt - shellReadyAt : null;
 
-    const parts = [`shell ${(shell / 1000).toFixed(3)}s`]
-        .concat(service === null ? ['service never answered'] : [`service ${(service / 1000).toFixed(3)}s`]);
+    const line = [
+        `shell ${(shellReadyAt / 1000).toFixed(3)}s`,
+        `keys ${(keysTookMs / 1000).toFixed(3)}s`,
+        `asked at ${(firstAskAt / 1000).toFixed(3)}s`,
+        serviceUpAt ? `service ${(serviceUpAt / 1000).toFixed(3)}s` : 'service never answered',
+        `${serviceAsks} ${serviceAsks === 1 ? 'ask' : 'asks'}`,
+        `by ${foundBy}`,
+        `port ${portState}`,
+        toldAt ? `told by ${toldBy} at ${(toldAt / 1000).toFixed(3)}s` : 'never told',
+        `total ${(total / 1000).toFixed(3)}s`
+    ].join(', ');
 
-    say('tube', `startup finished in ${(total / 1000).toFixed(3)}s (${parts.join(', ')})`,
-        service === null ? 'warn' : 'ok');
+    say('tube', `startup finished in ${(total / 1000).toFixed(3)}s (${line})`,
+        serviceUpAt ? 'ok' : 'warn');
+
+    report(line);
 };
 
 window.onerror = (message, _source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
@@ -117,7 +157,6 @@ const ask = (path, timeout) => new Promise((resolve, reject) => {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Which Chromium this is decides what the page may use.
 const engine = () => {
     const agent = navigator.userAgent || '';
     const chromium = /Chrome\/(\d+)/.exec(agent);
@@ -129,7 +168,7 @@ const engine = () => {
     ].filter(Boolean).join(', ');
 };
 
-// Not always the 1920x1080 the platform promises. Model and firmware would need a
+// Not always the 1920x1080 the platform promises, and model and firmware would need a
 // privilege this app lacks.
 const surface = () => {
     const view = { w: window.innerWidth, h: window.innerHeight };
@@ -145,8 +184,8 @@ const surface = () => {
     };
 };
 
-// An origin still pointing at the example host presents as YouTube loading with none
-// of the modifications and no explanation on screen.
+// An origin still pointing at the example host presents as YouTube loading with none of
+// the modifications and no explanation on screen.
 const PLACEHOLDER = /(^|\.)example\.(com|net|org|invalid)$/;
 
 const isPlaceholder = (origin) => {
@@ -155,6 +194,32 @@ const isPlaceholder = (origin) => {
     } catch (e) {
         return false;
     }
+};
+
+// The proxy address is a constant on a television, built from the same two ports the
+// service builds it from. Reading it back is what the log is for; it is not what decides
+// where to go, so a service that never answers is still handed a correct address rather
+// than one missing the DIAL hand-off.
+const localProxyUrl = () => `${BASE}/tv` + (onTv
+    ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${DIAL_PORT}/dial/apps/YouTube`)}`
+    : '');
+
+const withArgs = (url, args) => (args ? `${url}${url.indexOf('?') === -1 ? '?' : '&'}${args}` : url);
+
+// One frame to lay the last line out and one to paint it, rather than a fixed wait that is
+// mostly nothing. A prelaunched app is not being composited and gets neither, so the timer
+// is the floor and not the plan.
+const paintThen = (act) => {
+    let acted = false;
+
+    const once = () => {
+        if (acted) return;
+        acted = true;
+        act();
+    };
+
+    setTimeout(once, 250);
+    if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(once));
 };
 
 // A cast from a phone arrives as an app-control argument rather than a URL.
@@ -166,7 +231,7 @@ const castArguments = () => {
         const args = data.filter((entry) => entry.key === 'args')[0];
         return args ? (JSON.parse(args.value[0]).args || '') : '';
     } catch (e) {
-        return '';   // plain launch, no payload
+        return '';
     }
 };
 
@@ -195,7 +260,6 @@ const launchService = () => new Promise((resolve) => {
         serviceId,
         () => { say('service', 'launch accepted', 'ok'); resolve(); },
         (error) => {
-            // Usually it is already running from a previous launch.
             say('service', `launch refused: ${error.message}`, 'warn');
             say('service', 'probably already running; asking it anyway');
             resolve();
@@ -203,11 +267,164 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
-// Lets the summary apportion shell time against service wait.
+// Registered before the service is asked for, let alone launched: a port that does not
+// exist yet is a message that is never sent.
+const awaitAnnouncement = () => {
+    if (!onTv) return null;
+
+    if (!platform.messageport) {
+        portState = 'no tizen.messageport in the shell';
+        say('state', 'this webview has no message port; asking instead', 'warn');
+        return null;
+    }
+
+    const registered = [];
+
+    const promise = new Promise((resolve) => {
+        const listen = (label, open) => {
+            try {
+                open().addMessagePortListener((data) => {
+                    // Recorded whether or not this wins the race: whether the message
+                    // arrives at all is the whole question.
+                    toldAt = now();
+                    toldBy = label;
+
+                    const carried = (data || []).filter((item) => item.key === 'state')[0];
+
+                    try {
+                        resolve(carried ? JSON.parse(carried.value) : null);
+                    } catch (e) {
+                        resolve(null);
+                    }
+                });
+
+                registered.push(label);
+            } catch (e) {
+                registered.push(`${label} refused ${e.name || e.message}`);
+            }
+        };
+
+        listen('trusted', () => platform.messageport.requestTrustedLocalMessagePort(READY_PORT));
+        listen('open', () => platform.messageport.requestLocalMessagePort(READY_PORT_OPEN));
+    });
+
+    portState = registered.join('+');
+    return promise;
+};
+
 let shellReadyAt = 0;
 let serviceUpAt = 0;
+let keysTookMs = 0;
+let serviceAsks = 0;
+let firstAskAt = 0;
+let foundBy = 'ask';
+let portState = 'not tried';
+let toldAt = 0;
+let toldBy = '';
+
+// Asking comes first and launching second. The service outlives the app — a launch that
+// does not kill the package finds it still listening — so on the ordinary start this first
+// ask is the whole of the wait, and it is answered in about a fifth of a second. Launching
+// first cost an app-control round trip on every single start, warm ones included, and that
+// dispatch is not cheap here: measured at ~1.8s before the service's own first line runs.
+const reachService = async () => {
+    const started = now();
+    const deadline = started + GIVE_UP_AFTER;
+
+    const announced = awaitAnnouncement();
+
+    let asks = 0;
+    let launched = false;
+    let announcedWait = false;
+    let nextNudge = started + 5000;
+
+    for (;;) {
+        asks += 1;
+        if (asks === 1) firstAskAt = now();
+
+        try {
+            // Never longer than what is left of the announced deadline.
+            const left = Math.max(deadline - now(), 500);
+            const state = await ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, 8000));
+
+            serviceUpAt = now();
+            return { state, asks, by: 'ask' };
+        } catch (failure) {
+            // Nothing was there to answer, so now it is worth starting. Not awaited: what
+            // says the service is up is its port answering, not the platform accepting the
+            // request to start it.
+            if (!launched) {
+                launched = true;
+                launchService();
+            }
+
+            if (!announcedWait) {
+                announcedWait = true;
+                say('state', announced
+                    ? `no answer yet (${failure.message}); waiting to be told it is up`
+                    : `no answer yet (${failure.message}), asking again for up to ${GIVE_UP_AFTER / 1000}s`);
+            }
+        }
+
+        // A log that has gone quiet is indistinguishable from one that has stopped.
+        if (now() > nextNudge) {
+            say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
+            nextNudge = now() + 5000;
+        }
+
+        if (now() > deadline) return { state: null, asks, by: 'gave up' };
+
+        // Whichever comes first: being told, or the backstop coming round again. The
+        // announcement carries the same state the endpoint would have answered with, so
+        // being told is the end of it — there is nothing left to go and ask.
+        //
+        // Never longer than what is left, or the backstop outlives the deadline the log
+        // just announced and "gave up after 20s" is printed at 21.5s.
+        const backstop = wait(Math.max(Math.min(BACKSTOP, deadline - now()), 0)).then(() => null);
+
+        const told = announced ? await Promise.race([announced, backstop]) : await backstop;
+
+        if (told) {
+            serviceUpAt = now();
+            return { state: told, asks, by: 'announcement' };
+        }
+    }
+};
+
+const describe = (state, asks) => {
+    say('state', `up after ${asks} ${asks === 1 ? 'ask' : 'asks'}, ` +
+                 `${(serviceUpAt / 1000).toFixed(3)}s`, 'ok');
+
+    if (state.platformVersion) {
+        say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
+    }
+
+    if (state.script && state.script.error) {
+        say('loader', `no userscript: ${state.script.error}`, 'bad');
+        say('loader', 'youtube will load unmodified', 'warn');
+        return;
+    }
+
+    if (state.script) {
+        say('loader', `userscript ${state.script.variant} ${state.script.version}`, 'ok');
+        say('loader', `origin ${state.script.origin}`);
+
+        if (isPlaceholder(state.script.origin)) {
+            say('loader', 'that origin is the documentation placeholder', 'bad');
+            say('loader', 'set tube.origin in tizen.config.json and rebuild', 'warn');
+        }
+    }
+};
 
 const boot = async () => {
+    // Nothing below decides whether the service is wanted, so the asking starts on the very
+    // first line and everything the shell does for itself — twelve synchronous key
+    // registrations, and reading the app control — happens while the service comes up
+    // rather than in front of it. `castArguments` is a synchronous platform call and is
+    // only wanted at handover, so it must not sit in front of the request either.
+    const reaching = reachService();
+    const args = castArguments();
+
     const info = application ? application.appInfo : null;
 
     say('tube', `YouTube ${(info && info.version) || 'dev'}`, 'note');
@@ -227,12 +444,14 @@ const boot = async () => {
         navigator.onLine === false ? 'bad' : undefined);
 
     if (onTv) {
+        const beforeKeys = now();
         const keys = claimMediaKeys();
+        keysTookMs = now() - beforeKeys;
 
-        say('tvinputdevice', `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered`,
+        say('tvinputdevice', `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered in ` +
+            `${keysTookMs.toFixed(1)}ms`,
             keys.refused.length ? 'warn' : 'ok');
 
-        // Which key a model lacks decides which button does nothing on the remote.
         if (keys.refused.length) {
             say('tvinputdevice', `not on this model: ${keys.refused.join(' ')}`);
         }
@@ -240,133 +459,26 @@ const boot = async () => {
         say('tvinputdevice', 'no platform, keys not claimed', 'warn');
     }
 
-    const args = castArguments();
     say('appcontrol', args ? `cast payload, ${args.length} bytes` : 'plain launch, no payload');
     if (args) say('appcontrol', args.slice(0, 96), 'note');
 
     shellReadyAt = now();
 
-    await launchService();
+    const reached = await reaching;
+    serviceAsks = reached.asks;
+    foundBy = reached.by;
 
-    const started = now();
-    const deadline = started + GIVE_UP_AFTER;
+    if (!reached.state) return giveUp(args);
 
-    let described = false;
-    let announcedWait = false;
-    let nextNudge = started + 5000;
-    let polls = 0;
+    describe(reached.state, reached.asks);
 
-    for (;;) {
-        let state = null;
-        polls += 1;
-
-        try {
-            // Never longer than what is left of the deadline.
-            const left = Math.max(deadline - now(), 500);
-
-            state = await ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, 8000));
-        } catch (failure) {
-            if (!announcedWait) {
-                say('state', `no answer yet (${failure.message}), polling every ${POLL_INTERVAL}ms ` +
-                             `for up to ${GIVE_UP_AFTER / 1000}s`);
-                announcedWait = true;
-            }
-        }
-
-        // A log that has gone quiet is indistinguishable from one that has stopped.
-        if (!state && now() > nextNudge) {
-            say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
-            nextNudge = now() + 5000;
-        }
-
-        if (state) {
-            // Said once, not on every poll.
-            if (!described) {
-                described = true;
-                serviceUpAt = now();
-
-                say('state', `up after ${polls} ${polls === 1 ? 'poll' : 'polls'}, ` +
-                             `${((serviceUpAt - started) / 1000).toFixed(3)}s`, 'ok');
-
-                if (state.platformVersion) {
-                    // Which script a TV gets follows from its platform version.
-                    say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
-                }
-                if (state.ip) say('state', `device ${state.ip}`);
-
-                say('state', `canInject=${state.canInject ? 1 : 0} ` +
-                             `connecting=${state.isConnecting ? 1 : 0} ` +
-                             `lastInjectFailed=${state.injectionFailed ? 1 : 0}`);
-
-                if (state.script && state.script.error) {
-                    say('loader', `no userscript: ${state.script.error}`, 'bad');
-                    say('loader', 'youtube will load unmodified', 'warn');
-                } else if (state.script) {
-                    say('loader', `userscript ${state.script.variant} ${state.script.version}`, 'ok');
-                    say('loader', `origin ${state.script.origin}`);
-
-                    if (isPlaceholder(state.script.origin)) {
-                        say('loader', 'that origin is the documentation placeholder', 'bad');
-                        say('loader', 'set tube.origin in tizen.config.json and rebuild', 'warn');
-                    }
-
-                    if (state.script.variant === 'legacy') {
-                        say('loader', 'legacy build: this set is older than the modern script targets', 'note');
-                    }
-                }
-            }
-
-            // A debug attempt that already failed will fail again, and retrying loops.
-            if (state.injectionFailed) {
-                say('inject', 'skipped, the last attempt failed', 'warn');
-                return useProxy(state, args);
-            }
-
-            if (state.canInject && !state.isConnecting) return useDebugger(state, args);
-
-            if (state.canInject && state.isConnecting) {
-                // Another launch is mid-injection and will replace this window.
-                if (!announcedWait) {
-                    say('inject', 'another launch is already connecting, waiting for it', 'note');
-                    announcedWait = true;
-                }
-            } else if (!state.canInject) {
-                say('inject', 'unavailable, developer mode is off', 'warn');
-                return useProxy(state, args);
-            }
-        }
-
-        if (now() > deadline) return giveUp(state, args);
-
-        await wait(POLL_INTERVAL);
-    }
+    return useProxy(reached.state, args);
 };
 
-// Injection relaunches this app under the debugger, so exiting makes room for it. If
-// the relaunch never happens the service brings the app back on the proxy path.
-const useDebugger = async (state, args) => {
-    say('inject', 'available, developer mode is on', 'ok');
-    say('inject', `asking the service to attach on ${state.ip || 'loopback'}`);
-
-    try {
-        await ask(`/__tube/inject${args ? `?${args}` : ''}`);
-        say('inject', 'accepted, relaunching under the debugger');
-    } catch (e) {
-        // The request not returning cleanly does not mean it did not land.
-        say('inject', 'no reply, which usually means it landed anyway');
-    }
-
-    summarise();
-
-    if (!onTv) return hold('inject', 'would exit now and let the debugger take over');
-
-    say('tube', 'handing over to the debugger; this window is about to be replaced');
-    handOver();
-    application.exit();
-};
-
-const useProxy = (state, args) => {
-    const target = state.proxyUrl + (args ? `&${args}` : '');
+// `linger` is for the path nobody wants to read in a hurry; everything else hands over on
+// the next painted frame.
+const useProxy = (state, args, linger) => {
+    const target = withArgs((state && state.proxyUrl) || localProxyUrl(), args);
 
     say('proxy', 'routing youtube.com through the local proxy');
     say('proxy', target);
@@ -377,36 +489,55 @@ const useProxy = (state, args) => {
 
     say('tube', 'handing over to youtube');
 
-    // One frame to paint the last line before the page is replaced.
-    setTimeout(() => {
+    const go = () => {
         handOver();
         window.location.href = target;
-    }, 120);
+    };
+
+    return linger ? setTimeout(go, linger) : paintThen(go);
 };
 
-// Nothing answered, but the proxy URL is a constant: a page that loads late beats an
-// app that never opens.
-const giveUp = (state, args) => {
+// Nothing answered, but the proxy address is one this page can build: a page that loads
+// late beats an app that never opens.
+const giveUp = (args) => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
-
-    if (state && state.proxyUrl) return useProxy(state, args);
-
     say('proxy', 'no state was ever read; trying the proxy blind', 'warn');
 
-    summarise();
-
-    if (!onTv) return hold('proxy', `would navigate to ${BASE}/tv`);
-
-    setTimeout(() => {
-        handOver();
-        window.location.href = `${BASE}/tv${args ? `?${args}` : ''}`;
-    }, 400);
+    return useProxy(null, args, 400);
 };
 
-// Return key exits at any point during startup.
+// Back, while this screen is still up, means stop — not "leave the service running". It
+// outlives the app deliberately, so exiting alone leaves it holding a stream and fetching
+// for somebody who has left. This asks it to stop first and goes anyway if it will not:
+// a service that cannot answer must never trap the viewer on a boot screen.
+const stopEverything = () => {
+    let left = false;
+
+    const leave = () => {
+        if (left) return;
+        left = true;
+        application.exit();
+    };
+
+    say('tube', 'stopping the service and closing', 'note');
+
+    try {
+        const request = new XMLHttpRequest();
+        request.open('GET', `${BASE}/__tube/quit`, true);
+        request.timeout = 1200;
+        request.onloadend = leave;
+        request.send();
+    } catch (e) {
+        return leave();
+    }
+
+    setTimeout(leave, 1200);
+    return undefined;
+};
+
 document.addEventListener('keydown', (event) => {
-    if (onTv && (event.keyCode === 10009 || event.keyCode === 27)) application.exit();
+    if (onTv && (event.keyCode === 10009 || event.keyCode === 27)) stopEverything();
 });
 
 boot();

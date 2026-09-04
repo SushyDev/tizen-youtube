@@ -1,8 +1,7 @@
 /* Black is not a style choice: the page this hands over to is black, and anything else
    would flash. */
 
-/* The Linux console's sixteen colours as the kernel defines them (`default_red[]` and
-   friends in drivers/tty/vt/vt.c). */
+/* The Linux console's sixteen colours, as the kernel defines them. */
 :root {
   --ansi-0:  #000000;   /* black          */
   --ansi-1:  #aa0000;   /* red            */
@@ -21,12 +20,11 @@
   --ansi-14: #55ffff;   /* light cyan     */
   --ansi-15: #ffffff;   /* white          */
 
-  /* Roles, each an index rather than a colour. Severities use the bright half: 0xaa is
-     what those colours look like on a CRT, not on an OLED across a room. */
+  /* Severities use the bright half: 0xaa reads as CRT-dim on an OLED across a room. */
   --ground: var(--ansi-0);
   --text:   var(--ansi-7);
-  --stamp:  var(--ansi-2);    /* dmesg's `time`   */
-  --subsys: var(--ansi-3);    /* dmesg's `subsys` */
+  --stamp:  var(--ansi-2);
+  --subsys: var(--ansi-3);
   --ok:     var(--ansi-10);
   --warn:   var(--ansi-11);
   --bad:    var(--ansi-9);
@@ -43,14 +41,11 @@ html, body {
 body {
   color: var(--text);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* A fraction of the screen, not a pixel count: legible both on a television across a
-     room and in a 960-wide webview. */
+  /* Sized to the screen, so it is legible on a television and in a 960-wide webview. */
   font-size: 1vw;
   line-height: 1.55;
 }
 
-/* `pre` so the padded timestamps line up without a table or grid, either of which an old
-   engine could drop. */
 #log {
   white-space: pre;
 }
@@ -63,6 +58,4 @@ body {
 .bad  { color: var(--bad); }
 .note { color: var(--note); }
 
-/* Only the log: this page keeps everything else it owns, because it no longer goes away
-   when YouTube appears. */
 body.done > #log { display: none; }

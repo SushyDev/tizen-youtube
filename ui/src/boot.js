@@ -1,11 +1,9 @@
 import './boot.css';
 
+// Must match service/lib/ports.js, which this cannot require.
 const PORT = 8099;
-
-// Only so the shell can build the proxy address itself; the DIAL server is the service's.
 const DIAL_PORT = 8095;
 
-// No `tizen` object off a television, which decides whether this file may exit.
 const platform = typeof tizen === 'undefined' ? null : tizen;
 const application = platform ? platform.application.getCurrentApplication() : null;
 const onTv = !!application;
@@ -14,23 +12,11 @@ const BASE = onTv ? `http://localhost:${PORT}` : '';
 
 const GIVE_UP_AFTER = 20000;
 
-// The service announces itself on these the instant its socket is bound. The names are
-// shared with service/index.js and mean nothing to anything else.
-//
-// Two of them because the trusted and open APIs are different paths in the platform, and
-// on this television the trusted one is a silent hole: the port registers, the service's
-// `sendMessage` returns without error, and nothing is ever delivered. The open one works.
-// Samsung's own TV service sample uses the open one. Both are registered, because that
-// finding is one set.
+// Both are registered because the trusted port is a silent hole on this television: it
+// registers, `sendMessage` returns without error, and nothing is ever delivered.
 const READY_PORT = 'TUBE_BOOT';
 const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
 
-// Asking is no longer how the shell learns that a service it had to launch is up — being
-// told is. The first ask still happens, because a service that is already running answers
-// it before a launch could even be dispatched, and that is the ordinary launch. After that
-// this is a backstop and nothing more: long enough that a working announcement always
-// wins, short enough that a set which never delivers one still recovers. A cold launch
-// costs one ask with it, and fifteen without.
 const BACKSTOP = 2500;
 
 // Media keys must be claimed before the player exists.
@@ -93,10 +79,6 @@ const hold = (facility, what) => {
     document.body.className = 'held';
 };
 
-// This page is replaced by YouTube a frame after it writes its last line, so its own
-// timings exist only if it says them somewhere that outlives it. The service's log is
-// that place, and it can be read back from another machine without the app being a debug
-// build — which is the only way a release launch is measurable at all.
 const report = (line) => {
     if (!onTv) return;
 
@@ -109,10 +91,6 @@ const report = (line) => {
     }
 };
 
-// The shell's own work and the service coming up now overlap, so these are spans measured
-// from the same origin rather than one after the other. `keys` is inside `shell`, and is
-// here because twelve synchronous platform calls are the likeliest thing left in front of
-// the handover.
 const summarise = () => {
     const total = now();
 
@@ -136,7 +114,6 @@ const summarise = () => {
 
 window.onerror = (message, _source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
 
-// A budget, not a constant, so the last poll cannot outlive the announced deadline.
 const ask = (path, timeout) => new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open('GET', BASE + path, true);
@@ -168,8 +145,6 @@ const engine = () => {
     ].filter(Boolean).join(', ');
 };
 
-// Not always the 1920x1080 the platform promises, and model and firmware would need a
-// privilege this app lacks.
 const surface = () => {
     const view = { w: window.innerWidth, h: window.innerHeight };
     const panel = { w: window.screen.width, h: window.screen.height };
@@ -184,8 +159,8 @@ const surface = () => {
     };
 };
 
-// An origin still pointing at the example host presents as YouTube loading with none of
-// the modifications and no explanation on screen.
+// An unset origin otherwise presents as YouTube loading with none of the modifications
+// and no explanation on screen.
 const PLACEHOLDER = /(^|\.)example\.(com|net|org|invalid)$/;
 
 const isPlaceholder = (origin) => {
@@ -196,19 +171,14 @@ const isPlaceholder = (origin) => {
     }
 };
 
-// The proxy address is a constant on a television, built from the same two ports the
-// service builds it from. Reading it back is what the log is for; it is not what decides
-// where to go, so a service that never answers is still handed a correct address rather
-// than one missing the DIAL hand-off.
 const localProxyUrl = () => `${BASE}/tv` + (onTv
     ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${DIAL_PORT}/dial/apps/YouTube`)}`
     : '');
 
 const withArgs = (url, args) => (args ? `${url}${url.indexOf('?') === -1 ? '?' : '&'}${args}` : url);
 
-// One frame to lay the last line out and one to paint it, rather than a fixed wait that is
-// mostly nothing. A prelaunched app is not being composited and gets neither, so the timer
-// is the floor and not the plan.
+// A prelaunched app is not being composited and never gets a frame, so the timer is the
+// floor.
 const paintThen = (act) => {
     let acted = false;
 
@@ -267,8 +237,8 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
-// Registered before the service is asked for, let alone launched: a port that does not
-// exist yet is a message that is never sent.
+// Registered before the service is asked for: a port that does not exist yet misses the
+// message.
 const awaitAnnouncement = () => {
     if (!onTv) return null;
 
@@ -284,8 +254,6 @@ const awaitAnnouncement = () => {
         const listen = (label, open) => {
             try {
                 open().addMessagePortListener((data) => {
-                    // Recorded whether or not this wins the race: whether the message
-                    // arrives at all is the whole question.
                     toldAt = now();
                     toldBy = label;
 
@@ -322,11 +290,8 @@ let portState = 'not tried';
 let toldAt = 0;
 let toldBy = '';
 
-// Asking comes first and launching second. The service outlives the app — a launch that
-// does not kill the package finds it still listening — so on the ordinary start this first
-// ask is the whole of the wait, and it is answered in about a fifth of a second. Launching
-// first cost an app-control round trip on every single start, warm ones included, and that
-// dispatch is not cheap here: measured at ~1.8s before the service's own first line runs.
+// Asked before launching: the service usually outlives the app and answers before an
+// app-control dispatch would return.
 const reachService = async () => {
     const started = now();
     const deadline = started + GIVE_UP_AFTER;
@@ -343,16 +308,14 @@ const reachService = async () => {
         if (asks === 1) firstAskAt = now();
 
         try {
-            // Never longer than what is left of the announced deadline.
             const left = Math.max(deadline - now(), 500);
             const state = await ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, 8000));
 
             serviceUpAt = now();
             return { state, asks, by: 'ask' };
         } catch (failure) {
-            // Nothing was there to answer, so now it is worth starting. Not awaited: what
-            // says the service is up is its port answering, not the platform accepting the
-            // request to start it.
+            // Not awaited: the service is up when it answers, not when the platform
+            // accepts the launch.
             if (!launched) {
                 launched = true;
                 launchService();
@@ -366,7 +329,6 @@ const reachService = async () => {
             }
         }
 
-        // A log that has gone quiet is indistinguishable from one that has stopped.
         if (now() > nextNudge) {
             say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
             nextNudge = now() + 5000;
@@ -374,12 +336,7 @@ const reachService = async () => {
 
         if (now() > deadline) return { state: null, asks, by: 'gave up' };
 
-        // Whichever comes first: being told, or the backstop coming round again. The
-        // announcement carries the same state the endpoint would have answered with, so
-        // being told is the end of it — there is nothing left to go and ask.
-        //
-        // Never longer than what is left, or the backstop outlives the deadline the log
-        // just announced and "gave up after 20s" is printed at 21.5s.
+        // Capped at what is left, or "gave up after 20s" prints at 21.5s.
         const backstop = wait(Math.max(Math.min(BACKSTOP, deadline - now()), 0)).then(() => null);
 
         const told = announced ? await Promise.race([announced, backstop]) : await backstop;
@@ -417,11 +374,8 @@ const describe = (state, asks) => {
 };
 
 const boot = async () => {
-    // Nothing below decides whether the service is wanted, so the asking starts on the very
-    // first line and everything the shell does for itself — twelve synchronous key
-    // registrations, and reading the app control — happens while the service comes up
-    // rather than in front of it. `castArguments` is a synchronous platform call and is
-    // only wanted at handover, so it must not sit in front of the request either.
+    // Started on the first line, so the shell's own synchronous platform calls happen
+    // while the service comes up rather than in front of it.
     const reaching = reachService();
     const args = castArguments();
 
@@ -475,8 +429,6 @@ const boot = async () => {
     return useProxy(reached.state, args);
 };
 
-// `linger` is for the path nobody wants to read in a hurry; everything else hands over on
-// the next painted frame.
 const useProxy = (state, args, linger) => {
     const target = withArgs((state && state.proxyUrl) || localProxyUrl(), args);
 
@@ -497,8 +449,6 @@ const useProxy = (state, args, linger) => {
     return linger ? setTimeout(go, linger) : paintThen(go);
 };
 
-// Nothing answered, but the proxy address is one this page can build: a page that loads
-// late beats an app that never opens.
 const giveUp = (args) => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
@@ -507,10 +457,6 @@ const giveUp = (args) => {
     return useProxy(null, args, 400);
 };
 
-// Back, while this screen is still up, means stop — not "leave the service running". It
-// outlives the app deliberately, so exiting alone leaves it holding a stream and fetching
-// for somebody who has left. This asks it to stop first and goes anyway if it will not:
-// a service that cannot answer must never trap the viewer on a boot screen.
 const stopEverything = () => {
     let left = false;
 

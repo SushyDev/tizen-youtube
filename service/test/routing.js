@@ -1,9 +1,5 @@
 'use strict';
 
-// The proxy's catch-all matches every path, so route registration order is load bearing:
-// attached too early, /__tube/state returns YouTube's HTML instead of JSON and the app
-// never launches.
-
 const http = require('http');
 
 const proxy = require('../lib/proxy.js');

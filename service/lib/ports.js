@@ -1,8 +1,6 @@
 'use strict';
 
-// One place for every port this app binds. The reference hardcoded them at each use site
-// and drifted: it navigated to localhost:8085 while the DIAL server binds 8095, so cast
-// payloads were silently dropped.
+// PROXY and DIAL are duplicated in ui/src/boot.js, which cannot require this.
 
 module.exports = {
     PROXY: 8099,

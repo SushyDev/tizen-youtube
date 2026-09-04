@@ -9,32 +9,22 @@
     <feature name="http://tizen.org/feature/web.service"/>
     <icon src="icon.png"/>
 
-    <!-- use.game.mode is deliberately absent and must stay absent. It is the one switch
-         that makes the platform's renderer count frames, but it also stops the platform
-         playing a URL at all: the element takes the src and sits at networkState 0 with no
-         error, so every video falls back to the default player. Three cold starts each way.
-         `TUBE_GAME_MODE=1 npm run package` adds it to the staged copy for measuring. -->
+    <!-- use.game.mode must stay absent: it makes the renderer count frames, but the video
+         element then sits at networkState 0 with no error and every video falls back to
+         the default player. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/use.uwe" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- voice.support came from Samsung's own NativePlayer sample, as the closest thing
-         found to a rendering-priority hint. multitasking.support came with it and is not
-         one: false is what makes the platform *terminate* the app when it loses focus
-         rather than hiding it, so Home and back re-ran the boot screen and landed on the
-         YouTube home page instead of where the viewer was. Samsung documents it plainly.
-         The frame drops it was reaching for turned out to be in the media path, not the
-         renderer, so this buys nothing and costs every return to the app. -->
+    <!-- Must stay true: false terminates the app on focus loss rather than hiding it, so
+         Home and Back re-run the boot screen instead of returning to the video. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
 
-    <!-- Jellyfin sets this on Tizen; a different namespace from the samsung.com keys. -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
 
-    <!-- The page is served over http and pulls media over https, which is the mixed
-         content this asks to be allowed. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="5.5"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/allow.mixedcontent" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/runningtype" value="MAIN"/>
@@ -47,12 +37,6 @@
     <tizen:privilege name="http://tizen.org/privilege/unlimitedstorage"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
 
-    <!-- There were two of these, the second saying background-support="enable", and it had
-         never done anything: tizen:setting may occur once, and a repeated singleton is
-         ignored rather than merged, so the first one is the whole of it. The app being
-         terminated on focus loss rather than hidden is what that looked like from the
-         sofa, and multitasking.support above is what actually decides it on this
-         platform. -->
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
     <tizen:profile name="tv-samsung"/>
 

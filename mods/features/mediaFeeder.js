@@ -42,18 +42,8 @@ function trackOf(session, kind, origin) {
     };
 }
 
-// Televisions built on Cobalt take parameters on the codec string, and this one asks the
-// platform to flush its decoder when the playhead moves. The reference client appends it to
-// every codec string it hands to `addSourceBuffer`, and on this hardware it is the
-// difference between a seek working and a seek that reports success and changes nothing:
-// measured here on the native path, a seek completes — `seeked` fires, `seeking` clears,
-// `readyState` stays 4, seconds of decodable media sit ahead of the playhead — and the
-// decoder goes on showing the picture it already had, asking for nothing further. There is
-// no way to ask for that flush except through the codec string, which is why it can only be
-// done from here and not from a plain `src`.
-//
-// A build that does not know the parameter may refuse the type outright, and an unplayable
-// video is worse than an unflushed seek, so a refusal falls back to the plain type.
+// Cobalt reads parameters off the codec string; this one flushes the decoder on a seek, without
+// which a seek reports success and the picture never changes. Older builds refuse it.
 const FLUSH_ON_SEEK = '; enableflushduringseek=true';
 
 function added(source, type) {
@@ -80,8 +70,7 @@ export function feed(session, origin) {
 
     const source = new window.MediaSource();
 
-    // The browser's own, not the replacement: the patched one would hand back whatever this
-    // is being asked to produce.
+    // The browser's own, not the patched one, which would hand back the address this is producing.
     const address = objectURLFor(source);
     if (!address) return null;
 

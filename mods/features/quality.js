@@ -12,7 +12,6 @@ export function chooseQuality(preference, offered) {
     const target = parseInt(preference, 10) || 0;
     const match = available.find((entry) => pixels(entry) === target);
 
-    // Nearest below, since falling back to the maximum defeats a cap.
     if (match) return { quality: match.quality, pixels: pixels(match) };
 
     const below = available

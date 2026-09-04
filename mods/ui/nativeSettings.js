@@ -180,9 +180,8 @@ function putMoved(items, taken) {
     });
 }
 
-// The boolean row arrives with the settings page, but the action row’s code is only fetched
-// when the first one is drawn — which can be long after this response was patched. So the
-// search eases off rather than stopping, and gives up once the settings page is gone.
+// The action row's code is only fetched when the first one is drawn, long after this response
+// is patched — so the search eases off instead of stopping, and gives up once the page is gone.
 function claimRows(attempt = 0) {
     const claimed = claimBooleanRows();
     const annotated = claimActionRows();

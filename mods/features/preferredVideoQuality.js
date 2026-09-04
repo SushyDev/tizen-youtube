@@ -16,11 +16,9 @@ const CONFIG_KEYS = {
 
 const CHECK_INTERVAL = 3000;
 
-// Asking restarts the stream, so a rung the player will not take is asked for a few times
-// and then left alone until the next video.
+// Asking restarts the stream, so a rung the player will not take is dropped after a few tries.
 const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
 
-// Below this, a jump backwards is a seek; above it, the video started over.
 const RESTART_JUMP = 2;
 
 class PreferredQualityHandler {
@@ -34,12 +32,10 @@ class PreferredQualityHandler {
     #attempts = 0;
     #askedAt = 0;
 
-    // A preference is what to start on, not a rung to hold: without this, choosing another
-    // quality from the player's own menu was overridden again within the tick.
+    // Without this, a quality chosen from the player's own menu is overridden on the next tick.
     #settled = false;
 
-    // A deliberate restart looks exactly like a new video from here — same id, time back at
-    // the start — and applying the preference to it would undo the choice that caused it.
+    // A deliberate restart looks like a new video from here: same id, time back at the start.
     #keepChoice = false;
 
     keepCurrentChoice() {
@@ -89,8 +85,6 @@ class PreferredQualityHandler {
         this.#settled = false;
     }
 
-    // A new id or a jump back to the start: autoplay, play next, replay and repeat all arrive
-    // here. Repeat was missed before, since its id never changes.
     #startedOver() {
         const id = this.#player.getVideoData?.()?.video_id;
         const time = this.#player.getCurrentTime?.() ?? 0;

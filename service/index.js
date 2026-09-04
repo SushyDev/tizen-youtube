@@ -48,9 +48,6 @@ function describeState() {
     return {
         platformVersion,
         variant: loader.variantFor(platformVersion),
-
-        // What the enhanced player is holding right now. Off by default, so this is zero
-        // for anyone who never turned it on — and the answer to "why is the set full?".
         media: stream.holding(),
         script,
         proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
@@ -85,8 +82,7 @@ dash.attach(app);
 
 stream.clean();
 
-// `unref` is a Node convenience and not every runtime this service starts on has it.
-// Losing the timer would be a slow leak; failing to start is a black screen.
+// Not every runtime this service starts on has `unref`.
 const sweeping = setInterval(() => stream.sweep(), stream.SWEEP_INTERVAL);
 if (sweeping && typeof sweeping.unref === 'function') sweeping.unref();
 

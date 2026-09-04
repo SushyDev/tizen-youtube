@@ -50,12 +50,8 @@ function claimBooleanRows() {
 
 const ACTION_ROW = 'ytlr-setting-action-renderer';
 
-// YouTube draws a footer note on a boolean row only, and even there the text is hardcoded to
-// its own autoplay message. The action row — what a choice or a list of ours renders as — has
-// no footer in its template at all. Wrapping that template lets one of our rows carry the note
-// in tubeNote, drawn with YouTube's own two classes so it sits and reads like the stock one.
-// Nodes are stamped with a private symbol as they are built, so the footer has to come from the
-// same hyperscript rather than a hand-made object; it is found by the shape of what it returns.
+// Action rows have no footer template; wFmJpd/vAMQc are YouTube's own note classes. Nodes are
+// stamped with a private symbol when built, so the footer must come from YouTube's hyperscript.
 const findHyperscript = () => findBySource('.type=', '.props=', '.children=');
 
 const noteFor = (H, note) => H(
@@ -75,8 +71,7 @@ const withNote = (original, H) => function (props, state) {
 
 let noted = false;
 
-// `template` is assigned per instance in the constructor, so the wrap goes on as an accessor
-// that catches every row built after it, and rows already standing are pushed back through it.
+// `template` is assigned per instance in the constructor, so the wrap has to be an accessor.
 function claimActionRows() {
     if (noted) return true;
 

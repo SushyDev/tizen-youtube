@@ -1,9 +1,5 @@
 'use strict';
 
-// Pulls YouTube's media over SABR. Every adaptive format above 360p is served that way
-// and carries no url of its own, so the media cannot be fetched without the session the
-// page opened.
-
 const crypto = require('crypto');
 
 const journal = require('./journal.js');
@@ -14,18 +10,15 @@ const {
 
 const IDLE_TIMEOUT = 120000;
 
-// googlevideo sends none of these, and the endpoint answers 403 to a request that does
-// not look like the client the session was opened for.
+// googlevideo answers 403 unless the request carries these.
 const ORIGIN = 'https://www.youtube.com';
 
 const NONCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 const sessions = new Map();
 
-// Read off the page's own SABR requests through the proxy, because three things in it
-// cannot be rebuilt here: the `n` in the streaming url, the PO token BotGuard mints, and
-// the ustreamer config that went with them. Missing any one is answered 403, or
-// malformed_config, which names nothing.
+// The `n` in the streaming url, the BotGuard PO token and the ustreamer config cannot be
+// rebuilt here; missing any one is answered 403 or malformed_config.
 const observed = {
     session: null,
 
@@ -39,10 +32,8 @@ const observed = {
             const context = request.streamerContext || {};
             const streamingUrl = new URL(url);
 
-            // Decoding proves nothing: protobuf reads almost any bytes as a message with
-            // none of the fields set, and the player also POSTs here for a single format at
-            // a time. What makes a request one of ours is the ustreamer config plus the
-            // absence of an itag in the address, since a SABR endpoint names no format.
+            // protobuf decodes almost any bytes into an empty message; ours is identified by a
+            // ustreamer config plus no itag in the address.
             if (!request.videoPlaybackUstreamerConfig
                 || !request.videoPlaybackUstreamerConfig.length
                 || streamingUrl.searchParams.has('itag')) return;
@@ -55,9 +46,8 @@ const observed = {
                 at: Date.now(),
                 streamingUrl: streamingUrl.toString(),
 
-                // An itag alone does not name a format: the same one appears more than once with
-                // different `xtags` — a dubbed track, or the same audio with its dynamic range compressed
-                // — and picking between them by bitrate is picking at random.
+                // An itag can name more than one format (a dubbed track, or the same audio with
+                // compressed dynamic range); only `xtags` tells them apart.
                 selected: (request.selectedFormatIds || []).map((format) => ({
                     itag: Number(format.itag),
                     xtags: format.xtags || ''
@@ -80,7 +70,7 @@ const observed = {
     }
 };
 
-// The player response spells its config in the url-safe alphabet and the request in the
+// The player response spells the config in the url-safe base64 alphabet and the request in the
 // standard one, so the same bytes do not compare equal as text.
 function sameConfig(a, b) {
     const bytes = (value) => Buffer.from(String(value).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
@@ -96,9 +86,6 @@ function awaitSession(ustreamerConfig, timeout, after) {
         if (ustreamerConfig && session.ustreamerConfig
             && !sameConfig(ustreamerConfig, session.ustreamerConfig)) return null;
 
-        // Opening the same video again means the viewer changed something, and what they chose is
-        // in the request the player has yet to make: the one before it names the old choice and
-        // matches just as well.
         if (after && session.at <= after) return null;
 
         return session;
@@ -126,15 +113,14 @@ function validate(params) {
     if (missing.length) throw new Error(`missing ${missing.join(', ')}`);
     if (!Array.isArray(params.formats) || !params.formats.length) throw new Error('no formats');
 
-    // A live stream reports no length, and SABR reads up to the duration it is given: with
-    // none it closes both tracks before a byte arrives.
+    // SABR reads up to the duration it is given; with none it closes both tracks before a byte lands.
     if (!(Number(params.durationMs) > 0)) {
         throw new Error('this response has no duration — a live stream cannot be packaged this way');
     }
 }
 
-// One per stream: the server tracks position against the `cpn` in the url, so sharing the
-// page's would resume where the page is.
+// A `cpn` of our own: the server tracks position against it, so sharing the page's would resume
+// where the page is.
 function ownSession(url) {
     const address = new URL(url);
     if (!address.searchParams.has('cpn')) return url;
@@ -163,9 +149,6 @@ function fetcher(userAgent, gate) {
 }
 
 function open(input) {
-    // The caller should name the session to use: the page makes requests for videos it is
-    // only considering, so the latest one seen is not necessarily the one a stream was opened
-    // against, and both tracks of a stream have to be built from the same one.
     const session = input.session || observed.session || {};
     const params = Object.assign({}, input, {
         streamingUrl: input.streamingUrl || session.streamingUrl,
@@ -174,9 +157,6 @@ function open(input) {
         clientInfo: input.clientInfo || session.clientInfo
     });
 
-    // Formats belong to one video and the session to another only if the page moved on
-    // between the two being read. The server answers that with malformed_config, which says
-    // nothing about which half is stale.
     if (input.ustreamerConfig && session.ustreamerConfig && !sameConfig(input.ustreamerConfig, session.ustreamerConfig)) {
         throw new Error('the page has moved on: its formats and the observed session are for different videos');
     }
@@ -208,8 +188,6 @@ async function follow(input, options) {
     }
 
     const { videoStream, audioStream } = await stream.start({
-        // As formats rather than itags: an itag can name more than one of them, and asking by
-        // number takes whichever came first.
         videoFormat: buildSabrFormat(options.videoFormat),
         audioFormat: buildSabrFormat(options.audioFormat),
         enabledTrackTypes: options.kind === 'video' ? EnabledTrackTypes.VIDEO_ONLY : EnabledTrackTypes.AUDIO_ONLY,

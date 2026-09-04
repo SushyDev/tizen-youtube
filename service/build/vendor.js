@@ -1,7 +1,6 @@
 'use strict';
 
-// googlevideo is ESM only, and ncc leaves it as a bare `require` that resolves to nothing
-// on the television. Rolling it up to CommonJS first gives ncc an ordinary file to inline.
+// googlevideo is ESM only; ncc leaves it as a bare `require` that resolves to nothing on the TV.
 
 const { rollup } = require('rollup');
 const { nodeResolve } = require('@rollup/plugin-node-resolve');
@@ -23,10 +22,8 @@ async function build() {
         plugins: [nodeResolve({ preferBuiltins: true }), commonjs()],
         external: (id) => id.startsWith('node:') || require('module').builtinModules.includes(id),
 
-        // Rollup answers an import it cannot resolve by leaving it external and warning, so a
-        // missing dependency writes a stub of bare requires, exits 0, and ncc inlines a bundle
-        // that dies on its first require — a television that waits 20s and shows a black screen.
-        // Fail here instead, where the message is readable.
+        // Rollup only warns on an unresolved import: without this the build exits 0 and ships
+        // a bundle that dies on its first require.
         onwarn(warning) {
             if (warning.code === 'UNRESOLVED_IMPORT') {
                 throw new Error(`${warning.exporter} could not be resolved — run npm install`);

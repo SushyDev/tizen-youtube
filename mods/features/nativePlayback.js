@@ -6,8 +6,6 @@ import { keepCurrentChoice } from './preferredVideoQuality.js';
 import { replaceMediaSource } from '../youtube/mediaSource.js';
 import { feed } from './mediaFeeder.js';
 
-// Read when used rather than at import, because the tests load this file off the
-// television where there is no page to have an origin.
 const service = () => `${window.location.origin}/dash`;
 
 const DESCRIPTIONS = {
@@ -17,9 +15,8 @@ const DESCRIPTIONS = {
     mse: null
 };
 
-// Beyond this the set asks for the first chunk of a plain file and then consumes nothing,
-// reporting no error: 553MB plays, 684MB does not. Duplicated from the service, which has
-// the same number, because the page chooses a description before asking it anything.
+// Above this the set fetches the first chunk of a plain file, then consumes nothing and
+// reports no error: 553MB plays, 684MB does not. The service holds the same number.
 const PLAIN_FILE_LIMIT = 600 * 1024 * 1024;
 
 const plainFileBytes = new Map();
@@ -52,8 +49,7 @@ function describedAs(videoId) {
         return DESCRIPTIONS.dash;
     }
 
-    // Named rather than looked up: its answer is `null`, which the fallback below would
-    // quietly turn into a manifest.
+    // Named, not looked up: its answer is null, which the fallback below would turn into a manifest.
     if (chosen === 'mse') return null;
 
     const wanted = DESCRIPTIONS[chosen] || DESCRIPTIONS.dash;
@@ -75,8 +71,7 @@ export function startsAt(videoId, seconds) {
 function startsFrom(videoId) {
     const said = resumeAt.get(videoId) || 0;
 
-    // Only while the element is still playing ours, which makes this a re-attach rather than
-    // a load. On a load the clock still holds the *previous* video's position.
+    // Only a re-attach: on a load the clock still holds the previous video's position.
     let live = 0;
     if (playingOurs() && playerVideo() === videoId) {
         try {
@@ -89,8 +84,7 @@ function startsFrom(videoId) {
 }
 
 function addressFor(videoId) {
-    // One feeder per video: the player asks for a source more than once, and each ask would
-    // otherwise start another appending the same segments into a different buffer.
+    // One feeder per video: the player asks for a source more than once.
     if (describedAs(videoId) === null) {
         const running = feeders.get(videoId);
         if (running) return running.address;
@@ -110,17 +104,12 @@ function addressFor(videoId) {
 
     if (!at) return address;
 
-    // Both, and they do different jobs. `#t=` is a media fragment: the browser strips it
-    // before the request and uses it to seek once the presentation is loaded, so the server
-    // never learns of it and the stream opens at the beginning — which is why a resumed or
-    // sought-to position used to cost a load from zero and then a jump. `?at=` is a query,
-    // so it survives to the service, which positions the stream before answering.
+    // Both: `#t=` is a media fragment the browser strips before the request and seeks with,
+    // `?at=` survives to the service, which positions the stream before answering.
     return `${address}?at=${Math.floor(at)}#t=${Math.floor(at)}`;
 }
 
 const AFTER_CHOOSING = 400;
-
-
 
 const GIVE_UP_AFTER = 25000;
 
@@ -132,18 +121,13 @@ const opened = new Map();
 
 const handedAt = new Map();
 
-// Which open is the current one, per video. A session that finishes opening after another
-// has started for the same video has nobody left to close it.
+// Which open is current: one that finishes after a newer one started has nobody left to close it.
 const attempts = new Map();
 
 function clockStopsOnPlay(videoId) {
     const video = document.querySelector('video');
     if (!video) return;
 
-    // At handover, not on the first timeupdate: between the two the menu answers out of
-    // the player's own pipeline, and it was caught saying 1440p over a 2160p picture and
-    // then correcting itself a moment later. Idempotent, so calling it early costs
-    // nothing — the reading is only altered while this app is feeding the element.
     correctReportedRung();
 
     const playing = () => {
@@ -236,44 +220,17 @@ function playingOurs() {
     return Boolean(video && video.readyState >= 2 && String(video.currentSrc).indexOf('/dash/') !== -1);
 }
 
-// The set's pipeline does not always flush for a seek. It keeps the buffer it had, reports
-// `readyState 4` for a playhead far outside it, and discards every fragment served at the new
-// position — complete, correctly framed, correctly timed, and refused, because as far as it
-// is concerned nothing is missing.
-//
-// This follows how YouTube's own TV player handles the same hardware, which is worth copying
-// rather than inventing, because it has to survive every set that we do.
-//
-// Two things it does that matter here. The first is that the watchdog is a timer, not an
-// event listener: a wedged element stops firing events, so anything hung off `seeking` or
-// `waiting` goes quiet exactly when it is needed. Theirs re-arms itself every second and
-// infers the wedge from state that has failed to change. The second is that the fix is a
-// ladder, cheapest first, and each rung is given a moment to work before the next is tried —
-// re-issue the seek, then nudge it by a millisecond, and only then throw the presentation
-// away. Reloading is their last resort. It was our first, which is why a two second jump
-// cost a full reload and hid whatever was really wrong.
-//
-// The nudge is the part that looks like superstition and is not: they apply it only when the
-// target is already inside `buffered` — data present, pipeline stuck, which is our case
-// exactly — and a millisecond is enough to make the pipeline re-evaluate a seek it has
-// decided it has already satisfied.
+// The set can complete a seek — `seeked` fires, readyState 4, no error — and go on showing the
+// picture it had. A wedged element fires no events, so this watches on a timer, not a listener.
 const WATCHES_EVERY = 1000;
 
-// Ticks of no progress before each rung. A seek that is merely slow settles well inside the
-// first: the slowest honest fragment measured here was 1.7s.
-// Late, because a seek is allowed to take a moment and this is a last resort rather than a
-// step in the process. These were tightened to two seconds to beat a renderer block on WebM,
-// which no longer happens now the manifest describes that file by its own cues. Two seconds
-// is below the honest cost of an AV1 seek — a segment is fifteen megabytes and takes about
-// two seconds to fetch before a frame can be shown — so the ladder was firing on healthy
-// seeks, reporting them as freezes, and interfering with ones that were about to finish on
-// their own.
+// Ticks of no progress before each rung. High on purpose: an honest AV1 seek costs ~2s a
+// segment, and a tighter ladder fired on healthy seeks.
 const RE_SEEK_AFTER = 6;
 const NUDGE_AFTER = 8;
 const CYCLE_AFTER = 10;
 
 const NUDGE = 0.001;
-
 
 let watching = null;
 
@@ -283,33 +240,17 @@ function watchSeeks() {
         if (!video || video.tagName !== 'VIDEO') return;
         if (String(video.currentSrc || video.src || '').indexOf('/dash/') === -1) return;
 
-        // Only for a seek out of playback that was actually running. A video still opening
-        // has a playhead that does not move either, and arming for that tore down a video in
-        // the middle of starting — on WebM, where the first rung is to replace the element.
-        //
-        // `played` and not `readyState`: readyState drops below HAVE_FUTURE_DATA during a
-        // seek, which is precisely when this fires, so asking it here disqualified every
-        // real seek as well. What has been played cannot be un-played by seeking away from
-        // it, so an element with an empty `played` has never shown a frame and is opening.
+        // `played`, not `readyState`: readyState drops during the very seek this fires on.
         if (!video.played || video.played.length === 0) return;
 
         const at = video.currentTime;
 
-        // Every rung of the ladder below seeks, and seeking fires this. A watch already
-        // running for what is essentially this position therefore keeps its place: without
-        // that, asking again resets the counter that was about to try nudging, and the
-        // cheapest rung repeats for ever while the viewer waits — measured, six times in a
-        // row at three second intervals, never reaching the rung that would have worked.
+        // Every rung seeks, which re-enters this; keeping the running watch stops its counter resetting.
         if (watching && watching.video === video && Math.abs(watching.at - at) < 1) return;
 
-        // Only the target is taken here. Whether the seek worked is decided by the timer,
-        // because this event is the last one a wedged element sends.
         watching = { video, at, still: 0, rung: 0, seeked: 0 };
     }, true);
 
-    // `seeked` is how the reference player decides a seek is done, so whether it arrives at
-    // all is the difference between a platform that refused the seek and one that performed
-    // it onto media it then would not decode.
     document.addEventListener('seeked', (event) => {
         if (watching && watching.video === event.target) watching.seeked += 1;
     }, true);
@@ -322,7 +263,6 @@ function watchSeeks() {
         if (!video.isConnected || video.paused || video.ended) return stopWatching();
         if (String(video.currentSrc || video.src || '').indexOf('/dash/') === -1) return stopWatching();
 
-        // Moved on, so the seek took.
         if (video.currentTime > at + 0.25) {
             if (watching.rung) note('element', `seek to ${Math.floor(at)}s came back after ${watching.rung} nudge(s)`);
             return stopWatching();
@@ -348,30 +288,9 @@ function holdsAlready(video, at) {
 function climb() {
     const { video, at, still, rung } = watching;
 
-    // On WebM every cheap rung is skipped and the element is replaced instead, because each
-    // of them writes `currentTime` and writing `currentTime` to a wedged decoder there does
-    // not merely fail — it blocks the renderer. Measured: the ladder logs its first rung and
-    // the page never ticks again, whichever rung happens to be first. That is why the
-    // replacement was unreachable for so long; it sat behind the step that killed the page.
-    // Replacing the element touches nothing on the old one but its removal.
-    //
-    // Declared before anything reads it. It was written below its first use, which is a
-    // `const` in its dead zone: every tick threw, no rung ever ran, and a ladder that was
-    // doing nothing at all looked like a ladder whose rungs were being skipped on purpose.
-    //
-    // On MP4 the pause/play rung is the one that works — the decoder comes back and the
-    // stream, the presentation and the element are all left alone. On WebM it is the last
-    // thing that runs before the page stops running at all, so there it is skipped and the
-    // replacement is tried in its place.
+    // On WebM this rung blocks the renderer and the page never ticks again, so it is MP4 only.
     const mp4 = !serving || !serving.video || serving.video.container !== 'webm';
 
-    // Between the nudge and the replacement, the cheapest thing that makes a decoder look
-    // again.
-    // The set completes the seek — `seeked` fires, `seeking` clears, `readyState` is 4, no
-    // error — and then holds the picture it already had. Nothing is missing as far as it is
-    // concerned, so nothing that asks it for more will help; what is needed is for playback
-    // itself to stop and start, which is the one lever left that does not throw the
-    // presentation away.
     if (mp4 && still >= CYCLE_AFTER && rung < 3) {
         watching.rung = 3;
         note('element', `seek to ${Math.floor(at)}s completed and froze; stopping and starting playback`);
@@ -396,11 +315,6 @@ function climb() {
     if (still >= RE_SEEK_AFTER && rung < 1) {
         watching.rung = 1;
 
-        // Which of the two failures this is, which decides everything after it. `seeking`
-        // still true means the platform never finished the seek and is waiting for something
-        // it will not get; false with a playhead that has not moved means it finished and the
-        // decoder is holding a picture it will not replace. They look identical from the sofa
-        // and want opposite fixes.
         note('element', `seek to ${Math.floor(at)}s has not moved after ${still}s`
             + ` (seeking ${video.seeking}, readyState ${video.readyState},`
             + ` networkState ${video.networkState}, seeked ${watching.seeked}); asking again`);
@@ -412,8 +326,6 @@ function climb() {
 }
 
 export function chooseQuality(quality) {
-    // Three ways this used to do nothing at all, none of which said so — a pick that never
-    // arrives and a pick that is dropped here look the same from the sofa.
     if (!serving || !playingOurs()) {
         return note('choice', `${quality} ignored: ${serving ? 'not playing ours' : 'nothing being served'}`);
     }
@@ -450,10 +362,6 @@ function heightOf(quality) {
     }
 }
 
-// The element and the app's own player are two different objects, and only one of them
-// answers this. Asking the element alone left a quality change accepted, logged, and then
-// silently doing nothing at all — the journal stopped after `choice` and the picture went
-// with it, because the failure only ever reached a console nobody can read on a set.
 function restart(videoId, at) {
     const targets = [findPlayerApi(), player()];
 
@@ -493,8 +401,6 @@ export function chooseAudioTrack() {
 const RECONCILE_FOR = 6000;
 const RECONCILE_EVERY = 250;
 
-// A track it names that cannot be served would otherwise be asked for, missed, and asked
-// for again for as long as the video plays.
 const reconciled = new Set();
 
 function reconcileAudio(videoId) {
@@ -528,15 +434,8 @@ function reconcileAudio(videoId) {
 
 const correctedPlayer = new WeakSet();
 
-// The readings as they were before this app altered them. Correcting what the player
-// reports makes the page player's own choice unreadable through the same methods — which
-// cost a measurement today: a test of whether its quality could be pinned read back this
-// app's corrected answer and looked like a success. Diagnostics ask here instead.
 const untouched = new WeakMap();
 
-// The whole ladder entry, because the menu shows a tick and a label and they come from
-// two different methods. Correcting one and not the other is how it came to say 1080p60
-// over a 3840x2160 picture.
 function rungFor(height) {
     try {
         const ladder = player().getAvailableQualityData() || [];
@@ -549,17 +448,11 @@ function rungFor(height) {
     }
 }
 
-// Only the rungs YouTube names; anything else falls back to what the player said.
 const RUNG_NAMES = {
     2160: 'hd2160', 1440: 'hd1440', 1080: 'hd1080', 720: 'hd720',
     480: 'large', 360: 'medium', 240: 'small', 144: 'tiny'
 };
 
-// What the element is actually decoding, which is what the viewer is actually watching and
-// what the nerd stats show. The rung this app asked to serve is the fallback, for the
-// moment before the first frame gives the element its dimensions — everything reported
-// while the enhanced player is feeding comes from the picture itself, so the menu cannot
-// drift away from it the way the player's own adaptive state does.
 function showingHeight() {
     const video = document.querySelector('video');
     if (video && video.videoHeight) return video.videoHeight;
@@ -572,10 +465,6 @@ function synthesise(name, height) {
     return name === 'getPlaybackQualityLabel' ? `${height}p` : (RUNG_NAMES[height] || null);
 }
 
-// Both of them. The element is what this app's own readings go through; the registry's
-// player API is what the app's own menus ask, and correcting only the element is why the
-// quality menu went on reporting the page player's decaying guess — caught saying
-// 720p60 through that handle while the element, corrected, said 2160p60.
 function correctReportedRung() {
     [player(), findPlayerApi()].forEach(correctOne);
 }
@@ -587,9 +476,6 @@ function correctOne(showing) {
 
     correctedPlayer.add(showing);
 
-    // Both readings, from the same rung. The player's own pipeline is fed into a buffer
-    // that discards everything, so whatever it settled on describes nothing anybody is
-    // watching — but only while this app is the one feeding the element.
     const keep = untouched.get(showing) || {};
     untouched.set(showing, keep);
 
@@ -608,9 +494,6 @@ function correctOne(showing) {
             const rung = rungFor(height);
             if (rung) return take(rung) || said;
 
-            // The ladder arrives with the page and this can be asked before it has. What
-            // is being served is known either way, and a plain height beats the number the
-            // player's own pipeline settled on, which nobody is watching.
             return synthesise(name, height) || said;
         };
     };
@@ -618,12 +501,6 @@ function correctOne(showing) {
     correct('getPlaybackQuality', (rung) => rung.quality);
     correct('getPlaybackQualityLabel', (rung) => rung.qualityLabel);
 
-    // And the one the menu actually reads. `getVideoData().video_quality` is the player's
-    // own adaptive state, and it decays while the picture does not: caught at hd1440 and
-    // then hd1080 over an unchanging 3840x2160, because its pipeline is fed into a buffer
-    // that keeps nothing and its ladder walks down looking for something that will play.
-    // Correcting the two methods above moved the tick and the label; this is the field
-    // behind both in the menu's own rendering.
     const data = showing.getVideoData;
 
     if (typeof data === 'function') {
@@ -639,16 +516,11 @@ function correctOne(showing) {
             const quality = (rung && rung.quality) || synthesise('getPlaybackQuality', height);
             if (!quality || said.video_quality === quality) return said;
 
-            // A copy: this is YouTube's own object and the rest of it is none of our
-            // business. Everything that reads it reads it, and `video_id` is unchanged.
             return Object.assign({}, said, { video_quality: quality });
         };
     }
 }
 
-// What the page's own player thinks, with nothing of ours in the way. Its adaptive ladder
-// is the thing under test whenever the second download is being worked on, and it cannot
-// be read through the corrected methods.
 export function pagePlayerSays() {
     const ask = (target) => {
         const kept = target && untouched.get(target);
@@ -742,7 +614,6 @@ function audioXtags() {
         const id = String(track.id || '');
         const tag = id.indexOf(';');
 
-        // A video with one track says `und` and has nothing to distinguish.
         return tag === -1 ? undefined : id.slice(tag + 1);
     } catch (e) {
         return undefined;
@@ -758,8 +629,7 @@ function tagText(xtags) {
     }
 }
 
-// Keys are length-prefixed in the tag, so this matches the key itself rather than the
-// same letters appearing in the language or the content type.
+// Keys are length-prefixed, so \x03/\x02 match the key, not the same letters elsewhere.
 const ADJUSTED = /\x03drc|\x02vb/;
 
 function defaultXtags(formats) {
@@ -784,15 +654,10 @@ function openSession(request) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({
             maxHeight: asked.get(request.videoId) || preferredHeight(),
-            // Always, because whether the panel switches cannot be read beforehand:
-            // `(video-dynamic-range: high)` reports the mode it is in, not what it can do, so
-            // gating on it never asks and it never switches.
+            // Always: `(video-dynamic-range: high)` reports the mode the panel is in, not what it can do.
             hdr: true,
             audioXtags: wantedAudio(request.formats),
 
-            // The element is told the same thing in a fragment, which a server never sees, so
-            // without this the download starts at the beginning while the element asks for a
-            // segment minutes in.
             startMs: Math.floor(startsFrom(request.videoId) * 1000),
 
             fresh: changed.delete(request.videoId)
@@ -813,8 +678,7 @@ function openSession(request) {
         });
 }
 
-// The set's own decoder plays our stream silently at anything but normal speed, so this
-// decides which pipeline the video can use and is needed before the element has a rate.
+// The set's decoder is silent at anything but 1x, so other rates go back to the page.
 let intendedRate = 1;
 
 let lastVideo = null;
@@ -849,8 +713,6 @@ export function noteSpeed(value) {
         if (held) closeSession(held);
     }
 
-    // The player starts every load at normal speed, so without this the choice that caused
-    // the load would be lost by the load.
     if (video) {
         const apply = () => {
             video.removeEventListener('canplay', apply);
@@ -883,8 +745,6 @@ if (typeof window !== 'undefined') {
 
         if (!wanted()) return;
 
-        // The same response can arrive twice, so one already being served is nothing to act on —
-        // unless the viewer changed something, when this is the reload they asked for.
         if (opened.has(request.videoId) && !changed.has(request.videoId)) return;
 
         if (!changed.has(request.videoId)) {
@@ -892,17 +752,6 @@ if (typeof window !== 'undefined') {
             reconciled.delete(request.videoId);
         }
 
-        // One at a time per video, or a stream left from the previous attempt goes on
-        // downloading beside its replacement.
-        //
-        // Closing by id is not enough on its own: the entry is set to null while a session
-        // is opening, so a response arriving in that window found nothing to close and the
-        // half-open session was then overwritten and lost. It survived until the idle
-        // sweeper reclaimed it — seen on the television as a 2160p stream still fetching
-        // sixty-three seconds after a quality change had replaced it with 1080p, both
-        // pulling at once, which is what a seek followed by a quality change felt like.
-        // Every attempt is numbered now, and one that finishes after being superseded
-        // closes itself.
         const previous = opened.get(request.videoId);
         if (previous) closeSession(previous);
 

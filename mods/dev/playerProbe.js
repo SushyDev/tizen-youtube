@@ -13,9 +13,8 @@ if (watching) onRequest('playerProbe', ['videoId', 'context'], (body) => {
     const playback = (body.playbackContext || {}).contentPlaybackContext || {};
     const client = body.context.client || {};
 
-    // The licence exchange is shaped like a player request and arrives last, so keeping
-    // whichever came most recently keeps the wrong one. The one that names formats is the
-    // one carrying a playback context.
+    // The licence exchange is shaped like a player request and arrives last; the one that
+    // names formats is the one carrying a playbackContext.
     if (body.playbackContext && !body.licenseRequest) {
         try {
             window.__tubeAsked = JSON.stringify(body);

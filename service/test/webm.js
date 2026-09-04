@@ -16,7 +16,6 @@ function element(id, body) {
         value = Math.floor(value / 256);
     }
 
-    // Sizes here are small enough for the one-byte form, which sets the top bit.
     if (body.length > 0x7e) throw new Error('the fixture needs a longer size form');
     return Buffer.concat([Buffer.from(idBytes), Buffer.from([0x80 | body.length]), body]);
 }
@@ -41,8 +40,7 @@ function cuePoint(timeMs, clusterAt) {
     ]));
 }
 
-// Cluster positions are relative to the segment's body: an index built against the
-// file's start is wrong by exactly the header.
+// Cue cluster positions are relative to the segment body, not the file start.
 const CUES = [
     { timeMs: 0, at: 400 },
     { timeMs: 5000, at: 1400 },

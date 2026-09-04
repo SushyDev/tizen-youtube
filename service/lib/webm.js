@@ -2,13 +2,6 @@
 
 const journal = require('./journal.js');
 
-// Just enough Matroska to read the cues in YouTube's WebM initialization segments, in the
-// same shape `mp4.segmentIndex` returns.
-//
-// It exists because at 2160p60 YouTube offers only AV1 in MP4, which this hardware cannot
-// hold at ten bits, while its VP9 path plays 4K60 without dropping a frame — and VP9 is
-// only ever offered in WebM.
-
 const SEGMENT = 0x18538067;
 const INFO = 0x1549a966;
 const TIMECODE_SCALE = 0x2ad7b1;
@@ -18,9 +11,7 @@ const CUE_TIME = 0xb3;
 const CUE_TRACK_POSITIONS = 0xb7;
 const CUE_CLUSTER_POSITION = 0xf1;
 
-// Matroska's default of a million nanoseconds, which is a millisecond. A file may say
-// otherwise, and then every duration would be wrong by a factor nobody would notice until
-// seeking.
+// Matroska's default TimecodeScale: nanoseconds per tick, i.e. one millisecond.
 const DEFAULT_TIMECODE_SCALE = 1000000;
 
 function vint(buffer, at, keepMarker) {
@@ -36,8 +27,6 @@ function vint(buffer, at, keepMarker) {
     let value = keepMarker ? first : first & (0xff >> width);
 
     for (let i = 1; i < width; i += 1) {
-        // Beyond this a number stops being exact, and a silently wrong offset is worse than
-        // refusing to read the file.
         if (value > Number.MAX_SAFE_INTEGER / 256) return null;
         value = (value * 256) + buffer[at + i];
     }
@@ -58,17 +47,15 @@ function elements(buffer, from, to) {
 
         const body = at + id.width + size.width;
 
-        // Every size bit set means "length unknown", which is how a segment written as a stream
-        // declares itself. Nothing can follow it, so the walk stops after it.
+        // All size bits set means unknown length; nothing can follow such an element.
         const unknown = size.value === (2 ** (7 * size.width)) - 1;
         if (unknown) {
             found.push({ id: id.value, start: at, body, end: to, unknown: true });
             break;
         }
 
-        // An element larger than what has arrived is still where it says it is: the cues sit near
-        // the front and the clusters after them, so truncating here would hide the index behind
-        // the first cluster that had not finished downloading.
+        // Keep an element that runs past what has arrived: the cues sit ahead of the clusters, and
+        // truncating here would hide the index behind an unfinished one.
         found.push({ id: id.value, start: at, body, end: Math.min(body + size.value, to) });
         if (body + size.value > to) break;
 
@@ -107,8 +94,6 @@ function segmentIndex(buffer, total, ranges) {
 
     const inside = elements(buffer, segment.body, Math.min(segment.end, buffer.length));
 
-    // The player response says where the cues are, which saves walking past a cluster to
-    // reach them and works even when an element between here and there is truncated.
     const stated = ranges && ranges.indexRange && Number(ranges.indexRange.start) >= 0
         ? { body: null, start: Number(ranges.indexRange.start), end: Number(ranges.indexRange.end) + 1 }
         : null;
@@ -123,7 +108,6 @@ function segmentIndex(buffer, total, ranges) {
     const scaleElement = info && find(buffer, info.body, info.end, TIMECODE_SCALE);
     const scale = (scaleElement && uint(buffer, scaleElement)) || DEFAULT_TIMECODE_SCALE;
 
-    // Nanoseconds per tick, to milliseconds.
     const toMs = (ticks) => Math.round((ticks * scale) / 1000000);
 
     const points = [];
@@ -146,11 +130,6 @@ function segmentIndex(buffer, total, ranges) {
             const last = points[points.length - 1];
             if (last && last.start === segment.body + at) return;
 
-            // The tick as the file states it, beside the millisecond it rounds to. The
-            // rounding is why this is kept: a cluster's own Timecode is in these ticks, so a
-            // timeline described in rounded milliseconds does not quite line up with the
-            // media it describes, and a player turning a time into a segment lands beside
-            // the one it wanted.
             points.push({ startMs: toMs(ticks), ticks, start: segment.body + at });
         });
 
@@ -165,10 +144,7 @@ function segmentIndex(buffer, total, ranges) {
             startMs: point.startMs,
             durationMs: next ? next.startMs - point.startMs : 0,
 
-            // Matroska's own clock, unrounded. A tick is TimecodeScale nanoseconds, so there
-            // are a thousand of them a second only when the file uses the default scale —
-            // and the rounded milliseconds these used to carry were both a lie about the
-            // clock and a loss of precision inside it.
+            // A tick is TimecodeScale nanoseconds, not a millisecond.
             startTicks: point.ticks,
             durationTicks: next ? next.ticks - point.ticks : 0,
 
@@ -177,31 +153,21 @@ function segmentIndex(buffer, total, ranges) {
         };
     });
 
-    // The last cluster's length is only known from the file's own length. Without it a
-    // segment is dropped rather than served as a range running past the end of the file.
     const usable = segments.filter((one) => Number.isFinite(one.end) && one.end >= one.start);
 
     if (!usable.length) return null;
 
-    // The last segment's duration cannot be read from the next one's start.
     const last = usable[usable.length - 1];
     if (!last.durationMs && usable.length > 1) {
         last.durationMs = usable[usable.length - 2].durationMs;
         last.durationTicks = usable[usable.length - 2].durationTicks;
     }
 
-    // Ticks a second, from the scale the file declares, rather than the thousand that only a
-    // default scale happens to give.
     return {
         init: { start: 0, end: points[0].start - 1 },
         segments: usable,
         timescale: Math.round(1000000000 / scale),
 
-        // Where the file's own index sits, so a manifest can point the set at it rather than
-        // inventing numbered segments that do not exist as resources. The cues are the WebM
-        // equivalent of an MP4 `sidx`, and a DASH manifest naming them is how YouTube
-        // describes its own WebM — which is the shape this platform's DASH reader will have
-        // been built against.
         cues: { start: cues.start, end: cues.end - 1 },
         setup: { start: 0, end: cues.start - 1 }
     };

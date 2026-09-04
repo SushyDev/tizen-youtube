@@ -34,8 +34,7 @@ function reading() {
         intrinsic: video.videoWidth + 'x' + video.videoHeight,
         resolution: stats.resolution || null,
 
-        // Not `getStatsForNerds`, which reports what the player selected: it said `opus (251)`
-        // through four minutes of AAC.
+        // Not getStatsForNerds, which reports what the player selected: it said opus (251) over AAC.
         codecs: (function () {
             const now = servingNow();
             if (!now || !now.video || !now.audio) return stats.codecs || null;
@@ -48,8 +47,6 @@ function reading() {
             }
             return stats.color || null;
         }()),
-        // From the element, not the player, whose own buffer nothing is playing from once the
-        // picture comes from this app — it read 0.00s for half a minute while the video played on.
         buffer: (function () {
             try {
                 const ranges = video.buffered;
@@ -171,8 +168,7 @@ function apply(enabled) {
     listener = enabled ? setInterval(collect, LISTEN_EVERY) : null;
 }
 
-// Hung off the baked constant rather than off the setting, so a release build does not
-// merely leave this switched off: nothing above is referenced and the minifier drops it.
+// Hung off the baked constant, not the setting, so a release build drops all of this.
 if (DEV_TOOLS) {
     apply(configRead('enableDevBridge'));
 

@@ -1,7 +1,6 @@
 'use strict';
 
-// ES2019 is what Node 10 parses — optional catch binding included — and Node 10 is the
-// floor Tizen 5.5 clears.
+// ES2019 is the ceiling for Node 10, which is the floor Tizen 5.5 ships.
 
 const acorn = require('acorn');
 const { readFileSync } = require('fs');

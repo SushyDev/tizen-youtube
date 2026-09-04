@@ -1,8 +1,5 @@
 'use strict';
 
-// Development only, and it costs nothing when nobody is reading: until the bridge opens
-// every line is dropped where it is written, so a release does no work for these.
-
 const KEEP = 400;
 
 const lines = [];

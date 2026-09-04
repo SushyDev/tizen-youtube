@@ -1,15 +1,13 @@
 'use strict';
 
-// Every rewrite here replaces a four-byte field with another four bytes: nothing moves, so
-// sample offsets stay correct and the file's whole length and layout are known from the
-// two segment indexes alone, which is what makes it seekable before anything is fetched.
+// Every rewrite replaces four bytes with four: nothing may move, or sample offsets and the
+// precomputed file layout break.
 
 const { boxes } = require('./mp4.js');
 
 const VIDEO_TRACK = 1;
 const AUDIO_TRACK = 2;
 
-// Milliseconds, so the durations in the index go in as they are.
 const TIMESCALE = 1000;
 
 const childrenOf = (buffer, box) => boxes(buffer.subarray(box.body, box.end))
@@ -24,8 +22,7 @@ const named = (list, type) => list.filter((box) => box.type === type)[0] || null
 
 const slice = (buffer, box) => Buffer.from(buffer.subarray(box.start, box.end));
 
-// Version 1 widens the two times to sixty-four bits, and the id sits after them either
-// way.
+// tkhd v1 widens the two times to 64 bits; the track id follows them either way.
 const trackIdIn = (buffer, tkhd) => tkhd.body + 4 + (buffer.readUInt8(tkhd.body) === 1 ? 16 : 8);
 
 function retrak(buffer, trak, id, ticks) {
@@ -39,8 +36,6 @@ function retrak(buffer, trak, id, ticks) {
 
     copy.writeUInt32BE(id, trackIdIn(copy, tkhd));
 
-    // Only the narrow form is written by anything YouTube serves, and the wide one keeps the
-    // duration somewhere this would have to guess at.
     if (ticks && copy.readUInt8(tkhd.body) === 0) copy.writeUInt32BE(ticks, tkhd.body + 20);
 
     return copy;
@@ -69,8 +64,8 @@ function timing(buffer, mvhd) {
     };
 }
 
-// Without this the element never learns a duration: it reports `NaN`, offers nothing as
-// seekable, and answers a seek by guessing a byte offset from a length it does not have.
+// Without `mehd` the element reports a NaN duration, offers nothing as seekable, and guesses
+// byte offsets on a seek.
 const movieExtendsHeader = (ticks) => {
     const body = Buffer.alloc(8);
     body.writeUInt32BE(0, 0);            // version 0, no flags
@@ -95,7 +90,6 @@ function movie(videoInit, audioInit, durationMs) {
     const clock = timing(videoInit, mvhd);
     const ticks = Math.round((durationMs || 0) * (clock.timescale || 1000) / 1000);
 
-    // Only the thirty-two-bit form is written by anything YouTube serves.
     if (!clock.wide) {
         header.writeUInt32BE(AUDIO_TRACK + 1, 8 + 96);
         if (ticks) header.writeUInt32BE(ticks, 8 + (clock.durationAt - mvhd.body));
@@ -146,17 +140,13 @@ function group(videoIndex, audioIndex) {
             startMs: video.startMs
         });
 
-        // In the order the moments happen, not sound first. An audio fragment is longer than
-        // a video one here, so one that merely *starts* inside a video segment's span can
-        // cover the whole of the next: audio beginning at 39.94 written in front of the
-        // picture covering 34.03 to 40.04 was heard as a hiccup at exactly 34.
+        // Ordered by when each part starts, not audio first: an audio fragment can begin late in
+        // a video segment's span, and writing it ahead of that segment is heard as a hiccup.
         parts.sort((a, b) => (a.startMs - b.startMs) || (a.kind === 'audio' ? -1 : 1));
 
         groups.push({ parts, startMs: video.startMs, durationMs: video.durationMs });
     });
 
-    // Sound that outlasts the last picture belongs to the last group; a group of its own
-    // would claim a span of time the file does not have.
     if (groups.length) {
         while (audioAt < audioIndex.length) {
             const audio = audioIndex[audioAt];
@@ -192,7 +182,7 @@ function segmentIndexFor(groups) {
         body.writeUInt32BE(size & 0x7fffffff, at); at += 4;
         body.writeUInt32BE(one.durationMs, at); at += 4;
 
-        // Starts with a stream access point of type 1, which every fragment here does.
+        // Starts with a SAP of type 1, which every fragment here does.
         body.writeUInt32BE(0x90000000, at); at += 4;
     });
 
@@ -219,8 +209,6 @@ function describeFile(videoInit, audioInit, videoIndex, audioIndex) {
         index
     ]);
 
-    // Laid out in the order they will be written, so a range request can be answered by
-    // walking this rather than by fetching anything.
     const parts = [];
     let offset = head.length;
 

@@ -1,8 +1,5 @@
 'use strict';
 
-// Readings travel one way: the page pushes, the network reads, and nothing arriving from
-// the network is stored or run.
-
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
@@ -14,8 +11,7 @@ const sabr = require('./sabr.js');
 
 const STALE_AFTER = 10000;
 
-// Baked for a debug build, random otherwise. Evaluate runs whatever it is handed, so it
-// is not something a stranger on the network should be able to reach.
+// /eval runs whatever it is handed; this token is what keeps the network out of it.
 const BUILD_TOKEN = '__TUBE_DEV_TOKEN__';
 const TOKEN = process.env.TUBE_DEV_TOKEN
     || (BUILD_TOKEN.indexOf('TUBE_DEV_TOKEN') === -1 ? BUILD_TOKEN : crypto.randomBytes(8).toString('hex'));
@@ -74,15 +70,12 @@ function attach(app) {
         res.json({ received: true });
     });
 
-    // Collected once: a command runs on the next poll and not on every one after it.
     app.get('/__tube/dev/commands', (_, res) => {
         const pending = queue;
         queue = [];
         res.json({ commands: pending });
     });
 
-    // Kept by id, so an answer reaches whoever asked rather than being matched on source
-    // text that two questions asked in the same second could both claim.
     app.post('/__tube/dev/result', express.json({ limit: '4mb' }), (req, res) => {
         const answer = req.body || {};
         if (answer.id) answers.set(String(answer.id), { at: Date.now(), answer });
@@ -91,7 +84,6 @@ function attach(app) {
         res.json({ received: true });
     });
 
-    // The app opens and closes it; nothing on the network can.
     app.all('/__tube/dev/enable', (req, res) => {
         const wanted = String((req.query && req.query.on) || '');
         if (wanted === '1' || wanted === 'true') start();
@@ -118,8 +110,6 @@ function start() {
 
     app.get('/health', (_, res) => res.json({ ok: true, port: ports.DEV, hasReading: !!latest }));
 
-    // The PO token comes with it only for a caller holding the token, so the session cannot
-    // be lifted off this port by anything else on the network.
     app.get('/sabr/session', (req, res) => {
         const session = sabr.observed.session;
         if (!session) return res.json({ seen: false });

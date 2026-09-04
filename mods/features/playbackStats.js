@@ -1,10 +1,8 @@
 import { configRead } from '../config.js';
 import { fedByUs, servingNow } from './nativePlayback.js';
 
-// The platform player counts no frames, so `getVideoPlaybackQuality()` reads zero here.
-// What can be measured instead is the time the picture failed to advance.
+// The platform player reports zero frames, so this measures lost time instead.
 
-// Below this a gap is sampling jitter, not a hitch worth reporting.
 export const TOLERANCE = 0.02;
 
 // A longer gap is a suspended app, not playback, so it is charged to nobody.
@@ -12,9 +10,7 @@ const MAX_GAP = 2;
 
 const DEFAULT_FPS = 60;
 
-// Both sides are returned rather than their difference, which `lostBy` takes over the
-// totals instead: the timer's jitter is zero-mean, so summing each sample's shortfall
-// charges the lag and credits none of the catching up.
+// Both sides, not their difference: shortfalls only add, so jitter would read as lost time.
 export function account(previous, current) {
     const none = { played: 0, expected: 0, advanced: 0, reseed: false };
     const drop = { played: 0, expected: 0, advanced: 0, reseed: true };
@@ -33,11 +29,8 @@ export function account(previous, current) {
     return { played: Math.min(advanced, expected), expected, advanced, reseed: false };
 }
 
-// Seconds of the recent past the reported figure covers.
 export const WINDOW = 30;
 
-// Over the recent past rather than the whole session, which would be dominated for ever
-// by whatever happened at startup.
 export function lostBy(tally) {
     if (!tally.recent || !tally.recent.length) {
         return Math.max(0, (tally.expected || 0) - (tally.advanced || 0));
@@ -54,7 +47,6 @@ export function lostBy(tally) {
     return Math.max(0, expected - advanced);
 }
 
-// One tally per element, or the start page's preview lands on the watch player's line.
 const tallies = new WeakMap();
 
 function tallyFor(video) {
@@ -70,8 +62,7 @@ const EMA = 0.3;
 const MAX_PLAUSIBLE_FPS = 200;
 
 function measureRate(video, tally, wall) {
-    // The prototype's own count rather than whatever the page has put on the element, so a
-    // patched one cannot be averaged back into a measurement of itself.
+    // The prototype's own, so a patched getVideoPlaybackQuality is not averaged into itself.
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     const real = proto && proto.getVideoPlaybackQuality;
     const quality = real ? real.call(video) : null;
@@ -94,9 +85,6 @@ function measureRate(video, tally, wall) {
 
 const FIND_EVERY = 2000;
 
-// Rows the panel fills in from what the player selected, which is no longer what reaches
-// the decoder once the picture comes from here — opus while the set plays AAC, AV1 while
-// it plays VP9. Reached by label, since the panel writes each row as a label then a value.
 const CORRECTED = {
     Codecs: (now) => `${now.video.codecs} (${now.video.itag}) / ${now.audio.codecs} (${now.audio.itag})`,
 
@@ -107,11 +95,7 @@ const CORRECTED = {
     Protected: () => 'no — served from this app'
 };
 
-// Every lookup walks every div on the page, and the panel is closed almost all of the
-// time. Called once per label per tick — four times a second — that was twelve full scans
-// of a television's DOM every second, and it locked the interface: thumbnails stopped
-// loading and the remote stopped answering. Found nodes are kept while they are connected,
-// and nothing is searched for again until the interval below has passed.
+// Every miss walks every div: uncached, four lookups a tick locked the television's interface.
 const found = new Map();
 let searchedAt = 0;
 
@@ -139,9 +123,6 @@ function valueBeside(label) {
     return null;
 }
 
-// The panel says nothing about which pipeline drew the picture, and the difference matters
-// more than any row it does have: the same video, the same resolution, and one of them is
-// this app's stream while the other is the page's own.
 function markPipeline(video, after) {
     const beside = valueBeside(after);
     if (!beside || !beside.parentNode) return;
@@ -149,10 +130,7 @@ function markPipeline(video, after) {
     let row = added.get('Enhanced');
 
     if (!row || !row.value.isConnected) {
-        // The row is the element the label and value sit *inside*, not the panel. Adding a
-        // label and value next to an existing pair puts them in that same row, which is why
-        // this read as `Codecs av01... Enhanced yes` on one line. A whole row is cloned and
-        // placed after the one it copied, so it inherits every class the layout depends on.
+        // The whole row is cloned: inserting beside an existing pair lands inside that row.
         const source = beside.parentNode;
         const copy = source.cloneNode(true);
 
@@ -178,15 +156,12 @@ function markPipeline(video, after) {
 const added = new Map();
 
 function correctRows(video, wall) {
-    // A row already found is rewritten every tick, which is cheap. Looking for one that is
-    // not there is not, so that is only done occasionally.
     const cached = [...found.values()].some((node) => node && node.isConnected);
     if (!cached) {
         if (wall - searchedAt < FIND_EVERY) return;
         searchedAt = wall;
     }
 
-    // Answered whichever pipeline is running, since "no" is the interesting answer.
     markPipeline(video, 'Codecs');
 
     if (pipelineOf(video) !== 'enhanced') return;
@@ -210,8 +185,6 @@ function correctRows(video, wall) {
     });
 }
 
-// Off the television this file is imported for its accounting alone, where there is no
-// document to search.
 const searchable = () => typeof document !== 'undefined' && !!document.querySelectorAll;
 
 function framesNode() {
@@ -228,8 +201,6 @@ function framesNode() {
 function pipelineOf(video) {
     const source = String(video.currentSrc || '');
 
-    // Asked of the feeder rather than the address: when this app feeds a MediaSource itself
-    // the element holds a blob, exactly as it does on YouTube's own pipeline.
     if (source.indexOf('/dash/') !== -1) return 'enhanced';
     if (fedByUs()) return 'fed by the app';
 
@@ -244,10 +215,7 @@ function said(tally) {
 }
 
 function showRate(video, tally, wall) {
-    // Before anything else, and not behind the frames row: that row is written by the
-    // platform's own frame counter, which does not exist for a natively-played URL — so on
-    // the enhanced player `framesNode` never finds anything and every correction below it
-    // was dead. It worked on the default player, which is the one that does not need it.
+    // Before the frames row is looked for: the enhanced player has none, so the rest never runs.
     correctRows(video, wall);
 
     if (!tally.node || !tally.node.isConnected) {
@@ -285,8 +253,7 @@ function frameRate(video, tally) {
 export function sample(video) {
     const tally = tallyFor(video);
 
-    // The player swaps its element without always ending playback on the old one, and a timer
-    // holding a detached video keeps both alive for the rest of the session.
+    // The player swaps elements without ending playback; a timer on a detached one keeps it alive.
     if (video.isConnected === false) {
         clearInterval(tally.timer);
         tally.timer = null;
@@ -330,8 +297,7 @@ export function measured() {
     return latest;
 }
 
-// Sampled on a timer rather than on `timeupdate`, which the platform player does not
-// always fire even as it advances `currentTime`.
+// A timer, not timeupdate: the platform player does not always fire it while advancing.
 const TICK = 250;
 
 function watch(video) {
@@ -351,8 +317,6 @@ function watch(video) {
         tally.timer = setInterval(() => sample(video), TICK);
     };
 
-    // The player loads the next video into the same element, so without this the totals are
-    // cumulative for the session where the stats line means them per video.
     const restart = () => {
         stop();
         tally.played = 0;
@@ -379,8 +343,6 @@ function watch(video) {
     if (!video.paused) start();
 }
 
-// `getVideoPlaybackQuality` is left alone: lost time cancels as the clock catches up, so
-// a frame count derived from it can fall as well as rise, which no count does.
 export function install() {
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     if (!proto) return;

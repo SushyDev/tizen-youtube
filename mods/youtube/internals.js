@@ -36,8 +36,7 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
-// Components carry their custom-element name as a static. Asking for that name holds across
-// a release that renames the minified export, and it is the same name the row shows in the DOM.
+// `S` is the component's custom-element name; survives releases that rename the export.
 const findComponent = (tag) => {
     const match = entries().find(([, value]) => typeof value === 'function' && value.S === tag);
     return match ? match[1] : null;
@@ -66,10 +65,8 @@ const resolve = (command, context) => {
     return resolver ? resolver.resolveCommand(command, context) : undefined;
 };
 
-// The player's API is not the element. `#movie_player` carries the same method names and
-// answers correctly, and the app's own menus ask this instead — which is why correcting
-// the element left the quality menu reporting 720p60 over a 2160p picture. Found by the
-// methods it has, like the resolver above, so a release that renames it is still located.
+// The player API is not the video element — the app's own menus ask this one, so correcting
+// the element alone leaves the quality menu wrong. Located by its methods, not by name.
 const findPlayerApi = () => {
     const match = entries().find(([, value]) =>
         value

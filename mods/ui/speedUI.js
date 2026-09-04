@@ -18,8 +18,7 @@ function execute_once_dom_loaded_speed() {
         const video = document.querySelector('video');
         if (video) video.playbackRate = speed;
 
-        // Carrying a speed into a new video decides which pipeline can play it, the same as
-        // choosing one does.
+        // Speed decides which pipeline can play the video, so a carried-over one must be noted.
         noteSpeed(speed);
     });
 

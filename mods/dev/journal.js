@@ -7,8 +7,6 @@ const MOST_HELD = 200;
 const held = [];
 let flushing = null;
 
-// The constant first, so a release build drops these call sites rather than merely
-// declining to send them: with it false every one folds to nothing, `flush` included.
 const wanted = () => {
     if (!DEV_TOOLS) return false;
 

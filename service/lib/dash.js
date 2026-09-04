@@ -6,8 +6,7 @@ const mux = require('./mux.js');
 const journal = require('./journal.js');
 const stream = require('./stream.js');
 
-// The set reads these to decide whether to switch the panel into HDR; without them it
-// decodes wide-gamut video and shows it as if it were ordinary.
+// Without these the set never switches the panel into HDR.
 const CICP = {
     COLOR_PRIMARIES_BT2020: 9,
     COLOR_TRANSFER_CHARACTERISTICS_SMPTEST2084: 16,
@@ -27,7 +26,6 @@ function colourProperties(format) {
         + property('MatrixCoefficients', CICP.COLOR_PRIMARIES_BT2020);
 }
 
-// What the stats panel calls the two HDR curves, which is not what the response names them.
 const CURVES = {
     smptest2084: 'smpte2084 (PQ)',
     arib_std_b67: 'arib-std-b67 (HLG)'
@@ -59,22 +57,8 @@ const iso = (ms) => `PT${(ms / 1000).toFixed(3)}S`;
 const escape = (text) => String(text)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// Runs of equal-length segments are written once, because the set parses the whole thing
-// before it can show a frame. `r` counts *additional* repeats, and a segment of a
-// different length starts a new run rather than being rounded into the last.
-//
-// A run may only be extended while the durations still add up to where the segment really
-// begins. A player maps a seek to a segment number by counting those durations forward from
-// the start of the timeline; this cuts segments at the starts the file actually has. Where
-// the two drift apart the set asks for the segment it believes covers the target and is
-// handed the one that covers a different moment — complete, correctly framed, correctly
-// timed for the number it was cut as, and silently dropped. Sequential playback never
-// notices, because media that arrives in order is played in order. A seek is the only place
-// the mapping is used.
-//
-// So a segment whose real start has left the count begins a new run and states it. With an
-// exact cadence that is one run and one start time, as before; with a ragged one it is a few
-// more, and every number means the same thing at both ends.
+// `r` counts additional repeats. Extend a run only while the durations still sum to the
+// segment's real start: a seek is mapped by counting them forward, and drift serves the wrong one.
 function timelineOf(index) {
     const runs = [];
     let counted = null;
@@ -83,14 +67,8 @@ function timelineOf(index) {
     index.forEach((segment) => {
         const last = runs[runs.length - 1];
 
-        // The file's own clock, not milliseconds. Converting to milliseconds rounds every
-        // boundary and, worse, describes the timeline in units the media itself does not use:
-        // the decode time inside each fragment is in these ticks, and a player told the
-        // timeline is something else cannot line the two up. It gets away with it while
-        // segments arrive in order and are played in order, and cannot at a seek, which is
-        // the one place a time has to be turned into a segment and a segment placed at a time.
-        // Falling back to the millisecond values for any index that does not carry ticks,
-        // which is the same timeline whenever the clock is already milliseconds.
+        // Ticks, not milliseconds: a fragment's decode times are in these units, and a timeline in
+        // rounded milliseconds cannot be lined up with them at a seek.
         const start = segment.startTicks === undefined ? segment.startMs : segment.startTicks;
         const length = segment.durationTicks === undefined ? segment.durationMs : segment.durationTicks;
         const adrift = counted === null || counted !== start;
@@ -113,10 +91,7 @@ function timelineOf(index) {
         .join('');
 }
 
-// The live profile suits numbered segments fetched one at a time; on-demand suits one file
-// with an index in it, which is what both tracks are described as now. Declaring the wrong
-// one is not cosmetic — a reader is entitled to decide what a manifest supports from the
-// profile it claims, and this claimed live while offering `SegmentBase` and an `indexRange`.
+// SegmentBase/indexRange requires the on-demand profile; live is for numbered segments.
 function profileFor(session) {
     const byIndex = Object.values(session.tracks).every((track) => track.cues && track.setup);
 
@@ -129,12 +104,8 @@ function manifest(session) {
     const set = (track, attributes, extra) => {
         const format = track.format;
 
-        // A track whose file states where its own index is gets described by that, rather
-        // than by numbered segments invented on its behalf. This is how YouTube describes
-        // WebM in its own manifests — one file, an `indexRange` over the cues — and a
-        // platform's DASH reader is built against what YouTube serves. Numbered segments
-        // are a fiction here: nothing in the file is addressable that way, and a set that
-        // takes them for fragmented MP4 has no reason to take them for clusters.
+        // WebM clusters are not addressable as numbered segments; YouTube describes WebM as one
+        // file with an indexRange over the cues, which is what the set's DASH reader expects.
         if (track.cues && track.setup) {
             return `
         <AdaptationSet contentType="${track.kind}" mimeType="${escape(typeOf(format.mimeType))}" startWithSAP="1" segmentAlignment="true">
@@ -187,14 +158,9 @@ function describe(session) {
     const track = ({ kind, format, index }) => ({
         kind,
         itag: format.itag,
-        // Dubbed tracks and compressed dynamic range share an itag, so it does not name a format
-        // on its own.
         xtags: format.xtags || '',
         codecs: codecsOf(format.mimeType),
 
-        // Named rather than inferred from the codec. What the page does when a seek wedges
-        // depends on it, and guessing the container from a codec string is the kind of
-        // shortcut that is right until YouTube offers VP9 in something else.
         container: /^(video|audio)\/mp4/.test(format.mimeType || '') ? 'mp4' : 'webm',
         colour: colourOf(format),
         bitrate: format.bitrate || 0,
@@ -204,8 +170,6 @@ function describe(session) {
         mimeType: typeOf(format.mimeType),
         segments: index.length,
 
-        // A page feeding these to a source buffer itself asks for them by number and needs to
-        // know when it has enough, neither of which follows from the count alone.
         first: index[0].number,
         durationsMs: index.map((segment) => segment.durationMs)
     });
@@ -217,7 +181,6 @@ function describe(session) {
         video: track(session.tracks.video),
         audio: track(session.tracks.audio),
 
-        // Excludes the head, which is kilobytes against hundreds of megabytes of media.
         plainFileBytes: [session.tracks.video, session.tracks.audio]
             .reduce((total, one) => total + (one.index || [])
                 .reduce((bytes, segment) => bytes + (segment.end - segment.start + 1), 0), 0)
@@ -239,12 +202,8 @@ function attach(app) {
         );
     });
 
-    // The player asks for a URL the moment the response lands, before the session exists, so
-    // these wait and then redirect: relative URLs inside the manifest then resolve against
-    // the session that answered rather than against the video.
-    //
-    // Never redirected across descriptions: the set commits to reading an MP4 from the
-    // address it was given and will not take a manifest in its place.
+    // Never redirect a progressive URL to a manifest: the set commits to reading an MP4 from the
+    // address it was given.
     app.get('/dash/by-video/:videoId/progressive.mp4', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
             (session) => res.redirect(302, `/dash/${session.id}/progressive.mp4`),
@@ -255,11 +214,7 @@ function attach(app) {
     app.get('/dash/by-video/:videoId/manifest.mpd', (req, res) => {
         stream.awaitVideo(req.params.videoId).then(
             (session) => {
-                // `?at=` rather than `#t=`. A media fragment is stripped by the browser before
-                // the request, so a resume or a seek reached this as a load from the very
-                // beginning and a jump afterwards — the stream fetching from segment one while
-                // the viewer sat somewhere else entirely. A query survives, so the stream can
-                // be put where the viewer is before a single byte is served.
+                // `?at=` not `#t=`: the browser strips a media fragment before the request.
                 const at = Math.floor(Number(req.query && req.query.at) || 0);
 
                 if (at > 0) {
@@ -269,8 +224,7 @@ function attach(app) {
 
                 res.redirect(302, `/dash/${session.id}/manifest.mpd`);
             },
-            // Not found rather than timed out, which the page reads as "no stream here" and answers
-            // by dropping back to its own player.
+            // 404, not a timeout: the page reads it as "no stream" and falls back to its own player.
             (error) => res.status(404).send(error.message)
         );
     });
@@ -278,11 +232,8 @@ function attach(app) {
     const find = (req, res) => {
         const session = stream.sessions.get(req.params.id);
 
-        // A miss is not a curiosity. The set commits to an address when it takes the
-        // manifest and asks for fragments under it for the rest of the video, so a session
-        // that has gone while the element is still attached ends the video then and there:
-        // no error is set, no event fires, the picture simply stops. It went unrecorded
-        // until it was found by asking the server for a fragment by hand.
+        // A session that goes while the element is still attached ends the video silently: no
+        // error, no event, the picture just stops.
         if (!session) {
             journal.service('segment', `${req.params.id} is gone; refusing ${req.path}`);
             res.status(404).send('no such session');
@@ -293,10 +244,6 @@ function attach(app) {
         return session || null;
     };
 
-    // The element says nothing about playback, so the only sign of life the sweeper had was
-    // a fragment request — and a player holding thirty seconds of read-ahead, or paused, or
-    // one that has been handed the whole of a short video, makes none for far longer than
-    // the idle timeout. The page says so instead, for as long as it is on the video.
     app.get('/dash/:id/alive', (req, res) => {
         const session = find(req, res);
         if (!session) return;
@@ -308,25 +255,20 @@ function attach(app) {
         const session = find(req, res);
         if (!session) return;
 
-        // A session exists from the moment it is asked for; its manifest cannot be written until
-        // both indexes have been read.
         if (!session.ready) return res.status(503).send('the stream is still opening');
 
         res.setHeader('Content-Type', 'application/dash+xml');
         res.send(manifest(session));
     });
 
-    // Beyond this the set asks for the first chunk of a plain file and then consumes nothing,
-    // reporting no error. Measured by bisection: 553MB plays, 684MB does not.
-    // `PLAIN_FILE_LIMIT` in the userscript is the same number, since the page has to choose a
-    // description before the service is asked anything.
+    // Past this the set fetches the first chunk and then consumes nothing, reporting no error
+    // (bisected: 553MB plays, 684MB does not). `PLAIN_FILE_LIMIT` in the userscript must match.
     const MAX_FILE = 600 * 1024 * 1024;
 
     const described = new Map();
 
-    // Which request for a session is the live one. A seek opens several in a burst, and each
-    // one walking the file separately has them abort one another's downloads in turn, leaving
-    // the element with nothing at all. Only the newest is served.
+    // A seek opens several of these at once; only the newest is served, or they abort one
+    // another's downloads.
     const serving = new Map();
 
     const shapeOf = async (session) => {
@@ -354,14 +296,12 @@ function attach(app) {
         ? Promise.resolve()
         : new Promise((drained) => res.once('drain', drained)));
 
-    // Only the `moof` at the front is rewritten and the `mdat` behind it is streamed off the
-    // disk: reading a whole 2160p60 fragment to change eight bytes put thirty megabytes in
-    // memory twice over, on a set that is decoding at the same time.
+    // Only the `moof` is rewritten and the `mdat` streamed: buffering a whole 2160p60 fragment to
+    // change eight bytes costs ~30MB twice over.
     async function pourFragment(res, track, number, id, sequence, begin, finish) {
         const header = await track.head(number, 8);
         let headLength = 0;
 
-        // Anything else is not a fragment this wrote, so the bytes go out untouched.
         if (header.length === 8 && header.toString('latin1', 4, 8) === 'moof') {
             headLength = header.readUInt32BE(0);
         }
@@ -382,8 +322,6 @@ function attach(app) {
         });
     }
 
-    // Which held pieces a byte range falls across, in order, and the part of each that the
-    // range actually wants.
     async function pourAcross(res, track, from, to) {
         const pieces = [];
 
@@ -505,9 +443,6 @@ function attach(app) {
         return send(0);
     });
 
-    // The file as one resource, answered by range. Nothing is held whole — the window is a
-    // few segments — so a range is mapped back onto the segments that cover it and served
-    // from those, fetching any that are missing exactly as a numbered request would.
     app.get('/dash/:id/:kind/media', async (req, res) => {
         const session = find(req, res);
         if (!session) return undefined;
@@ -569,8 +504,6 @@ function send(session, kind, number, res) {
     if (!track) return res.status(404).end();
     if (!stream.locate(track, number)) return res.status(404).end();
 
-    // Asking for a segment is what moves the download's window along, for both tracks: the
-    // player asks about one at a time and they share a position.
     track.want(number);
     if (number > 0) stream.align(session, kind, number);
 
@@ -580,10 +513,6 @@ function send(session, kind, number, res) {
         () => {
             const at = stream.locate(track, number);
 
-            // Every fragment the set asks for, and how long it waited. This is the only
-            // view there is of the read pattern — what the player asks for, how far ahead
-            // of the playhead, and where it stops asking — and without it a stall can only
-            // be guessed at from the download side, which goes on looking healthy.
             journal.service('segment', `${kind} ${number} in ${Date.now() - asked}ms`);
 
             const length = at.end - at.start + 1;
@@ -592,11 +521,6 @@ function send(session, kind, number, res) {
             res.setHeader('Content-Length', length);
             res.setHeader('Accept-Ranges', 'none');
 
-            // What was promised against what was sent. A fragment served short is invisible
-            // from both ends: the header says one thing, the socket carries another, and the
-            // set neither errors nor asks again — it simply stops, which is the failure
-            // being chased. A stream restarted mid-file is where this would go wrong, so it
-            // is counted rather than assumed.
             let sent = 0;
             const out = track.pour(number);
 
@@ -608,11 +532,6 @@ function send(session, kind, number, res) {
                 res.destroy();
             });
 
-            // Always, not only when the counts disagree. A response that never finishes
-            // sending is the one shape that leaves no trace at either end — the set is still
-            // loading, the service is still holding the socket, and nothing anywhere says
-            // so. An unremarkable line for a completed send is what makes its absence mean
-            // something.
             out.on('end', () => {
                 journal.service('segment', `${kind} ${number} sent ${sent} of ${length} bytes`
                     + ` in ${Date.now() - asked}ms`);

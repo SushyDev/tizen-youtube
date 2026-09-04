@@ -13,8 +13,7 @@ function check(name, ok, detail) {
 const dir = mkdtempSync(join(tmpdir(), 'tube-segments-'));
 process.env.TUBE_MEDIA_DIR = join(dir, 'media');
 
-// Run once as it ships — segments held in memory — and once with the budget spent, which
-// is what a 2160p60 stream does after a few segments. The bytes served must not differ.
+// Run twice: once as it ships, once with TUBE_MEMORY_BUDGET=0. Both must serve the same bytes.
 const ONLY_DISK = process.env.TUBE_MEMORY_BUDGET === '0';
 
 const mp4 = require('../lib/mp4.js');
@@ -174,12 +173,8 @@ check('only this track claims to hold anything',
     mine && mine.downloadedSegments.length === before.length + 1 && other && other.downloadedSegments.length === 0,
     'the wrong track was claimed for');
 
-// The +1 above, and the reason it is worth a check of its own. The index numbers media
-// segments from one and the initialization segment is held apart from it, so a claim built
-// from the index alone leaves segment zero unnamed — and the server does not treat that as
-// an omission it can work around. It answers `Missing segments: [0]. Expected range: 0-30.`
-// and refuses the stream, which is how a seek at 2160p ended up falling back to the start of
-// the file and stranding the element at the position it had jumped to.
+// The index does not number the init segment; leave segment zero out of the claim and the
+// server refuses the stream with `Missing segments: [0]`.
 check('the initialization segment is named in the claim',
     mine && mine.downloadedSegments[0][0] === 0,
     'segment zero is missing, which the stream is refused for');
@@ -188,10 +183,6 @@ check('both formats are named, which the restore requires',
 check('a claim cannot be made before both formats are known',
     stream.stateFor(seeking, new Map(), 3, 60000) === null, 'made one anyway');
 
-// Written against the constants rather than the numbers they happen to hold: the window is
-// a tuning decision, and a test that pins it fails on every such change without finding a
-// bug. What is fixed is that it is counted in bytes — a 2160p60 segment is eighteen
-// megabytes and a 720p one is five, and neither may decide how much is held.
 const ahead = new stream.Track('video', { itag: 1 }, dir);
 
 check('the download runs while the window has room', !ahead.satisfied, 'stopped at once');
@@ -205,17 +196,13 @@ check('and resumes once what it held is released', !ahead.satisfied, 'still hold
 check('no claim can be built for the first segment',
     stream.stateFor(seeking, records, index.segments[0].number, 60000) === null, 'built one');
 
-// Either side of the tail, which reaches TAIL_BYTES back from where the player is. The one
-// inside has to stay, so a player asking again for something it has just watched is
-// answered from here rather than sending the download backwards.
 const back = new stream.Track('video', { itag: 1 }, dir);
 const piece = Math.ceil(stream.TAIL_BYTES / 2);
 
 [0, 2, 18, 19, 20, 100, 101].forEach((number) => back.grow(number, Buffer.alloc(piece)));
 back.next = 21;
 
-// Taken before the position moves: `want` releases what is behind, because that is the
-// only thing that frees the window and the download loop cannot do it from behind its gate.
+// Read before want(), which releases what is behind.
 const holding = back.bytesHeld;
 back.want(20);
 
@@ -279,9 +266,6 @@ const sliced = (buffer, at) => {
         check(`${name}: every segment was written`, track.have.size === SHAPE.length + 1,
             `${track.have.size} of ${SHAPE.length + 1}`);
 
-        // Read through the track rather than off the disk: a segment lives in memory until
-        // the budget is spent, and only then becomes a file. Both paths have to answer the
-        // same bytes, which is what running this file twice checks.
         const wrote = await track.bytes(0);
         check(`${name}: the initialization segment is the head of the file`,
             wrote && wrote.equals(init), 'differs');
@@ -292,8 +276,6 @@ const sliced = (buffer, at) => {
         check(`${name}: segment one is held in memory, not written`,
             track.parts.has(1) && !existsSync(track.file(1)), 'not held');
 
-        // A reader may start before the segment is whole, which is what keeps the window
-        // small enough to live in memory at all.
         const partial = new stream.Track('video', { mimeType: 'video/mp4' }, join(dir, 'partial'));
         partial.grow(7, Buffer.from('abcd'));
         const early = partial.head(7, 4);
@@ -304,7 +286,6 @@ const sliced = (buffer, at) => {
         check(`${name}: the rest arrives after`,
             (await partial.bytes(7)).equals(Buffer.from('abcdefgh')), 'wrong bytes');
 
-        // Forgetting it releases the bytes and stops it being served.
         const before = track.bytesHeld;
         track.forget(1);
         check(`${name}: forgetting segment one releases it`,
@@ -331,11 +312,8 @@ const asSession = (index, timescale) => ({
     }
 });
 
-
-// A timeline written in the media's own clock, which is the thing a seek depends on. The
-// decode time inside every fragment is in these ticks; describing the timeline in
-// milliseconds instead leaves a player unable to line the two up, and it only shows at a
-// seek, where a time has to be turned into a segment and a segment placed at a time.
+// Timeline must be in media ticks, matching the decode times inside the fragments; a
+// millisecond timeline only breaks at a seek.
 const ticking = Array.from({ length: 4 }, function (_, at) {
     return {
         number: at + 1,
@@ -408,13 +386,6 @@ check('the wider colour is taken where the display can show it',
 check('and refused where the display cannot',
     stream.pick(withHdr, 'video', 2160, null, undefined, false).itag === 315,
     'spent the bitrate on a picture that would be flattened');
-// This used to expect 315 — the eight-bit WebM — on the reasoning that ten bits on ordinary
-// colour is only a bigger file. It is, and the container is now worth more than the
-// difference: a seek completes and leaves the decoder showing the picture it already had,
-// and restarting playback reaches that decoder through MP4 and not through WebM. The same
-// jump recovers in a second on AV1 and stays frozen on VP9. So the ten-bit MP4 wins here
-// even though the depth buys nothing, because the alternative is a rung that cannot be
-// seeked in. Among MP4s depth still decides, which is the check above.
 check('MP4 is taken over WebM even when its depth buys nothing, because seeking depends on it',
     stream.pick(REAL, 'video', 2160).itag === 701, 'took a container that cannot be seeked in');
 check('HDR outranks the container an even tie would have won',
@@ -482,8 +453,6 @@ check('the sound is renumbered so the two do not collide',
 check('the head carries a segment index, so a seek can name a moment',
     require('../lib/mp4.js').boxes(shape.head).some((one) => one.type === 'sidx'), 'no sidx');
 
-// a2 begins at 4s, inside v1's 0-5s span but after v1 begins, so it follows the picture
-// rather than being written in front of it.
 check('fragments are written in the order their moments happen',
     shape.groups.map((one) => one.parts.map((part) => part.kind[0] + part.number).join('')).join(' ')
         === 'a1v1a2 v2a3', 'ordered wrongly');
@@ -493,8 +462,6 @@ check('and where every fragment lands in it',
     shape.parts[0].offset === shape.head.length
         && shape.parts[1].offset === shape.head.length + 100, 'wrong offsets');
 
-// Without a duration the element reports NaN, offers nothing as seekable, and answers a
-// seek by guessing a byte offset from a length it does not have.
 check('the file says how long it runs, for as long as both tracks have something',
     shape.durationMs === 10000, 'wrong duration');
 check('and says it where a fragmented file says it',
@@ -552,9 +519,6 @@ check('and depth never costs a rung of picture',
 check('sound is still never taken from webm',
     stream.pick(AUDIO.concat(REAL), 'audio', null, [{ itag: 251, xtags: '' }]).itag === 140, 'took the webm');
 
-// Recognising the re-sent header used to mean reading MP4 boxes whatever the container
-// was — which, fed WebM, found nothing and cut no segments at all, so every part-watched
-// video on VP9 downloaded for ever and never played.
 const EBML_HEADER = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81]);
 const FTYP = box('ftyp', Buffer.alloc(8, 1));
 
@@ -582,8 +546,6 @@ const paired = () => {
     return { tracks: { video, audio } };
 };
 
-// Resuming an hour in: video segment 721 would be 3600s, so 361 is 1800s — segment 181 of
-// the audio, which is nowhere near where the sound has reached.
 const far = paired();
 stream.align(far, 'video', 361);
 check('sound is moved to where the picture went',

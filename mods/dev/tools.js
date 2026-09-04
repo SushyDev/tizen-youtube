@@ -1,3 +1,2 @@
-// A string compared to a string, so the comparison folds to a constant under the minifier
-// and everything behind it is dropped rather than merely skipped. TUBE_DEV=1 to set it.
+// String-to-string so the minifier folds it and drops dead branches. Build with TUBE_DEV=1.
 export const DEV_TOOLS = '__TUBE_DEV_TOOLS__' === 'on';

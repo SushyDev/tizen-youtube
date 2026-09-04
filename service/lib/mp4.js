@@ -9,8 +9,7 @@ function boxes(buffer) {
         const size = buffer.readUInt32BE(at);
         const type = buffer.toString('latin1', at + 4, at + 8);
 
-        // 0 means "to the end of the file"; 1 means a 64-bit size follows. Neither appears in
-        // what YouTube serves, and guessing at them would be worse than stopping.
+        // size 0 means "to end of file", 1 means a 64-bit size follows; YouTube serves neither.
         if (size < 8 || at + size > end) break;
 
         found.push({ type, start: at, end: at + size, body: at + 8 });
@@ -31,12 +30,9 @@ function segmentIndex(buffer) {
     const timescale = buffer.readUInt32BE(at);
     at += 4;
 
-    // Without one there is nothing to convert durations against, and dividing by it would
-    // fill the manifest with infinities.
     if (!timescale) return null;
 
-    // Version 1 widens two fields to 64 bits. Read as two halves rather than as a BigInt:
-    // every real value is far below the point where that loses precision.
+    // sidx v1 widens earliest_presentation_time and first_offset to 64 bits.
     const wide = version !== 0;
     const wideAt = (start) => (buffer.readUInt32BE(start) * 0x100000000) + buffer.readUInt32BE(start + 4);
 
@@ -61,8 +57,8 @@ function segmentIndex(buffer) {
         const duration = buffer.readUInt32BE(at + 4);
         at += 12;
 
-        // A reference to another index rather than to media. YouTube does not use them, and
-        // treating one as media would put every following segment at the wrong offset.
+        // Top bit set means a reference to another index; treating one as media misplaces every
+        // following segment.
         if (first >>> 31) return null;
 
         segments.push({
@@ -70,10 +66,6 @@ function segmentIndex(buffer) {
             startMs: Math.round((time * 1000) / timescale),
             durationMs: Math.round((duration * 1000) / timescale),
 
-            // And the same two in the file's own clock, unrounded. Milliseconds are what the
-            // stream protocol wants and what reads well in a log; they are the wrong thing to
-            // describe a timeline with, because the decode times inside the fragments are in
-            // these units and a player that is told otherwise cannot line the two up.
             startTicks: time,
             durationTicks: duration,
 

@@ -1,5 +1,3 @@
-import './youtube/playerRequest.js';
-import './features/nativePlayback.js';
 import './features/standaloneUserscript.js';
 
 import './features/oledTheme.js';
@@ -9,6 +7,12 @@ import './features/sponsorblock.js';
 import './features/guide.js';
 import './features/moreSubtitles.js';
 import './features/preferredVideoQuality.js';
+import './features/playbackStats.js';
+import './features/devBridge.js';
+import './youtube/playerRequest.js';
+import './dev/playerProbe.js';
+import './dev/measure.js';
+import './features/nativePlayback.js';
 import './features/videoQueuing.js';
 import './features/enableFeatures.js';
 import './features/pictureInPicture.js';

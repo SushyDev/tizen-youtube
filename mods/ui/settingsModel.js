@@ -183,7 +183,10 @@ const GROUPS = [
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step')
+        SKIPPING, INCREMENTS, 'Step'),
+      Switch('rememberPlaybackSpeed', 'Remember playback speed',
+        'Carry the speed you chose into the next video. YouTube starts each one at normal '
+        + 'speed', SKIPPING)
     ]
   },
   {

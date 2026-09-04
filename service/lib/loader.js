@@ -66,12 +66,25 @@ function writeMeta(meta) {
     }
 }
 
+// A cache written by an older app is a leftover, not an update: the package just
+// installed may carry a newer script. Without this a set that ever took an update keeps
+// running it through every reinstall.
+function appVersion() {
+    try {
+        return tizen.application.getAppInfo().version;
+    } catch (e) {
+        return null;
+    }
+}
+
 function resolve(platformVersion) {
     const variant = variantFor(platformVersion);
     const meta = readMeta();
     const cached = cachedPath(variant);
+    const running = appVersion();
+    const cacheIsForThisApp = !running || (meta[variant] && meta[variant].appVersion === running);
 
-    if (meta[variant] && meta[variant].sha256 && existsSync(cached)) {
+    if (meta[variant] && meta[variant].sha256 && cacheIsForThisApp && existsSync(cached)) {
         try {
             const source = readFileSync(cached);
             if (sha256(source) === meta[variant].sha256) {
@@ -131,7 +144,13 @@ function checkForUpdate(platformVersion) {
             if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR);
             writeFileSync(cachedPath(variant), buffer);
 
-            meta[variant] = { sha256: digest, version: latest.version || null, at: new Date().toISOString() };
+            meta[variant] = {
+                sha256: digest,
+                version: latest.version || null,
+                // Which app wrote it, so a later package is never shadowed by it.
+                appVersion: appVersion(),
+                at: new Date().toISOString()
+            };
             writeMeta(meta);
 
             console.log(`Updated ${variant} userscript to ${latest.version || digest.slice(0, 12)}.`);

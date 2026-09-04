@@ -25,6 +25,7 @@ const NODE_GLOBALS = {
 const BROWSER_GLOBALS = {
     window: 'readonly',
     EventTarget: 'readonly',
+    MediaSource: 'readonly',
     document: 'readonly',
     navigator: 'readonly',
     location: 'writable',
@@ -89,7 +90,8 @@ module.exports = [
             '**/.ncc/**',
             '**/.package/**',
             'mods/domrect-polyfill.js',
-            'mods/tiny-sha256.js'
+            'mods/tiny-sha256.js',
+            'service/vendor/**'
         ]
     },
     {
@@ -104,10 +106,29 @@ module.exports = [
     },
     {
         files: ['mods/**/*.js'],
+        ignores: ['mods/test/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
             globals: BROWSER_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
+    {
+        files: ['mods/rollup.config.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: NODE_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
+    {
+        files: ['mods/test/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: NODE_GLOBALS
         },
         rules: CORRECTNESS_RULES
     },

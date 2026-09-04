@@ -68,6 +68,27 @@ function stageContents(staging) {
     });
 }
 
+// Diagnostic packaging, added to the staged copy so the file in the repository stays the
+// file that ships:
+//
+//   TUBE_GAME_MODE=1 npm run package -- --unsigned
+//
+// use.game.mode is what makes the platform's renderer count frames — a pristine
+// getVideoPlaybackQuality reads 0/0/0 through a playing video otherwise. It is said to
+// cost frames, so a package built with it is for measuring and not for watching.
+const GAME_MODE = '<tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="true"/>';
+
+const wantsGameMode = () => process.env.TUBE_GAME_MODE === '1';
+
+function addGameMode(staging) {
+    const path = join(staging, 'config.xml');
+    const xml = readFileSync(path, 'utf8');
+
+    if (xml.indexOf('metadata/use.game.mode"') !== -1) return;
+
+    writeFileSync(path, xml.replace('</widget>', `    ${GAME_MODE}\n</widget>`));
+}
+
 function signWith(certificate, staging, outPath) {
     try {
         execFileSync(certificate.tizenjs, [
@@ -110,6 +131,7 @@ async function packageApp(certificate) {
     const started = Date.now();
     try {
         stageContents(staging);
+        if (wantsGameMode()) addGameMode(staging);
         if (certificate) signWith(certificate, staging, outPath);
         else await zipUnsigned(staging, outPath);
     } finally {
@@ -133,6 +155,7 @@ async function main() {
     const certificate = unsigned ? null : checkPrerequisites();
 
     ui.heading('package', `v${config.version}${unsigned ? ' unsigned' : ''}`);
+    if (wantsGameMode()) ui.note(ui.style.dim('  use.game.mode is on: a package for measuring, not for watching.'));
     ui.note(ui.style.dim('  building first...'));
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 

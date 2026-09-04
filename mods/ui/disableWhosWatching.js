@@ -39,7 +39,8 @@ function disableWhosWatching(value) {
 
     function setActions() {
         PROMPTS.forEach((prompt) => {
-            if (actions[prompt]) actions[prompt].lastFired = date.getTime();
+            if (!actions[prompt]) actions[prompt] = {};
+            actions[prompt].lastFired = date.getTime();
         });
         localStorage[RECURRING_ACTIONS] = JSON.stringify(LeanbackRecurringActions);
     }
@@ -70,4 +71,58 @@ if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
             clearInterval(waiting);
         }
     }, WAIT_INTERVAL);
+}
+const SELECTOR = 'ytlr-account-selector';
+
+// The app acts on what it believes is focused rather than on what was clicked, so the
+// container is focused first and the key is sent to the document as well as to the tile.
+// Everything else was tried and dismissed it only sometimes.
+function answerSelector() {
+    const selector = document.querySelector(SELECTOR);
+    if (!selector) return false;
+
+    const tile = selector.querySelector('ytlr-tile-renderer');
+    if (!tile) return false;
+
+    const target = (tile.closest && tile.closest('yt-focus-container')) || tile;
+
+    try {
+        target.focus();
+    } catch (error) {
+        // Not focusable on this build; the key events below still reach the app.
+    }
+
+    [document, target].forEach((node) => {
+        ['keydown', 'keypress', 'keyup'].forEach((type) => {
+            node.dispatchEvent(new KeyboardEvent(type, {
+                bubbles: true, cancelable: true, composed: true,
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13
+            }));
+        });
+    });
+
+    return true;
+}
+
+// Only while the app is starting. An account selector the viewer opened themselves is
+// one they meant to open.
+const ANSWER_WITHIN = 60000;
+
+// This runs before the page has a body, so the watch is armed on whichever of the two
+// exists first.
+function watchForSelector() {
+    const until = Date.now() + ANSWER_WITHIN;
+
+    const watching = new MutationObserver(() => {
+        if (Date.now() > until) return watching.disconnect();
+        if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return;
+        if (answerSelector()) watching.disconnect();
+    });
+
+    watching.observe(document.body || document.documentElement, { childList: true, subtree: true });
+}
+
+if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    if (document.body) watchForSelector();
+    else document.addEventListener('DOMContentLoaded', watchForSelector, { once: true });
 }

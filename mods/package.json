@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "rollup -c rollup.config.js"
+    "build": "rollup -c rollup.config.js",
+    "test": "node test/playback-stats.js && node test/quality.js"
   },
   "keywords": [],
   "author": "tube contributors, derived from TizenTube and youtube-webos (GPL-3.0)",

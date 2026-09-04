@@ -49,6 +49,7 @@ const defaultConfig = {
   enableOledTheme: false,
 
   enableFixedUI: true,
+  enableImprovedPlayerUI: true,
   enableLongPress: true,
   enablePreviews: true,
   enableHqThumbnails: true,

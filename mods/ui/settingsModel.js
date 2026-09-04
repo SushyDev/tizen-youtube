@@ -206,6 +206,12 @@ const GROUPS = [
       Switch('enablePatchingVideoPlayer', 'Custom player controls',
         'Off leaves the row of buttons under the player exactly as YouTube built it',
         CONTROLS),
+      Switch('enableImprovedPlayerUI', 'Improved UI',
+        'The row of buttons under the player is empty grey pills until YouTube sends the '
+        + 'video\u2019s data. Off, the buttons this app adds appear before that and are the '
+        + 'only live things in a dead row, and the highlight jumps elsewhere once the rest '
+        + 'arrives. On, they wait and come up with everything else, where they belong',
+        CONTROLS),
       Switch('enablePreviousNextButtons', 'Previous and next',
         'Skip between videos in a playlist from the control row', CONTROLS),
       Switch('enableSpeedControlsButton', 'Speed control',

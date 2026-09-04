@@ -3,7 +3,7 @@ import { findResolver, resolve } from './internals.js';
 import { openOptions, OPTIONS_ACTION } from '../ui/settingsOptions.js';
 import { openSpeedOptions } from '../ui/speedUI.js';
 import { showToast, buttonItem } from '../ui/ytUI.js';
-import { enterMiniPlayer } from '../features/pictureInPicture.js';
+import { enterMiniPlayer, leaveMiniPlayer } from '../features/pictureInPicture.js';
 import { chooseQuality, chooseAudioTrack, noteSpeed, startsAt } from '../features/nativePlayback.js';
 
 const PASS = { pass: true };
@@ -149,7 +149,7 @@ const dressPlaybackSettings = (command) => {
 const forgetMiniPlayer = (command) => {
     if (!command.watchEndpoint || !command.watchEndpoint.videoId) return PASS;
 
-    window.isPipPlaying = false;
+    leaveMiniPlayer();
 
     const container = document.querySelector('ytlr-player-container');
     if (container) container.style.removeProperty('z-index');

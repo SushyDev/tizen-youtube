@@ -80,6 +80,20 @@ function enterMiniPlayer() {
     });
 }
 
+// enterMiniPlayer drives the video with inline geometry of its own. The app sets the video
+// back to full size when it lays the player out again, but only once ours is out of the way.
+function leaveMiniPlayer() {
+    const video = document.querySelector('video');
+    if (video) {
+        ['width', 'height', 'top', 'left'].forEach((property) => video.style.removeProperty(property));
+    }
+
+    const button = document.querySelector('#mini-player-button');
+    if (button) button.remove();
+
+    window.isPipPlaying = false;
+}
+
 function pipToFullscreen() {
     const { clickTrackingParams, commandMetadata, watchEndpoint } = PlayerService.loadedPlaybackConfig;
     watchEndpoint.startTimeSeconds = Math.floor(document.querySelector('video').currentTime);
@@ -89,7 +103,7 @@ function pipToFullscreen() {
         watchEndpoint
     };
     resolveCommand(command);
-    window.isPipPlaying = false;
+    leaveMiniPlayer();
 };
 
 const originalClasses = {
@@ -107,7 +121,11 @@ const observerPipEnter = new MutationObserver(() => {
     if (!window.isPipPlaying) return;
     const searchBar = document.querySelector('ytlr-search-bar');
     if (searchBar) {
-        const pipButtonExists = document.querySelector('#tt-pip-button');
+        // This has to be the id the button below is actually given. Looking for a
+        // different one means the guard never holds, and since the button is appended into
+        // the very subtree this observer watches, each append triggers another: the search
+        // bar fills with copies until the page stops responding.
+        const pipButtonExists = document.querySelector('#mini-player-button');
         if (!pipButtonExists) {
             const voiceButton = searchBar.querySelector('ytlr-search-voice');
             if (voiceButton) {
@@ -190,5 +208,6 @@ observerPipEnter.observe(document.body, { childList: true, subtree: true });
 
 export {
     enterMiniPlayer,
+    leaveMiniPlayer,
     pipToFullscreen
 }

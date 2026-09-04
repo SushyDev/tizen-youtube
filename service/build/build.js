@@ -19,10 +19,13 @@ function run(cmd, args) {
     execFileSync(cmd, args, { cwd: root, stdio: 'inherit' });
 }
 
-console.log('[1/4] bundling with ncc');
+console.log('[1/5] vendoring googlevideo as CommonJS');
+run('node', [join(__dirname, 'vendor.js')]);
+
+console.log('[2/5] bundling with ncc');
 run('npx', ['ncc', 'build', 'index.js', '-o', staging, '--no-source-map-register']);
 
-console.log('[2/4] lowering the bundle for Node 4.4.3');
+console.log('[3/5] lowering the bundle to the syntax floor');
 const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8'), {
     configFile: join(root, 'babel.config.json'),
     sourceType: 'script',
@@ -33,7 +36,9 @@ const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8
 
 let code = result.code;
 
-code = injectTokens(code, { __TUBE_ORIGIN__: config.origin }).code;
+const devToken = process.env.TUBE_DEV_TOKEN || require('crypto').randomBytes(8).toString('hex');
+
+code = injectTokens(code, { __TUBE_ORIGIN__: config.origin, __TUBE_DEV_TOKEN__: devToken }).code;
 console.log(`      origin: ${config.origin}`);
 
 if (code.indexOf('regeneratorRuntime') !== -1) {
@@ -66,24 +71,26 @@ readdirSync(staging).forEach((entry) => {
 
 rmSync(staging, { recursive: true, force: true });
 
-console.log('[3/4] embedding the userscript bundles');
+console.log('[4/5] embedding the userscript bundles');
 if (!existsSync(assetsDir)) mkdirSync(assetsDir);
-let embedded = 0;
-['modern', 'legacy'].forEach((variant) => {
+
+const embedded = ['modern', 'legacy'].filter((variant) => {
     const source = join(modsDist, `userScript.${variant}.js`);
+
     if (!existsSync(source)) {
         console.error(`      MISSING ${source} — build mods first (cd mods && npm run build)`);
-        return;
+        return false;
     }
+
     copyFileSync(source, join(assetsDir, `userScript.${variant}.js`));
-    embedded++;
     console.log(`      dist/assets/userScript.${variant}.js  ${Math.round(readFileSync(source).length / 1024)}kB`);
+    return true;
 });
 
-if (embedded !== 2) {
-    console.error('      refusing to ship without both bundles: first launch must work offline');
+if (embedded.length !== 2) {
+    console.error('      refusing to ship without both bundles: a first launch must work offline');
     process.exit(1);
 }
 
-console.log('[4/4] verifying Node 4.4.3 compatibility');
-run('node', [join(__dirname, 'check-node4.js'), join(outDir, 'index.js')]);
+console.log('[5/5] verifying the syntax floor');
+run('node', [join(__dirname, 'check-syntax.js'), join(outDir, 'index.js')]);

@@ -1,4 +1,5 @@
 import { configRead } from '../config.js';
+import { noteSpeed } from '../features/nativePlayback.js';
 import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
 
 const interval = setInterval(() => {
@@ -11,7 +12,14 @@ const interval = setInterval(() => {
 
 function execute_once_dom_loaded_speed() {
     document.querySelector('video').addEventListener('canplay', () => {
-        document.getElementsByTagName('video')[0].playbackRate = configRead('videoSpeed');;
+        if (!configRead('rememberPlaybackSpeed')) return;
+
+        const speed = configRead('videoSpeed');
+        const video = document.querySelector('video');
+        if (video) video.playbackRate = speed;
+
+        // Speed decides which pipeline can play the video, so a carried-over one must be noted.
+        noteSpeed(speed);
     });
 
     const eventHandler = (evt) => {
@@ -31,8 +39,15 @@ function execute_once_dom_loaded_speed() {
     document.addEventListener('keyup', eventHandler, true);
 }
 
+function currentRate() {
+    const video = document.querySelector('video');
+    if (video && video.playbackRate > 0) return Math.round(video.playbackRate * 100) / 100;
+
+    return configRead('rememberPlaybackSpeed') ? configRead('videoSpeed') : 1;
+}
+
 function openSpeedOptions() {
-    const currentSpeed = configRead('videoSpeed');
+    const currentSpeed = currentRate();
     let selectedIndex = 0;
     const maxSpeed = 5;
     const increment = configRead('speedSettingsIncrement') || 0.25;
@@ -74,38 +89,6 @@ function openSpeedOptions() {
             selectedIndex = buttons.length - 1;
         }
     }
-
-    buttons.push(
-        buttonItem(
-            { title: 'Fix stuttering (1.0001x)' },
-            null,
-            [
-                {
-                    signalAction: {
-                        signal: 'POPUP_BACK'
-                    }
-                },
-                {
-                    setClientSettingEndpoint: {
-                        settingDatas: [
-                            {
-                                clientSettingEnum: {
-                                    item: 'videoSpeed'
-                                },
-                                intValue: '1.0001'
-                            }
-                        ]
-                    }
-                },
-                {
-                    customAction: {
-                        action: 'SET_PLAYER_SPEED',
-                        parameters: '1.0001'
-                    }
-                }
-            ]
-        )
-    );
 
     showModal('Playback Speed', overlayPanelItemListRenderer(buttons, selectedIndex), 'options-speed');
 }

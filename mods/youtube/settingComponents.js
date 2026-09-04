@@ -1,5 +1,5 @@
 import { configRead } from '../config.js';
-import { findByPrototype, sourceOf } from './internals.js';
+import { findByPrototype, findBySource, findComponent, sourceOf } from './internals.js';
 
 const getterOf = (prototype, name) => {
     const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
@@ -48,6 +48,61 @@ function claimBooleanRows() {
     return true;
 }
 
+const ACTION_ROW = 'ytlr-setting-action-renderer';
+
+// Action rows have no footer template; wFmJpd/vAMQc are YouTube's own note classes. Nodes are
+// stamped with a private symbol when built, so the footer must come from YouTube's hyperscript.
+const findHyperscript = () => findBySource('.type=', '.props=', '.children=');
+
+const noteFor = (H, note) => H(
+    'div',
+    { className: 'wFmJpd', idomKey: 'tube-note' },
+    H('div', { className: 'vAMQc', 'aria-label': note }, note)
+);
+
+const withNote = (original, H) => function (props, state) {
+    const tree = original.call(this, props, state);
+    const note = props && props.data && props.data.tubeNote;
+
+    if (note && tree && Array.isArray(tree.children)) tree.children.push(noteFor(H, note));
+
+    return tree;
+};
+
+let noted = false;
+
+// `template` is assigned per instance in the constructor, so the wrap has to be an accessor.
+function claimActionRows() {
+    if (noted) return true;
+
+    const component = findComponent(ACTION_ROW);
+    if (!component) return false;
+
+    const H = findHyperscript();
+    if (!H) return false;
+
+    Object.defineProperty(component.prototype, 'template', {
+        configurable: true,
+        get: function () { return this.tubeTemplate; },
+        set: function (original) { this.tubeTemplate = withNote(original, H); }
+    });
+
+    const standing = document.querySelectorAll(ACTION_ROW);
+
+    for (let index = 0; index < standing.length; index++) {
+        const instance = standing[index].__instance;
+        if (!instance || !Object.prototype.hasOwnProperty.call(instance, 'template')) continue;
+
+        const original = instance.template;
+        delete instance.template;
+        instance.template = original;
+    }
+
+    noted = true;
+    redrawSettingRows();
+    return true;
+}
+
 const ROWS = [
     'ytlr-setting-boolean-renderer',
     'ytlr-setting-single-option-menu-renderer',
@@ -90,4 +145,4 @@ function redrawSettingRows() {
     }
 }
 
-export { claimBooleanRows, redrawSettingRows };
+export { claimBooleanRows, claimActionRows, redrawSettingRows, ROWS };

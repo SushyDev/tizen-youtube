@@ -24,6 +24,7 @@ const NODE_GLOBALS = {
 
 const BROWSER_GLOBALS = {
     window: 'readonly',
+    EventTarget: 'readonly',
     document: 'readonly',
     navigator: 'readonly',
     location: 'writable',

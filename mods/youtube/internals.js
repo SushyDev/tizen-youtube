@@ -36,6 +36,12 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
+// `S` is the component's custom-element name; survives releases that rename the export.
+const findComponent = (tag) => {
+    const match = entries().find(([, value]) => typeof value === 'function' && value.S === tag);
+    return match ? match[1] : null;
+};
+
 const nameOf = (target) => {
     const match = entries().find(([, value]) => value === target);
     return match ? match[0] : null;
@@ -57,6 +63,17 @@ const findResolver = () => {
 const resolve = (command, context) => {
     const resolver = findResolver();
     return resolver ? resolver.resolveCommand(command, context) : undefined;
+};
+
+// The player API is not the video element — the app's own menus ask this one, so correcting
+// the element alone leaves the quality menu wrong. Located by its methods, not by name.
+const findPlayerApi = () => {
+    const match = entries().find(([, value]) =>
+        value
+        && typeof value.getPlaybackQualityLabel === 'function'
+        && typeof value.getAvailableQualityLevels === 'function');
+
+    return match ? match[1] : null;
 };
 
 const ROUTER_MARKER = 'ytlrActionRouter';
@@ -113,4 +130,7 @@ const reloadGuide = () => {
     if (run) run('reloadGuideAction');
 };
 
-export { findBySource, findByPrototype, nameOf, replace, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };
+export {
+    findBySource, findByPrototype, findComponent, nameOf, replace, findResolver, resolve,
+    findPlayerApi, findActionRunner, reloadGuide, sourceOf
+};

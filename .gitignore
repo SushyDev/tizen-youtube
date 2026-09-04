@@ -17,3 +17,5 @@ release/
 .DS_Store
 
 docs-internal/
+# Built by service/build/vendor.js, not source.
+service/vendor/

@@ -1,7 +1,7 @@
 import { configRead, configChangeEmitter } from '../config.js';
 import { GROUPS, chosenLabel, chosenSummary } from './settingsModel.js';
 import { optionsCommand, storeCommand } from './settingsOptions.js';
-import { claimBooleanRows, redrawSettingRows } from '../youtube/settingComponents.js';
+import { claimBooleanRows, claimActionRows, redrawSettingRows, ROWS } from '../youtube/settingComponents.js';
 
 const BEFORE = 'SETTING_CAT_TVHTML5_LINK_PHONE';
 
@@ -28,34 +28,12 @@ function switchRow(item) {
     };
 }
 
-function choiceRow(item, path) {
-    const row = {
-        title: runs(item.title),
-        trackingParams: 'null',
-        itemId: idFor(item),
-        thumbnail: picture(item.image)
-    };
-
-    Object.defineProperty(row, 'button', {
-        enumerable: true,
-        get: () => ({
-            buttonRenderer: {
-                text: { simpleText: `${item.prefix}: ${chosenLabel(item)}` },
-                icon: { iconType: 'EDIT' },
-                trackingParams: 'null',
-                command: optionsCommand(path)
-            }
-        })
-    });
-
-    return { settingSingleOptionMenuRenderer: row };
-}
-
-function listRow(item, path) {
+function openerRow(item, path, label) {
     const row = {
         title: runs(item.title),
         summary: runs(item.summary),
         serviceEndpoint: optionsCommand(path),
+        tubeNote: item.note,
         trackingParams: 'null',
         itemId: idFor(item),
         thumbnail: picture(item.image)
@@ -63,7 +41,7 @@ function listRow(item, path) {
 
     Object.defineProperty(row, 'actionLabel', {
         enumerable: true,
-        get: () => runs(chosenSummary(item))
+        get: () => runs(label())
     });
 
     return { settingActionRenderer: row };
@@ -71,8 +49,9 @@ function listRow(item, path) {
 
 const rowFor = (item, path) =>
     item.kind === 'switch' ? switchRow(item)
-        : item.kind === 'choice' ? choiceRow(item, path)
-            : listRow(item, path);
+        : item.kind === 'choice'
+            ? openerRow(item, path, () => `${item.prefix}: ${chosenLabel(item)}`)
+            : openerRow(item, path, () => chosenSummary(item));
 
 const category = (categoryId, title, items) => ({
     settingCategoryCollectionRenderer: {
@@ -201,9 +180,17 @@ function putMoved(items, taken) {
     });
 }
 
+// The action row's code is only fetched when the first one is drawn, long after this response
+// is patched — so the search eases off instead of stopping, and gives up once the page is gone.
 function claimRows(attempt = 0) {
-    if (claimBooleanRows() || attempt > 20) return;
-    setTimeout(() => claimRows(attempt + 1), 250);
+    const claimed = claimBooleanRows();
+    const annotated = claimActionRows();
+    if (claimed && annotated) return;
+
+    const settling = attempt < 20;
+    if (!settling && !document.querySelector(ROWS)) return;
+
+    setTimeout(() => claimRows(attempt + 1), settling ? 250 : 500);
 }
 
 function PatchSettings(response) {

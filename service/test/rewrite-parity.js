@@ -1,15 +1,10 @@
 'use strict';
 
-// Differential test: our rewrite table must transform text identically to the
-// reference implementation. The one intended difference is the injected script tag,
-// which points at this service instead of a CDN, and is compared separately.
-
 const { rewriteBody, rewriteSetCookie } = require('../lib/proxy.js');
 
 const PORT = 8099;
 const proxyPrefix = `http://localhost:${PORT}/cors-bypass/`;
 
-// Lifted from TizenTube/standalone/service/index.js:145-176.
 function referenceRewrite(text, url) {
     text = text.replace(/https:\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `${proxyPrefix}https://$1.googlevideo.com`);
     text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/localhost:${PORT}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
@@ -60,7 +55,6 @@ SAMPLES.forEach(function (pair) {
     const label = pair[0];
     const input = pair[1];
 
-    // A URL that does NOT get a script tag, isolating the table.
     const ours = rewriteBody(input, '/watch');
     const theirs = referenceRewrite(input, '/watch');
 
@@ -74,7 +68,6 @@ SAMPLES.forEach(function (pair) {
     }
 });
 
-// The intended divergence: the injected tag is local, not a CDN.
 const injected = rewriteBody('<html></html>', '/tv');
 const usesLocal = injected.indexOf('http://localhost:8099/__tube/userScript.js') !== -1;
 const usesCdn = injected.indexOf('jsdelivr') !== -1;
@@ -87,8 +80,6 @@ if (noTag.indexOf('__tube') !== -1) failures++;
 
 const cookies = rewriteSetCookie(['__Secure-3PSID=abc; Domain=.youtube.com; Secure; SameSite=None; Path=/']);
 
-// Cookie prefixes: check for the `Secure` *attribute*, not the substring — the renamed
-// prefix __LocalSecure- legitimately contains it.
 const attributes = cookies[0].split(/;\s*/).slice(1);
 const ok = cookies[0].indexOf('__LocalSecure-3PSID') === 0 &&
     attributes.indexOf('Domain=localhost') !== -1 &&

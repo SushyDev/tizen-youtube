@@ -1,13 +1,8 @@
-//
-// https://raw.githubusercontent.com/Financial-Times/polyfill-library/c25c30e4463bef60fba1213ecb697f3e3f253d7b/polyfills/DOMRect/polyfill.js
-// License: MIT
-//
-
 (function (global) {
 	function number(v) {
 		return v === undefined ? 0 : Number(v);
 	}
-	
+
 	function different(u, v) {
 		return u !== v && !(isNaN(u) && isNaN(v));
 	}
@@ -99,6 +94,6 @@
 			}
 		});
 	}
-	
+
 	global.DOMRect = DOMRect;
 }(self));

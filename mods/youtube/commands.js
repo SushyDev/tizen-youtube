@@ -5,26 +5,15 @@ import { openSpeedOptions } from '../ui/speedUI.js';
 import { showToast, buttonItem } from '../ui/ytUI.js';
 import { enterMiniPlayer } from '../features/pictureInPicture.js';
 
-// YouTube routes everything through a single `resolveCommand` on one singleton, so
-// wrapping it is how this app's settings end up behaving exactly like YouTube's.
-//
-// The wrapper is a list of interpreters, each asked in turn whether a command is
-// theirs. An interpreter answers with a result, or hands the command on untouched.
-
-// What an interpreter returns when the command is not its business.
 const PASS = { pass: true };
 
 const APP_NAME = 'YouTube';
 
-// Commands YouTube has never heard of, carried under `customAction` so they travel
-// the same rails as everything else.
 const ACTIONS = {
-    // A settings row asking for the list of answers it offers.
     [OPTIONS_ACTION]: (parameters) => openOptions(parameters),
 
     OPEN_SPEED_OPTIONS: () => openSpeedOptions(),
 
-    // The keypress is what dismisses the overlay: the panel has no command for it.
     SKIP: (parameters) => {
         const escape = document.createEvent('Event');
         escape.initEvent('keydown', true, true);
@@ -56,8 +45,6 @@ const ACTIONS = {
     }
 };
 
-// A custom action can be nested under any of these, because YouTube's renderers each
-// expect their own shape.
 const CARRIERS = ['customAction', 'signalAction', 'showEngagementPanelEndpoint', 'playlistEditEndpoint'];
 
 const customActionIn = (command) => {
@@ -74,8 +61,6 @@ const perform = (action) => {
     return !!run;
 };
 
-// A setting YouTube does not recognise is one of ours: its own all have underscored
-// enum names, ours are the config keys themselves.
 const applyOurSettings = (command) => {
     const endpoint = command.setClientSettingEndpoint;
     if (!endpoint || !endpoint.settingDatas) return PASS;
@@ -84,7 +69,6 @@ const applyOurSettings = (command) => {
         setting.clientSettingEnum && setting.clientSettingEnum.item === 'I18N_LANGUAGE');
 
     if (language) {
-        // YouTube reads the interface language from a cookie, not a field.
         const expires = new Date();
         expires.setFullYear(expires.getFullYear() + 10);
         document.cookie = `PREF=hl=${language.stringValue}; expires=${expires.toUTCString()};`;
@@ -105,8 +89,6 @@ const applyOurSettings = (command) => {
 
         if (field !== 'arrayValue') return configWrite(key, value);
 
-        // An array setting is a set of checkboxes and the command carries the one
-        // pressed. A new array, so configWrite never gets the stored one back.
         const current = configRead(key) || [];
         configWrite(key, current.indexOf(value) === -1
             ? current.concat(value)
@@ -121,7 +103,6 @@ const runCustomActions = (command) => {
     return action && perform(action) ? true : PASS;
 };
 
-// The speed row points at this app's finer-grained menu, and a mini player button is added.
 const dressPlaybackSettings = (command) => {
     const popup = command.openPopupAction;
     if (!popup || popup.uniqueId !== 'playback-settings') return PASS;
@@ -157,11 +138,9 @@ const dressPlaybackSettings = (command) => {
         ));
     }
 
-    // Edited, not answered: YouTube still has to open the panel.
     return PASS;
 };
 
-// Starting a video ends any mini player that was running.
 const forgetMiniPlayer = (command) => {
     if (!command.watchEndpoint || !command.watchEndpoint.videoId) return PASS;
 
@@ -173,7 +152,6 @@ const forgetMiniPlayer = (command) => {
     return PASS;
 };
 
-// Ours are performed here; the rest go back through the resolver one at a time.
 const runCommandBatch = (command) => {
     const batch = command.commandExecutorCommand && command.commandExecutorCommand.commands;
     if (!batch) return PASS;
@@ -187,8 +165,6 @@ const runCommandBatch = (command) => {
     return true;
 };
 
-// YouTube asks "who's watching?" on the way out. Nobody wants that between them and
-// the home button.
 const skipWhosWatchingOnExit = (command, original, self, context) => {
     const request = command.requestAccountSelectorCommand;
 
@@ -211,7 +187,6 @@ const INTERPRETERS = [
     skipWhosWatchingOnExit
 ];
 
-/** Wraps YouTube's resolver. False when it is not registered yet; the caller retries. */
 const interceptCommands = () => {
     const resolver = findResolver();
     if (!resolver || resolver.__tubePatched) return false;

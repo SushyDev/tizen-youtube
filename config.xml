@@ -2,19 +2,32 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="0.3.1" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="3.0"/>
+    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
     <content src="ui/dist/index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
     <feature name="http://tizen.org/feature/web.service"/>
     <icon src="icon.png"/>
 
+    <!-- use.game.mode must stay absent: it makes the renderer count frames, but the video
+         element then sits at networkState 0 with no error and every video falls back to
+         the default player. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/use.uwe" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
+
+    <!-- Must stay true: false terminates the app on focus loss rather than hiding it, so
+         Home and Back re-run the boot screen instead of returning to the video. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
+
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
+
+    <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="5.5"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/allow.mixedcontent" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/runningtype" value="MAIN"/>
 
     <name>YouTube</name>
 
@@ -24,15 +37,13 @@
     <tizen:privilege name="http://tizen.org/privilege/unlimitedstorage"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
 
+    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
     <tizen:profile name="tv-samsung"/>
 
-    <!-- The id suffix must match what index.html launches and what injector.js and
-         dial.js derive from the package id. -->
+    <!-- dial.js derives this id from the package id, so the suffix must match. -->
     <tizen:service id="tUb3Xq7Lm9.TubeService">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>
-        <tizen:description>Injection, proxy fallback and DIAL discovery.</tizen:description>
+        <tizen:description>The proxy, media streaming and DIAL discovery.</tizen:description>
     </tizen:service>
-
-    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

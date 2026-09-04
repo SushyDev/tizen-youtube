@@ -1,5 +1,3 @@
-// Custom UI for video player
-
 import { findAssignedProperty } from "../utils/findAssignments.js";
 import { configRead } from "../config.js";
 import { ButtonRenderer } from "./ytUI.js";
@@ -75,8 +73,6 @@ function applyPatches() {
             };
         }
 
-        // The two skip buttons are told apart by which marker appears first in the
-        // same assignment.
         const previousButtonName = findAssignedProperty(source, rhs => {
             const next = rhs.indexOf('skipNextButton');
             const previous = rhs.indexOf('skipPreviousButton');
@@ -125,7 +121,7 @@ function applyPatches() {
                 return shoppingFiltered;
             }
         }
-        
+
         if (engagementActionButton && !configRead('enableAIAskButton')) {
             const origEngagementActionButton = inst[engagementActionButton];
             inst[engagementActionButton] = function () {

@@ -1,4 +1,3 @@
-// Features YouTube leaves off because it sees the TV as a low-end device.
 import { configRead, configChangeEmitter } from '../config.js';
 
 configChangeEmitter.addEventListener('configChange', (event) => {

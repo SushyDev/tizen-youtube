@@ -1,43 +1,29 @@
-/* The boot log: black ground, monospace, monotonic timestamps, one line per thing
-   that happened. Black is not a style choice — the page it hands over to is black,
-   so anything else would flash. */
-
-/* The Linux console's sixteen colours as the kernel defines them (`default_red[]`
-   and friends in drivers/tty/vt/vt.c). Colour 3 is brown rather than dark yellow
-   because the VGA card put 0x55 in its green channel. */
 :root {
-  --ansi-0:  #000000;   /* black          */
-  --ansi-1:  #aa0000;   /* red            */
-  --ansi-2:  #00aa00;   /* green          */
-  --ansi-3:  #aa5500;   /* brown          */
-  --ansi-4:  #0000aa;   /* blue           */
-  --ansi-5:  #aa00aa;   /* magenta        */
-  --ansi-6:  #00aaaa;   /* cyan           */
-  --ansi-7:  #aaaaaa;   /* light grey     */
-  --ansi-8:  #555555;   /* dark grey      */
-  --ansi-9:  #ff5555;   /* light red      */
-  --ansi-10: #55ff55;   /* light green    */
-  --ansi-11: #ffff55;   /* yellow         */
-  --ansi-12: #5555ff;   /* light blue     */
-  --ansi-13: #ff55ff;   /* light magenta  */
-  --ansi-14: #55ffff;   /* light cyan     */
-  --ansi-15: #ffffff;   /* white          */
+  --ansi-0:  #000000;
+  --ansi-1:  #aa0000;
+  --ansi-2:  #00aa00;
+  --ansi-3:  #aa5500;
+  --ansi-4:  #0000aa;
+  --ansi-5:  #aa00aa;
+  --ansi-6:  #00aaaa;
+  --ansi-7:  #aaaaaa;
+  --ansi-8:  #555555;
+  --ansi-9:  #ff5555;
+  --ansi-10: #55ff55;
+  --ansi-11: #ffff55;
+  --ansi-12: #5555ff;
+  --ansi-13: #ff55ff;
+  --ansi-14: #55ffff;
+  --ansi-15: #ffffff;
 
-  /* Roles, each an index rather than a colour. A console with no escape codes is
-     colour 7 on colour 0, and the timestamp and facility columns are the two roles
-     util-linux names in dmesg.c: time green, subsys brown.
-
-     Severities use the bright half, because 0xaa is what those colours look like on a
-     CRT rather than on an OLED across a room. warn is yellow rather than dmesg's bold,
-     which on a console means bright white and is unreadable at a glance. */
   --ground: var(--ansi-0);
-  --text:   var(--ansi-7);    /* the default foreground, and nothing else  */
-  --stamp:  var(--ansi-2);    /* dmesg's `time`                            */
-  --subsys: var(--ansi-3);    /* dmesg's `subsys`                          */
+  --text:   var(--ansi-7);
+  --stamp:  var(--ansi-2);
+  --subsys: var(--ansi-3);
   --ok:     var(--ansi-10);
   --warn:   var(--ansi-11);
   --bad:    var(--ansi-9);
-  --note:   var(--ansi-14);   /* cyan — 0000aa on 000000 is unreadable */
+  --note:   var(--ansi-14);
 }
 
 html, body {
@@ -50,14 +36,10 @@ html, body {
 body {
   color: var(--text);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* A fraction of the screen, not a pixel count: the same page has to be legible on
-     a television across a room and in a 960-wide webview. */
   font-size: 1vw;
   line-height: 1.55;
 }
 
-/* `pre` so the padded timestamps line up without a table or grid, either of which an
-   old engine could drop. */
 #log {
   white-space: pre;
 }
@@ -70,6 +52,4 @@ body {
 .bad  { color: var(--bad); }
 .note { color: var(--note); }
 
-/* Handing over: the log is simply not there any more, on the frame before YouTube
-   paints. */
-body.done > * { display: none; }
+body.done > #log { display: none; }

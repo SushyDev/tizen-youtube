@@ -1,9 +1,5 @@
 'use strict';
 
-// DIAL server: what the phone's YouTube app discovers when you press cast. The launch
-// payload is handed to the app shell as an app-control argument, which the injector
-// appends to the watch URL.
-
 const dial = require('@patrickkfkan/peer-dial');
 const express = require('express');
 const cors = require('cors');
@@ -69,8 +65,6 @@ function start() {
 
                 const parsed = parseLaunchData(launchData);
 
-                // A `yumi` payload is a state handoff from a running session, not a
-                // request to launch anything.
                 if (parsed.yumi) {
                     entry.additionalData = parsed;
                     entry.state = 'running';
@@ -95,7 +89,6 @@ function start() {
         }
     });
 
-    // Reflect reality: if the app is gone, DIAL should not claim it is running.
     const poll = setInterval(() => {
         tizen.application.getAppsContext((contexts) => {
             if (!contexts.some((context) => context.appId === appId)) {

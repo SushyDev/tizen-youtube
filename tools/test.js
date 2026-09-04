@@ -1,8 +1,5 @@
 'use strict';
 
-// Runs every test suite in the repo and summarises them together.
-// Output from a passing suite is condensed; a failing suite prints in full.
-
 const { execFileSync } = require('child_process');
 
 const ui = require('./ui.js');
@@ -16,8 +13,6 @@ ui.heading('test');
 
 let failures = 0;
 
-// Lint first. `node --check` only validates syntax, so an undeclared variable reaches
-// runtime and fails on whichever machine hits that line first.
 {
     const started = Date.now();
     try {
@@ -51,7 +46,6 @@ SUITES.forEach((suite) => {
         output = `${e.stdout || ''}${e.stderr || ''}`;
     }
 
-    // Every suite reports "N/M checks passed."; total them up.
     let passed = 0;
     let total = 0;
     const counts = output.match(/(\d+)\/(\d+) checks passed/g) || [];

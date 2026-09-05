@@ -109,7 +109,7 @@ function spoofUserAgent(text) {
 
 // TEMPORARY, for the Cobalt container experiment: flipped by hand to bisect our own mods against
 // the proxy. `process.env` is no use here — it is read on the television, not at build time.
-const INJECT_USERSCRIPT = false;
+const INJECT_USERSCRIPT = true;
 const INSTRUMENT = true;
 const REWRITE_FOR_COBALT = true;
 

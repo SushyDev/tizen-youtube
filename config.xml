@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="0.4.0" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
+    <tizen:application id="9Ur5IzDKqV.TizenYouTube" package="9Ur5IzDKqV" required_version="5.0"/>
     <author>tube</author>
     <content src="ui/dist/index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
@@ -18,12 +18,18 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
+    <!-- Claims the Cobalt container slot the official app used to hold. `native.userdata` reaches
+         Cobalt as command line switches; Cobalt is the stack that plays 2160p60 VP9 HDR properly. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=http://192.168.1.29:8099/tv --dial_name=Tube --use_eden"/>
+
     <!-- Must stay true: false terminates the app on focus loss rather than hiding it, so
          Home and Back re-run the boot screen instead of returning to the video. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
 
-    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="hybrid"/>
 
     <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="5.5"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/allow.mixedcontent" value="true"/>
@@ -40,8 +46,9 @@
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
     <tizen:profile name="tv-samsung"/>
 
+
     <!-- dial.js derives this id from the package id, so the suffix must match. -->
-    <tizen:service id="tUb3Xq7Lm9.TubeService">
+    <tizen:service id="9Ur5IzDKqV.TubeService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>
         <tizen:description>The proxy, media streaming and DIAL discovery.</tizen:description>

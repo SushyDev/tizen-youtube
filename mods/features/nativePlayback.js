@@ -695,7 +695,7 @@ export function noteSpeed(value) {
     intendedRate = now;
 
     if ((was === 1) === (now === 1)) return;
-    if (!configRead('bypassMediaSource')) return;
+    if (!enhancedPlayerWanted()) return;
 
     const videoId = attachingTo();
     if (!videoId) return;
@@ -724,7 +724,14 @@ export function noteSpeed(value) {
     restart(videoId, at);
 }
 
-const wanted = () => configRead('bypassMediaSource') && intendedRate === 1;
+// Inside Samsung's Cobalt container there is no `<video src=mpd>` path and no `webapis`, and none
+// of this is wanted anyway: Cobalt's own Media Source pipeline is the hardware one this feature
+// exists to work around. Leaving it on breaks playback outright.
+const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.userAgent || '');
+
+const enhancedPlayerWanted = () => !inCobalt && configRead('bypassMediaSource');
+
+const wanted = () => enhancedPlayerWanted() && intendedRate === 1;
 
 if (typeof window !== 'undefined') {
     onResponse('nativePlayback', ['streamingData'], (response) => {

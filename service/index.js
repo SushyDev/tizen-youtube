@@ -10,6 +10,7 @@ const devbridge = require('./lib/devbridge.js');
 const dash = require('./lib/dash.js');
 const stream = require('./lib/stream.js');
 const dial = require('./lib/dial.js');
+const journal = require('./lib/journal.js');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -18,6 +19,32 @@ const platformVersion = isTV
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
 const app = proxy.create(platformVersion);
+
+// TEMPORARY, for the Cobalt container experiment. A gold Cobalt build requires a real
+// Content-Security-Policy header on the document: without one its CSP delegate refuses to load
+// any resource at all, which reads on screen as a black screen and a network error.
+// TEMPORARY, alongside it: what the container actually asks for, so a playback that fetches no
+// media at all can be told apart from one whose fetches are refused.
+app.use((req, _, next) => {
+    const path = String(req.originalUrl || req.url || '');
+    if (path.indexOf('/__tube/oops') === -1) {
+        journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
+    }
+    next();
+});
+
+app.use((_, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+        "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
+        "img-src * data: blob:",
+        "media-src * data: blob:",
+        "script-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
+        "style-src * data: blob: 'unsafe-inline'",
+        "connect-src *",
+        "font-src * data:"
+    ].join('; '));
+    next();
+});
 
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
@@ -77,6 +104,11 @@ app.get('/__tube/quit', (_, res) => {
 
 devbridge.attach(app);
 
+// TEMPORARY, for the Cobalt container experiment: the journal only records once the page asks for
+// diagnostics, and the container never does — so the proxy's own view of a failing playback is
+// invisible. Opening it here makes /log readable without a cooperating page.
+devbridge.start();
+
 // Registered last so it cannot shadow the endpoints above.
 dash.attach(app);
 
@@ -118,7 +150,9 @@ function announceReady() {
     }
 }
 
-const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
+// TEMPORARY, for the Cobalt container experiment: packages on this set cannot reach each other's
+// loopback, so the container has to be given the television's own address on the network instead.
+const BIND = '0.0.0.0';
 
 app.listen(ports.PROXY, BIND, () => {
     console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);

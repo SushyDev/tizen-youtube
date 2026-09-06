@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build/build.js",
     "check:syntax": "node build/check-syntax.js dist/index.js",
-    "test": "node test/injection.js && node test/routing.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js"
+    "test": "node test/injection.js && node test/routing.js && node test/x509.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js"
   },
   "dependencies": {
     "@patrickkfkan/peer-dial": "^0.1.3",

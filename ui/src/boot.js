@@ -408,7 +408,51 @@ const boot = async () => {
     return useProxy(reached.state, args);
 };
 
+// Cobalt dials the moment it starts and does not recover if nothing answers, so it must not be
+// started until the service has actually replied — which is exactly where this runs, after the
+// state has been read. Launching it from here rather than by the nativeID metadata is what makes
+// that ordering possible at all: a package carrying nativeID never runs its own content, so there
+// is nothing to start the service, nothing to wait, and nothing to launch anything in order.
+const useContainer = (state) => {
+    const appId = state.container;
+
+    say('cobalt', `service is up; launching ${appId}`);
+    summarise();
+
+    if (!canHandOver(state)) return hold('cobalt', 'would launch the container now');
+    if (!onTv) return hold('cobalt', 'no platform to launch it with');
+
+    handOver();
+
+    // launchAppControl, not launch: a plain launch of a container slot exits immediately, while
+    // this one stays up and becomes what the viewer is looking at.
+    // Reported as well as said: inside the container there is no console and no dev bridge, and
+    // the boot screen is replaced the moment this works, so the screen is not somewhere the answer
+    // can be read afterwards. The service's log is.
+    // launch_mode=backgroundAtStartup is Samsung's own way of starting this container: the stock
+    // YouTube package registers exactly that under postunstall.launch, and the slot itself carries
+    // `read.metadata.from.hybrid.webapp`, meaning it takes its switches from the paired webapp
+    // rather than from its own registration. Both were read out of the package database.
+    const mode = new platform.ApplicationControlData(
+        'http://samsung.com/appcontrol/data/launch_mode', ['backgroundAtStartup']
+    );
+
+    return platform.application.launchAppControl(
+        new platform.ApplicationControl(
+            'http://tizen.org/appcontrol/operation/default', null, null, null, [mode]
+        ),
+        appId,
+        () => { say('cobalt', 'container launched', 'ok'); report(`container ${appId} launched`); },
+        (error) => {
+            say('cobalt', `container refused to launch: ${error.message}`, 'bad');
+            report(`container ${appId} refused: ${error.name || 'Error'} ${error.message}`);
+        }
+    );
+};
+
 const useProxy = (state, args) => {
+    if (state && state.container) return useContainer(state);
+
     const target = withArgs((state && state.proxyUrl) || localProxyUrl(), args);
 
     say('proxy', 'routing youtube.com through the local proxy');

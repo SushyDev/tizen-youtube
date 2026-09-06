@@ -11,25 +11,18 @@ const URL = require('url');
 
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
+const cobalt = require('./cobalt.js');
 
 const ABSOLUTE = /^https?:\/\//i;
-const MITM_DIR = process.env.TUBE_MITM_DIR || '/home/owner/share/tube/mitm';
 
-// An environment variable cannot reach this process on the television: the platform starts the
-// service itself, so `TUBE_MITM=1` only ever worked off-TV and this branch was dead on the set.
-// The switch is therefore a marker file beside the key material — one Homebrew `writeFileSync` and
-// a relaunch, no rebuild — and a shipping package has neither the marker nor the keys.
+// The material is made on the television by cobalt.js rather than shipped, so it may not exist yet
+// when the first connection arrives — key generation takes seconds on this hardware. Until it does,
+// every host is tunnelled through untouched, which is a working television showing stock YouTube
+// rather than a broken one. A `disabled` file beside the keys forces that state permanently.
 function mitmConfig() {
-    try {
-        if (process.env.TUBE_MITM !== '1' && !fs.existsSync(`${MITM_DIR}/enabled`)) return null;
+    if (fs.existsSync(`${cobalt.MITM_DIR}/disabled`)) return null;
 
-        return {
-            key: fs.readFileSync(`${MITM_DIR}/leaf.key`),
-            cert: fs.readFileSync(`${MITM_DIR}/leaf-chain.crt`)
-        };
-    } catch (e) {
-        return null;
-    }
+    return cobalt.material();
 }
 
 function mitmHost(host) {
@@ -67,43 +60,67 @@ function normaliseSelf(req, host, port) {
 }
 
 function tunnel(server) {
-    const config = mitmConfig();
-
     // The container never opens the dev bridge, so the in-memory journal is unreadable from
     // inside it and whether the handshake was accepted is the whole question. While the MITM is
     // switched on, put that one fact where Homebrew can read it; the log rolls at 64KB.
+    // Deduplicated so a page load does not write fifty identical lines, but only for a minute —
+    // long enough to collapse one launch, short enough that the next launch says so. Suppressing
+    // repeats for the life of the process makes the log read as though nothing happened at all,
+    // which is indistinguishable from the container never having connected.
     const seen = {};
+    const QUIET = 60000;
+
     const record = (topic, detail) => {
         const key = `${topic} ${detail}`;
-        if (seen[key]) return;
-        seen[key] = true;
+        const now = Date.now();
+        if (seen[key] && now - seen[key] < QUIET) return;
+
+        seen[key] = now;
         postmortem.note('mitm', key);
     };
 
-    const mitm = config ? tls.createServer(config, (socket) => {
-        // Feed decrypted HTTP into the existing Express application. The marker lets the fallback
-        // preserve the original Host instead of assuming www.youtube.com.
-        socket.__tubeMitm = true;
-        if (journal.wanted()) journal.service('mitm', `secure ${socket.servername || '?'}`);
-        record('accepted', socket.servername || '?');
-        server.emit('connection', socket);
-    }) : null;
+    // Built on the first connection that could use it rather than at start-up, and rebuilt from
+    // nothing if the material was still being made then. Two file reads, at most every few seconds.
+    let mitm = null;
+    let asked = 0;
 
-    if (mitm) mitm.on('tlsClientError', (error, socket) => {
-        if (journal.wanted()) journal.service('mitm', `tls error ${error.message}`);
-        record('refused', error.message);
-        socket.destroy();
-    });
+    function interceptor() {
+        if (mitm) return mitm;
+        if (Date.now() - asked < 3000) return null;
+        asked = Date.now();
+
+        const config = mitmConfig();
+        if (!config) return null;
+
+        mitm = tls.createServer(config, (socket) => {
+            // Feed decrypted HTTP into the existing Express application. The marker lets the
+            // fallback preserve the original Host instead of assuming www.youtube.com.
+            socket.__tubeMitm = true;
+            if (journal.wanted()) journal.service('mitm', `secure ${socket.servername || '?'}`);
+            record('accepted', socket.servername || '?');
+            server.emit('connection', socket);
+        });
+
+        mitm.on('tlsClientError', (error, socket) => {
+            if (journal.wanted()) journal.service('mitm', `tls error ${error.message}`);
+            record('refused', error.message);
+            socket.destroy();
+        });
+
+        return mitm;
+    }
 
     server.on('connect', (req, client, head) => {
         const [host, port] = req.url.split(':');
         const watching = journal.wanted();
         let carried = 0;
 
-        if (mitm && mitmHost(host)) {
+        const secure = mitmHost(host) ? interceptor() : null;
+
+        if (secure) {
             client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
             if (head && head.length) client.unshift(head);
-            mitm.emit('connection', client);
+            secure.emit('connection', client);
             if (watching) journal.service('mitm', `open ${req.url}`);
             client.on('close', () => {
                 if (watching) journal.service('mitm', `shut ${req.url}`);

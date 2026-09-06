@@ -94,7 +94,30 @@ const xmlAttribute = (value) => String(value)
 // names the directory that directly holds `fonts/`, `icu/`, `licenses/` and `ssl/certs/` — not the
 // loader root above it, and not `app/cobalt`. It has no bearing on where libcobalt is loaded
 // from, so the copy needs no `manifest.json` and no `lib/`.
+// Not every Tizen device has the container — a Smart Monitor is not a television — and on one that
+// does not, the metadata hands the launch to something absent and our own content never runs, so
+// nothing starts the service either. TUBE_COBALT_CONTAINER=off drops the three keys and the app is
+// the ordinary Chromium one again.
+function withoutContainer(staging) {
+    if (process.env.TUBE_COBALT_CONTAINER !== 'off') return;
+
+    const path = join(staging, 'config.xml');
+    const keys = ['pkgid', 'nativeID', 'native.userdata'];
+
+    const xml = keys.reduce((text, key) => text.replace(
+        new RegExp(`\\s*<tizen:metadata\\s+key="http://samsung\\.com/tv/metadata/${key}"[^>]*/>`), ''
+    ), readFileSync(path, 'utf8'));
+
+    keys.forEach((key) => {
+        if (xml.indexOf(`metadata/${key}"`) !== -1) throw friendly(`Could not remove the ${key} metadata.`);
+    });
+
+    writeFileSync(path, xml);
+}
+
 function addCobaltProfile(staging) {
+    if (process.env.TUBE_COBALT_CONTAINER === 'off') return;
+
     const baseUrl = process.env.TUBE_COBALT_BASE_URL;
     const proxyUrl = process.env.TUBE_COBALT_PROXY;
     const content = process.env.TUBE_COBALT_CONTENT;
@@ -201,6 +224,7 @@ async function packageApp(certificate) {
     try {
         stageContents(staging);
         addCobaltProfile(staging);
+        withoutContainer(staging);
         if (wantsGameMode()) addGameMode(staging);
         if (certificate) signWith(certificate, staging, outPath);
         else await zipUnsigned(staging, outPath);

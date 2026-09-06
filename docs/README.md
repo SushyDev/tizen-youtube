@@ -65,45 +65,62 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run version:set 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
 
-For a clean Cobalt-origin experiment, package an opt-in profile without changing the default
-`config.xml`:
+### Inside Samsung's Cobalt container
 
-```sh
-TUBE_COBALT_BASE_URL=https://www.youtube.com/tv \
-TUBE_COBALT_PROXY=http://192.168.1.29:8099 \
-npm run package -- --unsigned
+Three metadata keys in `config.xml` hand the widget to `com.samsung.tv.cobalt`, and
+`native.userdata` reaches it as command line switches. That is worth having because Cobalt is the
+only stack on these sets that plays 2160p60 VP9 HDR properly. `npm run package` produces it by
+default, and **every value in that metadata is the same on every television** — one widget, shared
+as it is, installed with `sdb` and nothing else.
+
+Getting there meant three things stop being per-set:
+
+**The address.** The container is a different package from the service, and this platform refuses
+loopback across packages — `127.0.0.1` answers `EHOSTUNREACH` and `::1` answers `EACCES`, measured
+both ways round. A LAN address would work but cannot follow DHCP and cannot be known when the
+package is built. So the switch names the set instead of numbering it: Cobalt resolves the
+television's own hostname, which is `Samsung`, and the router hands back whatever address it
+leased. When a set answers to some other name, or the name resolves to a different machine, the
+service writes `cobalt: unreachable` or `cobalt: misdirected` to `service.log` — the failure on
+screen is otherwise an unexplained "network error".
+
+**The content directory.** `--content` is the loader's *alternative content directory* and the name
+reads one level too high: it replaces the Evergreen content directory outright, so it must name the
+directory that itself holds `fonts/`, `icu/`, `licenses/` and `ssl/certs/`
+(`starboard/loader_app/loader_app.cc` substitutes it for `<content>/app/cobalt/content`, and
+`slot_management.cc` for `<installation>/content`). Point it at the tree above and the container
+still starts — the library path is resolved separately and this switch does not touch it — but with
+no certificates and no ICU data, which looks like a network fault. The service stages that copy
+itself from `/usr/apps/com.samsung.tv.cobalt/content/app/cobalt/content`, which the app user can
+read; about 5.1MB, once, and it needs no `manifest.json` and no `lib/`.
+
+**The certificate.** To inject anything the service has to serve the page, and to keep
+`www.youtube.com` as the origin it has to terminate TLS. That needs a certificate authority the
+container trusts, and `service/lib/x509.js` issues one **on the television**. That is not a
+convenience: a single authority baked into a release would ship its private key to everyone who
+downloaded it, and anyone holding it could impersonate Google to every set running this. The key
+never leaves the set it was made on, and it is trusted by nothing but the staged copy — the
+platform stores are untouched.
+
+Two details that fail silently if they are wrong, both pinned by `service/test/x509.js`: the leaf
+must live inside Chromium's **398-day** limit, because Cobalt has no notion of a locally added root
+that would be exempt; and `ssl/certs/` is an OpenSSL hashed directory, so the file must be named
+`<subject_hash>.0` — SHA-1 over the *canonical* name encoding, which has no outer `SEQUENCE` — with
+a second copy under `-subject_hash_old` to cover both lookups.
+
+From cold this takes about six seconds:
+
+```
+cobalt: staged: 136 files into /home/owner/share/tube/cobalt-content
+cobalt: issued: Tube Local CA (Samsung)
+cobalt: trusted: Tube Local CA (Samsung) as 942e0bcf.0 and 007d6692.0
+mitm: accepted www.youtube.com
 ```
 
-This uses Cobalt's own HTTPS page and the service only as its forward proxy. It intentionally does
-not inject the userscript; use the ordinary package again for the enhanced-player profile.
-
-To hand Cobalt a writable copy of its own resources — a trust store it does not otherwise let you
-near, say — add a content directory:
-
-```sh
-TUBE_COBALT_CONTENT=/home/owner/share/tube/cobalt-content \
-TUBE_COBALT_BASE_URL=https://www.youtube.com/tv \
-TUBE_COBALT_PROXY=http://192.168.1.29:8099 \
-npm run package -- --unsigned
-```
-
-`--content` is the loader's *alternative content directory*, and the name reads one level too
-high. It replaces the Evergreen content directory outright —
-`starboard/loader_app/loader_app.cc` substitutes it for `<content>/app/cobalt/content`, and
-`slot_management.cc` for `<installation>/content` — so it names the directory that itself holds
-`fonts/`, `icu/`, `licenses/` and `ssl/certs/`. Point it at the tree above (`.../cobalt-root`, the
-mirror of `/usr/apps/com.samsung.tv.cobalt/content`) and the container still starts, because the
-library path is resolved separately and this switch does not touch it — it just comes up with no
-certificates and no ICU data. For the same reason the copy needs no `manifest.json` and no `lib/`.
-
-On this set the tree to copy is `/usr/apps/com.samsung.tv.cobalt/content/app/cobalt/content`, and
-`ssl/certs/` is an OpenSSL hashed directory: a certificate added to it must be named
-`<subject_hash>.0` from `openssl x509 -subject_hash`, with a second copy under
-`-subject_hash_old` to cover both lookups.
-
-The service's own TLS interception is off unless `mitm/enabled` exists beside the key material in
-`/home/owner/share/tube/mitm/`. It is a file rather than an environment variable because the
-platform starts the service and nothing can hand it one.
+Until the material exists every host is tunnelled through untouched, so the first launch shows
+stock YouTube rather than an error. `touch /home/owner/share/tube/mitm/disabled` keeps it that way.
+`TUBE_COBALT_BASE_URL`, `TUBE_COBALT_PROXY` and `TUBE_COBALT_CONTENT` override the three switches at
+package time, for experiments.
 
 ---
 

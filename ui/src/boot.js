@@ -268,46 +268,62 @@ const reachService = async () => {
 
     const tries = { asks: 0, launched: false, saidWaiting: false, nextNudge: started + NUDGE_EVERY };
 
-    for (;;) {
+    const askOnce = async () => {
         tries.asks += 1;
         if (tries.asks === 1) timings.firstAsk = now();
 
-        try {
-            const left = Math.max(deadline - now(), 500);
-            const state = await ask(`/__tube/state${onTv ? '' : window.location.search}`,
-                Math.min(left, ASK_TIMEOUT));
+        const left = Math.max(deadline - now(), 500);
 
+        return ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, ASK_TIMEOUT));
+    };
+
+    const explainTheWait = (failure) => {
+        if (!tries.launched) {
+            tries.launched = true;
+            launchService();
+        }
+
+        if (tries.saidWaiting) return;
+
+        tries.saidWaiting = true;
+        say('state', announced
+            ? `no answer yet (${failure.message}); waiting to be told it is up`
+            : `no answer yet (${failure.message}), asking again for up to ${GIVE_UP_AFTER / 1000}s`);
+    };
+
+    const nudgeIfItHasBeenAWhile = () => {
+        if (now() <= tries.nextNudge) return;
+
+        say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
+        tries.nextNudge = now() + NUDGE_EVERY;
+    };
+
+    // Recursion rather than a loop: each attempt is one pass, and the tail is the next attempt.
+    const attempt = async () => {
+        const state = await askOnce().catch((failure) => {
+            explainTheWait(failure);
+            return null;
+        });
+
+        if (state) {
             timings.serviceUp = now();
             return { state, asks: tries.asks, by: 'ask' };
-        } catch (failure) {
-            if (!tries.launched) {
-                tries.launched = true;
-                launchService();
-            }
-
-            if (!tries.saidWaiting) {
-                tries.saidWaiting = true;
-                say('state', announced
-                    ? `no answer yet (${failure.message}); waiting to be told it is up`
-                    : `no answer yet (${failure.message}), asking again for up to ${GIVE_UP_AFTER / 1000}s`);
-            }
         }
 
-        if (now() > tries.nextNudge) {
-            say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
-            tries.nextNudge = now() + NUDGE_EVERY;
-        }
+        nudgeIfItHasBeenAWhile();
 
         if (now() > deadline) return { state: null, asks: tries.asks, by: 'gave up' };
 
         const backstop = wait(Math.max(Math.min(BACKSTOP, deadline - now()), 0)).then(() => null);
         const told = announced ? await Promise.race([announced, backstop]) : await backstop;
 
-        if (told) {
-            timings.serviceUp = now();
-            return { state: told, asks: tries.asks, by: 'announcement' };
-        }
-    }
+        if (!told) return attempt();
+
+        timings.serviceUp = now();
+        return { state: told, asks: tries.asks, by: 'announcement' };
+    };
+
+    return attempt();
 };
 
 // -- what happened -------------------------------------------------------------------------------

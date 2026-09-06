@@ -86,6 +86,11 @@ const addresses = () => {
     );
 };
 
+// Loopback is this set, whichever loopback it is. The switch names 127.0.0.2 precisely because
+// that is a fixed way of saying "here" — only 127.0.0.1 appears in the interface list, so
+// comparing against that alone reports the one configuration that is always right as misdirected.
+const isLoopback = (address) => address === '::1' || String(address).indexOf('127.') === 0;
+
 // Cobalt resolves the set's own hostname, which leans on the router registering DHCP names. When
 // it does not, the alternative is a silent network error with nothing anywhere to explain it.
 const checkAddress = () => {
@@ -102,7 +107,9 @@ const checkAddress = () => {
         }
 
         const resolved = found.map((entry) => entry.address);
-        if (resolved.some((address) => mine.indexOf(address) !== -1)) return undefined;
+        const ours = (address) => isLoopback(address) || mine.indexOf(address) !== -1;
+
+        if (resolved.some(ours)) return undefined;
 
         return note('misdirected', `--proxy names ${named[1]}, which resolves to `
             + `${resolved.join(', ')} — not this set. ${here}`);

@@ -193,7 +193,7 @@ const restoreCookiePrefixes = (header) => header
 
 // Express matches routes in registration order and the fallback matches everything, so it must be
 // attached after the caller's own routes.
-const create = (platformVersion) => {
+const create = () => {
     const app = express();
 
     // When --proxy names the service itself, put the absolute request line back to a path so the
@@ -240,7 +240,7 @@ const create = (platformVersion) => {
     // Served from the package or the verified cache, never from a CDN.
     app.get('/__tube/userScript.js', (_, res) => {
         try {
-            res.type('application/javascript').send(loader.resolve(platformVersion).source);
+            res.type('application/javascript').send(loader.resolve().source);
         } catch (e) {
             postmortem.note('userscript', e);
             res.status(500).type('application/javascript')

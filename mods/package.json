@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "rollup -c rollup.config.js",
+    "build": "rollup -c rollup.config.js && node ../tools/check-output.js ../dist/userScript.js cobalt3",
     "test": "node test/playback-stats.js && node test/quality.js"
   },
   "keywords": [],

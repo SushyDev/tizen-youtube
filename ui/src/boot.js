@@ -335,9 +335,7 @@ const describe = (state, asks) => {
     say('state', `up after ${asks} ${asks === 1 ? 'ask' : 'asks'}, `
         + `${(timings.serviceUp / 1000).toFixed(3)}s`, 'ok');
 
-    if (state.platformVersion) {
-        say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
-    }
+    if (state.platformVersion) say('state', `tizen ${state.platformVersion}`);
 
     if (state.script && state.script.error) {
         say('loader', `no userscript: ${state.script.error}`, 'bad');
@@ -347,7 +345,7 @@ const describe = (state, asks) => {
 
     if (!state.script) return;
 
-    say('loader', `userscript ${state.script.variant} ${state.script.version}`, 'ok');
+    say('loader', `userscript ${state.script.version}`, 'ok');
     say('loader', `origin ${state.script.origin}`);
 
     if (isPlaceholder(state.script.origin)) {

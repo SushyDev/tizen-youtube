@@ -4,14 +4,13 @@ Ad-free YouTube on a Samsung TV, as an app of its own.
 
 <img src="icon.png" width="96" align="right">
 
-A rewrite of TizenTube Standalone. Both userscript bundles ship inside the
-package, so a first launch works with no network at all — the origin is an
-update path, not a dependency. No loading screen, and a 68% smaller script on
-modern sets.
+A rewrite of TizenTube Standalone. The userscript ships inside the package, so a
+first launch works with no network at all — the origin is an update path, not a
+dependency. No loading screen, and a 68% smaller script.
 
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
-- Tizen 3 and up — one bundle for modern sets, one for old ones
+- Tizen 6.5 and up — one bundle, no polyfills
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A
@@ -64,6 +63,8 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run dev:service` | The service off-TV, on `:8099` |
 | `npm run version:set 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
+| `npm run test:matrix` | Load the built service on node 12, 14, 16, 18, 20, 22 |
+| `npm run probe:engine` | Measure what Cobalt's engine really supports, on a set |
 
 ### Inside Samsung's Cobalt container
 
@@ -135,17 +136,25 @@ userscript is evaluated straight into youtube.com with `Page.setBypassCSP` — n
 proxying, no rewriting. With it off, youtube.com is proxied through
 `localhost:8099` so a plain script tag can inject instead; that path rewrites
 media and static hosts and renames the `__Secure-` / `__Host-` cookie prefixes,
-because the page is now plain HTTP. `service/lib/proxy.js` carries that rewrite
-table **unchanged** from the reference — it is empirically derived, every rule
-is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
-diverges.
+because the page is now plain HTTP. `service/lib/proxy.js` injects the script and rewrites
+only what has to change on the way back; `service/test/injection.js` pins
+exactly what it is allowed to touch.
 
-**Two bundles.** Polyfills in a browser bundle are parsed on *every* launch, so
-they ship only to the TVs that need them. `modern` (Chrome 63+ / Tizen 5.5+)
-drops core-js, the fetch polyfill and the ES5 downlevel; `legacy` (Chrome 47 /
-Tizen 3–4) keeps them. `service/lib/loader.js` picks from the platform version.
-Against the reference's 556,988 bytes: `modern` is 178,633, `legacy` 213,184 —
-369KB less to parse on modern sets. Most of it was 30 statically imported
+**One bundle.** Two device pairs are verified on hardware, and nothing between
+them is:
+
+| Tizen | Node — runs the service | Cobalt — runs the userscript |
+| --- | --- | --- |
+| 6.5 | 12.16.3 | 3.2.1 · the floor |
+| 9.0 | 18.18.2 | 5.2.1 |
+
+The userscript runs inside *Cobalt*, not the set's own webview, so its floor is
+Cobalt's engine — `Chrome 63` is the Babel target proven against Cobalt 3.2.1.
+That is a floor held out of evidence, not belief: Cobalt's V8 is very likely
+newer, and `npm run probe:engine` measures the real ceiling on a set so it can
+be raised deliberately. At that floor there are no polyfills left to parse on
+launch — core-js, the fetch polyfill, the DOMRect shim and the second bundle are
+all gone. Against the reference's 556,988 bytes it is about 90,000. Most of it was 30 statically imported
 locales (~375KB, now fetched on demand), `esprima` + `estraverse` shipped for
 four call sites (~150KB, replaced by a marker-anchored scan), and a static
 language-name map (33KB, now `Intl.DisplayNames`). The spatial-navigation
@@ -198,7 +207,6 @@ environment variables that nothing in a build sets:
 | | |
 | --- | --- |
 | `TUBE_DEV_UA` | youtube.com/tv serves a redirect notice to anything that is not a television, so the proxy presents itself as one — upstream, and to the page |
-| `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
 Point the dev server at a set with `TUBE_TV=192.168.2.9 npm run dev`.
@@ -220,15 +228,30 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `service/lib/proxy.js` | The fallback route: what is fetched upstream and what is rewritten on the way back |
 | `service/lib/loader.js` | Which bundle a TV gets, and from where |
 | `service/lib/ports.js` | 8099 proxy, 8097 diagnostics, 26101 sdb, 8001 Smart View |
+| `tools/check-output.js` | Refuses a bundle reaching past its runtime's built-ins |
+| `tools/matrix.js` | Loads the built service on every Node a set is known to run |
 | `ui/src/boot.js` | The boot screen, which only runs in a `TUBE_COBALT_CONTAINER=off` build |
 | `service/lib/cobalt.js` | Staging Cobalt's content directory and issuing the local CA |
 | `service/lib/forward.js` | The CONNECT tunnel Cobalt's `--proxy` needs, and the MITM in front of it |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 
-Two platform floors are easy to trip and the build enforces both: the boot
-screen against Chromium 63, which drops CSS it cannot parse *silently*, and the
-service bundle against ES2019 — `service/build/check-syntax.js` parses the
-bundle and fails on syntax the oldest supported set cannot read. Route order is load bearing too:
+Three floors are easy to trip and the build enforces all of them: the boot
+screen's CSS against Chromium 63, which drops what it cannot parse *silently*;
+and every JavaScript bundle through `tools/check-output.js`, which fails the
+build on a *built-in* newer than the floor — something a parser cannot see,
+because it is a library call and not a keyword. That is how `Object.values`
+once shipped into a Chromium 47 bundle unnoticed.
+
+A gate that reads the file is still not proof. `require('fs/promises')` passes
+every syntax check on a laptop and kills the service on its first require on the
+set, so `npm run test:matrix` loads the built bundle for real on node 12.16.3,
+14, 16, 18.18.2, 20 and 22 — and CI runs the same matrix on every pull request.
+
+Because the pipeline lowers, the source does not have to. The service is written
+in whatever JavaScript reads best and Vite emits one CommonJS file for node 12;
+the userscript is written the same way and Babel lowers it to Cobalt's floor.
+Nothing is hand-written down to an old runtime any more — the build is what
+knows about the floor, and the gates are what prove it did its job. Route order is load bearing too:
 `proxy.attachFallback()` runs **after** the service registers its endpoints, or
 the catch-all shadows them and the app never launches. `service/test/routing.js`
 pins it.

@@ -13,13 +13,16 @@ function check(name, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 }
 
+// A port of its own, so the suite runs beside a dev server holding the default.
+const PORT = 8399;
+
 let manifestRequests = 0;
 
 const origin = http.createServer((req, res) => {
     if (req.url === '/latest.json') {
         manifestRequests++;
         res.setHeader('content-type', 'application/json');
-        return res.end(JSON.stringify({ version: '0.0.0', bundles: {} }));
+        return res.end(JSON.stringify({ version: '0.0.0' }));
     }
     res.statusCode = 404;
     res.end('no');
@@ -27,7 +30,7 @@ const origin = http.createServer((req, res) => {
 
 function get(path) {
     return new Promise((resolve, reject) => {
-        const req = http.get({ host: '127.0.0.1', port: 8099, path, timeout: 8000 }, (res) => {
+        const req = http.get({ host: '127.0.0.1', port: PORT, path, timeout: 8000 }, (res) => {
             let body = '';
             res.on('data', (c) => { body += c; });
             res.on('end', () => resolve(body));
@@ -46,7 +49,7 @@ function proxyPortIsFree() {
         const probe = net.createServer();
         probe.once('error', () => resolve(false));
         probe.once('listening', () => probe.close(() => resolve(true)));
-        probe.listen(8099, '127.0.0.1');
+        probe.listen(PORT, '127.0.0.1');
     });
 }
 
@@ -54,8 +57,8 @@ origin.listen(0, '127.0.0.1', async () => {
     const originUrl = `http://127.0.0.1:${origin.address().port}`;
 
     if (!await proxyPortIsFree()) {
-        console.error('Something is already listening on 127.0.0.1:8099.');
-        console.error('This suite starts the service on that port; stop `npm run dev` and run it again.');
+        console.error(`Something is already listening on 127.0.0.1:${PORT}.`);
+        console.error('This suite starts the service on that port.');
         origin.close();
         process.exit(1);
     }
@@ -63,6 +66,7 @@ origin.listen(0, '127.0.0.1', async () => {
     const service = spawn(process.execPath, [join(__dirname, '..', 'index.js')], {
         env: Object.assign({}, process.env, {
             TUBE_ORIGIN: originUrl,
+            TUBE_PROXY_PORT: String(PORT),
             TUBE_CACHE_DIR: mkdtempSync(join(tmpdir(), 'tube-sched-'))
         }),
         stdio: 'ignore'
@@ -81,8 +85,8 @@ origin.listen(0, '127.0.0.1', async () => {
             check('state reports which script this TV would run',
                 !!state.script && typeof state.script.version === 'string',
                 JSON.stringify(state.script));
-            check('state reports the bundle variant',
-                state.script.variant === 'legacy' || state.script.variant === 'modern',
+            check('state says where that script came from',
+                !!state.script && ['cache', 'bundled'].indexOf(state.script.origin) !== -1,
                 JSON.stringify(state.script));
 
             return wait(600);

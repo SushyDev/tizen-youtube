@@ -73,6 +73,9 @@ app.use((_, res, next) => {
     next();
 });
 
+// Checking for an update must never be able to fail the route that triggers it. A throw before
+// the promise exists used to leave `updateInFlight` set for the life of the process — one bad
+// call and no set ever checked again, while /__tube/state answered 500 to whatever asked.
 const maybeCheckForUpdate = () => {
     const now = Date.now();
     if (state.updateInFlight || now - state.lastUpdateCheck < UPDATE_CHECK_INTERVAL) return;
@@ -82,17 +85,22 @@ const maybeCheckForUpdate = () => {
 
     const settle = () => { state.updateInFlight = false; };
 
-    loader.checkForUpdate(platformVersion).then(settle, (error) => {
+    try {
+        loader.checkForUpdate().then(settle, (error) => {
+            postmortem.note('update', error);
+            settle();
+        });
+    } catch (error) {
         postmortem.note('update', error);
         settle();
-    });
+    }
 };
 
 const describeState = () => {
     const script = (() => {
         try {
-            const resolved = loader.resolve(platformVersion);
-            return { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
+            const resolved = loader.resolve();
+            return { version: resolved.version, origin: resolved.origin };
         } catch (e) {
             return { error: e.message };
         }
@@ -100,7 +108,6 @@ const describeState = () => {
 
     return {
         platformVersion,
-        variant: loader.variantFor(platformVersion),
         script,
         // Which container slot this build claims, if any. Reported for diagnosis: it is what
         // decides whether our own content ever runs.
@@ -227,14 +234,13 @@ const candidates = () => {
 // from a service the platform never launched.
 const listen = (addresses, index) => {
     const address = addresses[index];
-    const variant = loader.variantFor(platformVersion);
     const serving = { yes: false };
 
     const server = app.listen(ports.PROXY, address, () => {
         serving.yes = true;
 
-        postmortem.note('listening', `${address}:${ports.PROXY}, ${variant} bundle`);
-        console.log(`tube service on ${address}:${ports.PROXY} (${variant} bundle)`);
+        postmortem.note('listening', `${address}:${ports.PROXY}`);
+        console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
 
         announceReady();

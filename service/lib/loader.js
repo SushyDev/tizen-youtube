@@ -11,6 +11,8 @@ const META_PATH = join(CACHE_DIR, 'update.json');
 const FETCH_TIMEOUT = 8000;
 const MAX_SCRIPT_BYTES = 4 * 1024 * 1024;
 
+const BUNDLE = 'userScript.js';
+
 const BUNDLED_DIRS = [
     process.env.TUBE_BUNDLE_DIR,
     join(__dirname, 'assets'),
@@ -32,21 +34,13 @@ function timed(promise, ms, label) {
     });
 }
 
-function variantFor(platformVersion) {
-    const major = Number(String(platformVersion || '').split('.')[0]);
-    return isNaN(major) || major < 5 ? 'legacy' : 'modern';
+function bundledPath() {
+    const found = BUNDLED_DIRS.map((dir) => join(dir, BUNDLE)).find(existsSync);
+    return found || join(BUNDLED_DIRS[0], BUNDLE);
 }
 
-function bundledPath(variant) {
-    for (let i = 0; i < BUNDLED_DIRS.length; i++) {
-        const candidate = join(BUNDLED_DIRS[i], `userScript.${variant}.js`);
-        if (existsSync(candidate)) return candidate;
-    }
-    return join(BUNDLED_DIRS[0], `userScript.${variant}.js`);
-}
-
-function cachedPath(variant) {
-    return join(CACHE_DIR, `userScript.${variant}.js`);
+function cachedPath() {
+    return join(CACHE_DIR, BUNDLE);
 }
 
 function readMeta() {
@@ -59,7 +53,7 @@ function readMeta() {
 
 function writeMeta(meta) {
     try {
-        if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR);
+        if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
         writeFileSync(META_PATH, JSON.stringify(meta));
     } catch (e) {
         console.error(`Could not record update metadata: ${e.message}`);
@@ -77,18 +71,17 @@ function appVersion() {
     }
 }
 
-function resolve(platformVersion) {
-    const variant = variantFor(platformVersion);
+function resolve() {
     const meta = readMeta();
-    const cached = cachedPath(variant);
+    const cached = cachedPath();
     const running = appVersion();
-    const cacheIsForThisApp = !running || (meta[variant] && meta[variant].appVersion === running);
+    const cacheIsForThisApp = !running || meta.appVersion === running;
 
-    if (meta[variant] && meta[variant].sha256 && cacheIsForThisApp && existsSync(cached)) {
+    if (meta.sha256 && cacheIsForThisApp && existsSync(cached)) {
         try {
             const source = readFileSync(cached);
-            if (sha256(source) === meta[variant].sha256) {
-                return { source: source.toString('utf8'), variant, version: meta[variant].version, origin: 'cache' };
+            if (sha256(source) === meta.sha256) {
+                return { source: source.toString('utf8'), version: meta.version, origin: 'cache' };
             }
             console.error('Cached userscript failed its digest check; using the bundled copy.');
         } catch (e) {
@@ -96,16 +89,13 @@ function resolve(platformVersion) {
         }
     }
 
-    const bundled = bundledPath(variant);
-    if (!existsSync(bundled)) {
-        throw new Error(`No userscript available for variant "${variant}".`);
-    }
-    return { source: readFileSync(bundled, 'utf8'), variant, version: 'bundled', origin: 'bundled' };
+    const bundled = bundledPath();
+    if (!existsSync(bundled)) throw new Error('No userscript is available.');
+
+    return { source: readFileSync(bundled, 'utf8'), version: 'bundled', origin: 'bundled' };
 }
 
-function checkForUpdate(platformVersion) {
-    const variant = variantFor(platformVersion);
-
+function checkForUpdate() {
     return timed(
         fetch(`${ORIGIN}/latest.json`, { headers: { 'user-agent': 'tube/0.1' } })
             .then((res) => {
@@ -115,13 +105,13 @@ function checkForUpdate(platformVersion) {
         FETCH_TIMEOUT,
         'Update check'
     ).then((latest) => {
-        const entry = latest && latest.bundles && latest.bundles[variant];
+        const entry = latest && latest.bundle;
         if (!entry || !entry.path || !entry.sha256) {
-            throw new Error('latest.json did not describe this bundle.');
+            throw new Error('latest.json did not describe a bundle.');
         }
 
         const meta = readMeta();
-        if (meta[variant] && meta[variant].sha256 === entry.sha256) return false;
+        if (meta.sha256 === entry.sha256) return false;
 
         return timed(
             fetch(`${ORIGIN}/${entry.path}`, { headers: { 'user-agent': 'tube/0.1' } })
@@ -141,19 +131,18 @@ function checkForUpdate(platformVersion) {
                 throw new Error(`Digest mismatch — expected ${entry.sha256}, got ${digest}.`);
             }
 
-            if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR);
-            writeFileSync(cachedPath(variant), buffer);
+            if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+            writeFileSync(cachedPath(), buffer);
 
-            meta[variant] = {
+            writeMeta({
                 sha256: digest,
                 version: latest.version || null,
                 // Which app wrote it, so a later package is never shadowed by it.
                 appVersion: appVersion(),
                 at: new Date().toISOString()
-            };
-            writeMeta(meta);
+            });
 
-            console.log(`Updated ${variant} userscript to ${latest.version || digest.slice(0, 12)}.`);
+            console.log(`Updated the userscript to ${latest.version || digest.slice(0, 12)}.`);
             return true;
         });
     }).catch((err) => {
@@ -162,4 +151,4 @@ function checkForUpdate(platformVersion) {
     });
 }
 
-module.exports = { resolve, checkForUpdate, variantFor, sha256, ORIGIN, CACHE_DIR };
+module.exports = { resolve, checkForUpdate, sha256 };

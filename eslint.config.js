@@ -101,10 +101,20 @@ module.exports = [
     },
     {
         files: ['mods/**/*.js'],
+        ignores: ['mods/test/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
             globals: BROWSER_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
+    {
+        files: ['mods/test/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: NODE_GLOBALS
         },
         rules: CORRECTNESS_RULES
     },

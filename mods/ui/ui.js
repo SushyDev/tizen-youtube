@@ -1,4 +1,5 @@
 import css from './ui.css';
+import { waitFor } from '../utils/waitFor.js';
 import { configRead } from '../config.js';
 import { interceptCommands } from '../youtube/commands.js';
 import { resolve } from '../youtube/internals.js';
@@ -7,11 +8,7 @@ import { reloadGuide } from '../youtube/internals.js';
 
 const RIGHT = 39;
 
-const ready = setInterval(() => {
-  if (!document.querySelector('video')) return;
-  clearInterval(ready);
-  start();
-}, 250);
+waitFor(() => document.querySelector('video'), () => start());
 
 function start() {
   addStyles();

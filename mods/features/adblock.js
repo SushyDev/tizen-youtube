@@ -1,20 +1,9 @@
 import { configRead } from '../config.js';
+import { SEGMENTS } from './segments.js';
 import { onResponse, onRequest } from '../youtube/json.js';
 
 import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/nativeSettings.js';
-
-const SEGMENT_NAMES = {
-  sponsor: 'sponsored segment',
-  intro: 'intro',
-  outro: 'outro',
-  interaction: 'interaction reminder',
-  selfpromo: 'self-promotion',
-  preview: 'recap or preview',
-  filler: 'tangents',
-  music_offtopic: 'non-music part',
-  poi_highlight: 'highlight'
-};
 
 const RESPONSE_KEYS = [
   'adPlacements', 'adSlots', 'contents', 'continuationContents', 'endscreen',
@@ -201,7 +190,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
           for (const segment of window.sponsorblock.segments) {
             if (manualSkippedSegments.includes(segment.category)) {
               const timelyActionData = timelyAction(
-                `Skip ${SEGMENT_NAMES[segment.category] || segment.category}`,
+                `Skip ${SEGMENTS[segment.category]?.name || segment.category}`,
                 'SKIP_NEXT',
                 {
                   clickTrackingParams: null,

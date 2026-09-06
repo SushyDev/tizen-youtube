@@ -131,6 +131,16 @@ app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
 
+// The certificate this set signs its interception with, for a sibling whose container has been
+// pointed here by a shared hostname. The certificate only — never the key, which does not leave
+// the television that generated it.
+app.get('/__tube/ca', (_, res) => {
+    const pem = cobalt && cobalt.authority();
+
+    if (!pem) return res.status(404).type('text/plain').send('no authority on this set');
+    res.type('text/plain').send(pem);
+});
+
 app.get('/__tube/booted', (req, res) => {
     const line = String((req.query && req.query.t) || '').replace(/[\r\n]+/g, ' ').slice(0, 300);
 

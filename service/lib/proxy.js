@@ -29,6 +29,12 @@ const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : ht
 const ports = require('./ports.js');
 const loader = require('./loader.js');
 const forward = require('./forward.js');
+const postmortem = require('./postmortem.js');
+const bigheaders = require('./bigheaders.js');
+
+// How many intercepted requests to write to the log before falling quiet.
+const TRACE_LIMIT = 40;
+let traced = 0;
 
 // The set reaches the service on loopback. TUBE_PROXY_HOST points it at another machine
 // instead, which is how the proxy's cost can be taken off the television entirely.
@@ -51,10 +57,18 @@ const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 
 // Hop-by-hop and security headers. Dropping the CSP is what lets the script run.
-const STRIPPED_HEADERS = [
-    'content-encoding', 'content-length', 'transfer-encoding',
-    'content-security-policy', 'alt-svc'
-];
+const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
+
+// YouTube's own policy is kept when we are answering as youtube.com, and dropped when we are
+// answering as the service on plain HTTP. It says `default-src 'none'` and then names what the app
+// may reach, including two source expressions that are Cobalt's own grammar --
+// 'cobalt-insecure-private-range' and 'cobalt-insecure-local-network' -- for permitting plain HTTP
+// to a private address. A generic permissive policy cannot express those, so substituting one
+// throws away the very grants the client needs and every resource is denied: a black screen behind
+// a loaded page. Its script-src carries a nonce, which the injected tag has to quote to be allowed.
+const CSP_HEADER = 'content-security-policy';
+
+const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+)'/.exec(policy || '') || [])[1] || null;
 
 // First thing in the head: the client reads the user agent in its very first script.
 function spoofUserAgent(text) {
@@ -185,7 +199,7 @@ function retuneFlags(text) {
     return out;
 }
 
-function rewriteBody(text, url, injectionOrigin) {
+function rewriteBody(text, url, injectionOrigin, nonce) {
     if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1) {
         if (DEV_USER_AGENT) text = spoofUserAgent(text);
         if (flagOverrides.size) text = retuneFlags(text);
@@ -193,9 +207,13 @@ function rewriteBody(text, url, injectionOrigin) {
         if (!upstream.nativeProxyPatches) text = overrideInnertubeHost(text);
         // Only our own script. Nothing of the platform is patched: googlevideo and jnn-pa allow
         // our origin, so the player reaches them itself, exactly as the stock app does.
-        const setting = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`;
+        // Quoted from the page's own script-src when there is one. Without it the injected tags
+        // are refused by a nonce-based policy, which is what YouTube serves a Cobalt client.
+        const stamp = nonce ? ` nonce="${nonce}"` : '';
+        const setting = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=`
+            + `${upstream.nativeProxyPatches};</script>`;
         const origin = injectionOrigin || LOCAL_ORIGIN;
-        const tag = `${setting}<script src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`;
+        const tag = `${setting}<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`;
 
         // Appended past </html> a browser still runs it; Cobalt's parser drops it. Inside the
         // document, last thing before </body>, keeps the timing and works in both.
@@ -257,6 +275,17 @@ function create(platformVersion) {
         if (journal.wanted() && req.socket && (req.socket.__tubeMitm || req.socket.encrypted)) {
             journal.service('mitmreq', `${req.method} ${path.slice(0, 150)} host=${req.headers.host || '?'}`);
         }
+
+        // The first handful of intercepted requests, into the log on disk. Inside the container
+        // there is no console and no dev bridge, and `mitm:` says only that a host was reached
+        // once — so when a page arrives and then nothing happens, this is the only way to see how
+        // far it got. Capped, because a working page makes hundreds and the log rolls at 64KB.
+        if (traced < TRACE_LIMIT && req.socket && (req.socket.__tubeMitm || req.socket.encrypted)
+            && path.indexOf('/__tube/') !== 0) {
+            traced += 1;
+            postmortem.note('req', `${req.method} ${req.headers.host || '?'}${path.slice(0, 120)}`);
+        }
+
         next();
     });
 
@@ -324,11 +353,19 @@ function attachFallback(app) {
             targetUrl = `https://www.youtube.com${req.url}`;
         }
 
+        // Whether this response is going back as youtube.com over our own TLS, rather than as
+        // the service on plain HTTP. Cookies and the injection origin both depend on it.
+        const asOurselves = !!(req.socket && (req.socket.__tubeMitm || req.socket.encrypted));
+
         const headers = {};
         for (const key in req.headers) {
             if (!Object.prototype.hasOwnProperty.call(req.headers, key)) continue;
             if (key === 'proxy-connection') continue;
-            headers[key] = key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key];
+            // Same in reverse: the page only carries renamed cookies when we served it as
+            // localhost, so only then do they need putting back.
+            headers[key] = (key === 'cookie' && !asOurselves)
+                ? restoreCookiePrefixes(req.headers[key])
+                : req.headers[key];
         }
 
         let host = 'www.youtube.com';
@@ -376,13 +413,52 @@ function attachFallback(app) {
             })
             : Promise.resolve(hasBody ? req : undefined);
 
-        body.then((payload) => fetch(targetUrl, {
-            method: req.method,
-            headers,
-            body: payload,
-            redirect: 'manual',
-            agent: agentFor(targetUrl)
-        }))
+        // Keep-alive is worth having — a 4K stream would otherwise pay for a TLS handshake per
+        // segment — but a pooled socket the far end has already closed is handed out anyway, and
+        // the request dies on it. Newer Node retries that case internally; Node 12, which is what
+        // an older television runs, does not, so it surfaces as an intermittent ECONNRESET. Every
+        // one of those became a 500, and the container answered a 500 for its page by retrying for
+        // ever and showing a network error. Retry once, without the pool, and only for the errors
+        // that mean a dead socket rather than a real failure.
+        const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED'];
+
+        const retriable = (error) => error && (RETRIABLE.indexOf(error.code) !== -1
+            || /socket hang up|premature close/i.test(error.message || ''));
+
+        const send = (options) => fetch(targetUrl, options);
+
+        const attempt = (payload) => {
+            const options = {
+                method: req.method,
+                headers,
+                body: payload,
+                redirect: 'manual',
+                agent: agentFor(targetUrl)
+            };
+
+            const streamed = payload && typeof payload.pipe === 'function';
+
+            return send(options).catch((error) => {
+                // YouTube's headers are larger than Node's HTTP/1 parser will accept — 16.3KB of
+                // them, against a limit of 8KB on an older television and 16KB on a newer one. The
+                // limit cannot be raised from in here, so the same request goes again over HTTP/2,
+                // where the header block is not the constraint.
+                if (bigheaders.isHeaderOverflow(error) && !streamed && targetUrl.indexOf('https:') === 0) {
+                    postmortem.note('upstream', `header overflow on ${targetUrl.slice(0, 80)} — retrying over http2`);
+                    return bigheaders.fetchOverHttp2(targetUrl, { method: req.method, headers, body: payload });
+                }
+
+                // A body that was streamed rather than buffered cannot be sent twice.
+                if (!retriable(error) || streamed) throw error;
+
+                postmortem.note('upstream', `${error.code || error.message} on ${targetUrl.slice(0, 80)}`
+                    + ' — retrying on a fresh connection');
+
+                return send(Object.assign({}, options, { agent: undefined }));
+            });
+        };
+
+        body.then(attempt)
             .then((response) => {
                 res.status(req.method === 'OPTIONS' ? 200 : response.status);
 
@@ -396,10 +472,18 @@ function attachFallback(app) {
 
                     const lower = key.toLowerCase();
                     if (STRIPPED_HEADERS.indexOf(lower) !== -1) continue;
+                    if (lower === CSP_HEADER && !asOurselves) continue;
                     if (isBypass && lower === 'access-control-allow-origin') continue;
 
                     if (lower === 'set-cookie' && Array.isArray(raw[key])) {
-                        res.setHeader('Set-Cookie', rewriteSetCookie(raw[key]));
+                        // Only on the plain-HTTP path. There the page really is served from
+                        // http://localhost:8099, so a cookie scoped to youtube.com would never be
+                        // sent back and a __Secure- one would be refused outright. Over the MITM
+                        // the page's origin *is* https://www.youtube.com, and rewriting them there
+                        // scopes every cookie to a domain the page is not on: the client drops the
+                        // lot, cannot establish a session, and refetches the page for ever behind a
+                        // network error. Pass them through untouched.
+                        res.setHeader('Set-Cookie', asOurselves ? raw[key] : rewriteSetCookie(raw[key]));
                         continue;
                     }
 
@@ -458,7 +542,8 @@ function attachFallback(app) {
                     const injectionOrigin = req.socket && (req.socket.__tubeMitm || req.socket.encrypted)
                         && req.headers.host
                         ? `https://${req.headers.host}` : null;
-                    let body = rewriteBody(text, req.url, injectionOrigin);
+                    const nonce = asOurselves ? nonceOf(response.headers.get(CSP_HEADER)) : null;
+                    let body = rewriteBody(text, req.url, injectionOrigin, nonce);
                     body = rewriteAttestation(body, targetUrl);
                     if (tag === 'player' && upstream.abrThroughService) body = rerouteAbr(body);
                     if (tag) note(Buffer.from(text.slice(0, exchange.KEEP_BYTES)), text.length);
@@ -468,6 +553,8 @@ function attachFallback(app) {
             })
             .catch((error) => {
                 console.error(`Proxy error for ${targetUrl}: ${error.message}`);
+                postmortem.note('upstream', `${error.code || 'Error'} ${error.message} `
+                    + `on ${targetUrl.slice(0, 90)}`);
                 if (!res.headersSent) res.status(500).send('Proxy connection broken.');
             });
     });

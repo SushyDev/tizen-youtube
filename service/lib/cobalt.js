@@ -70,6 +70,51 @@ function container() {
     return /--content=|--base_url=/.test(xml) ? CONTAINER : null;
 }
 
+// Our own app id, read from the same config.xml rather than assembled from a package id and a
+// guessed suffix.
+function appId() {
+    try {
+        const xml = fs.readFileSync(path.join(__dirname, '..', '..', 'config.xml'), 'utf8');
+        const found = /<tizen:application\s+id="([^"]+)"/.exec(xml);
+
+        return found ? found[1] : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Reopening is where this falls down. The container the platform starts on a reopen dies at once —
+// the viewer is thrown back out with a network error — while the identical
+// `tizen.application.launch` issued from a service works every time, on both sets and on two
+// different Tizen versions. Nothing of ours runs at launch to intervene, because a package carrying
+// nativeID never runs its own content.
+//
+// But the service *is* told. Tizen's runner delivers a `wake` message and calls `onRequest` on our
+// exports when the app is launched, so this is an event rather than a poll: on being woken, if the
+// container is not up, issue the launch that works. The guard is only against a launch storm — one
+// attempt, then quiet for a while, so a viewer who closes the app is never dragged back into it.
+const RELAUNCH_QUIET = 20000;
+
+let lastWake = 0;
+
+function wake() {
+    if (typeof tizen === 'undefined') return;
+
+    const me = appId();
+    if (!me || !container()) return;
+
+    const now = Date.now();
+    if (now - lastWake < RELAUNCH_QUIET) return;
+    lastWake = now;
+
+    tizen.application.getAppsContext((contexts) => {
+        if (contexts.some((context) => context.appId === CONTAINER)) return;
+
+        note('woken', `the container is not up; launching ${me}`);
+        tizen.application.launch(me, () => {}, (error) => note('relaunch', `refused: ${error.message}`));
+    }, () => {});
+}
+
 // The one value a package cannot derive is where the container should send its traffic, and the
 // answer is to name the set rather than number it — Cobalt resolves the television's own hostname.
 // That leans on the router registering DHCP names, so when it does not, say so: the alternative is
@@ -293,4 +338,4 @@ function material() {
     return { key: existing.key, cert: existing.chain };
 }
 
-module.exports = { prepare, material, configuredContent, container, HOSTS, MITM_DIR, STOCK };
+module.exports = { prepare, wake, material, configuredContent, container, HOSTS, MITM_DIR, STOCK };

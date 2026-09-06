@@ -39,8 +39,9 @@ const app = proxy.create(platformVersion);
 // Content-Security-Policy header — a release build treats its absence as "deny everything", which
 // on screen is a black rectangle and a network error rather than anything naming CSP. The page is
 // ours and already same-origin, so the policy only has to exist.
-app.use((_, res, next) => {
-    res.setHeader('Content-Security-Policy', [
+const POLICIES = {
+    // What a 25.lts container wants, and what has been serving the television all along.
+    wide: [
         "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
         "img-src * data: blob:",
         "media-src * data: blob:",
@@ -48,7 +49,31 @@ app.use((_, res, next) => {
         "style-src * data: blob: 'unsafe-inline'",
         "connect-src *",
         "font-src * data:"
-    ].join('; '));
+    ].join('; '),
+
+    // The same permission expressed without data: or blob:, in case an older parser chokes on a
+    // scheme source in default-src and denies the lot.
+    plain: "default-src *; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'",
+
+    // Nothing of ours: whatever YouTube sent is left in place.
+    none: null
+};
+
+let policy = 'wide';
+
+// Cobalt refuses to load a single resource from a document that arrived without a
+// Content-Security-Policy header — a release build treats its absence as "deny everything", which
+// on screen is a black rectangle and a network error rather than anything naming CSP. But which
+// policies it will *accept* differs by version, and a policy it will not parse denies everything
+// just as thoroughly. A set that fetches the page over and over without ever running it is the
+// symptom. Switchable at runtime so that can be settled in a minute rather than a build per guess:
+//   /__tube/dev/csp?policy=wide|plain|none
+app.use((_, res, next) => {
+    const chosen = POLICIES[policy];
+
+    if (chosen) res.setHeader('Content-Security-Policy', chosen);
+    else res.removeHeader('Content-Security-Policy');
+
     next();
 });
 
@@ -124,6 +149,13 @@ app.get('/__tube/quit', (_, res) => {
 //   /__tube/dev/flags                       what is set now
 //   /__tube/dev/flags?html5_onesie=false    set one (repeatable), then reload the page
 //   /__tube/dev/flags?clear=1               back to what YouTube sent
+app.get('/__tube/dev/csp', (req, res) => {
+    const asked = String((req.query && req.query.policy) || '');
+    if (Object.prototype.hasOwnProperty.call(POLICIES, asked)) policy = asked;
+
+    res.json({ policy, sends: POLICIES[policy] });
+});
+
 app.get('/__tube/dev/flags', (req, res) => {
     if (req.query.clear) proxy.flagOverrides.clear();
 
@@ -259,7 +291,13 @@ listen(candidates(), 0);
 // There is nothing for them to do: this file has already done its work by the time they are called.
 module.exports = {
     onStart: () => {},
-    onRequest: () => {},
+
+    // The platform wakes the service when the app is launched, which is the only notice anything of
+    // ours gets that a viewer opened it — the container is started instead of our content, so no
+    // page of ours runs. That makes this the place to notice a container that did not survive its
+    // own launch and to reissue the one that works.
+    onRequest: () => { if (cobalt) { try { cobalt.wake(); } catch (e) { /* never worth dying for */ } } },
+
     onStop: () => {}
 };
 

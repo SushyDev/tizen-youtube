@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="0.4.0" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="9Ur5IzDKqV.TizenYouTube" package="9Ur5IzDKqV" required_version="5.0"/>
+    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
     <content src="ui/dist/index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
@@ -19,6 +19,13 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
+    <!-- The slot itself supplies nothing — it carries only read.metadata.from.hybrid.webapp — and
+         several webapps may claim the same one: the switches come from whichever webapp was
+         launched. Stock YouTube is the Samsung store app 9Ur5IzDKqV.TizenYouTube, which claims
+         this same cobalt-yt and supplies the same base_url switch with no proxy switch. So this
+         package is its counterpart rather than its replacement: both installed, each icon starts
+         the container with its own switches and neither disturbs the other. Verified on hardware
+         2026-09-06, which also settles that the claim is not bound to a particular package id. -->
     <!-- proxy names 127.0.0.2 because the container, another package, cannot reach this one's 127.0.0.1. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
@@ -49,7 +56,7 @@
 
     <!-- Without auto-restart and on-boot nothing restarts the service after standby, because a
          package carrying nativeID never runs its own content. -->
-    <tizen:service id="9Ur5IzDKqV.TubeService" auto-restart="true" on-boot="true">
+    <tizen:service id="tUb3Xq7Lm9.TubeService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>
         <tizen:description>The proxy and userscript injection.</tizen:description>

@@ -118,9 +118,8 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
 
 // Cobalt asks its CSP delegate before it will so much as open an XMLHttpRequest, and a directive
 // the policy does not name is refused rather than allowed. YouTube's policy names no connect-src,
-// so under it every request the userscript makes — SponsorBlock's segments, DeArrow's titles —
-// failed with SecurityError without reaching the network. Everything else in the policy is kept:
-// our injected script is admitted by the nonce in it.
+// so under it every cross-origin request the userscript makes fails with SecurityError without
+// reaching the network. The rest of the policy is kept — the injected script needs the nonce in it.
 const REACHABLE = 'connect-src * data: blob: ws: wss:';
 
 const CONNECT_SRC = /(^|;)(\s*)connect-src[^;]*/i;

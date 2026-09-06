@@ -9,41 +9,25 @@ const QUALITY = 'preferredVideoQuality';
 const CHECK_INTERVAL = 3000;
 const ATTACH_EVERY = 250;
 
-// A player response means a ladder is about to exist. Three seconds is far too coarse a heartbeat
-// to catch that before the first frame, so it is met with a short burst of close-together looks.
 const SETTLING_EVERY = 250;
 const SETTLING_FOR = 8000;
 
-// Asking restarts the stream, so a rung the player will not take is dropped rather than pressed.
-// Two asks: the first before the first frame, where it is free, and one to correct it if the player
-// was not ready to hear it that early. Never a third — three asks five seconds apart is what earned
-// this feature its reputation for wedging playback, and they only happened because the settle never
-// landed. Measured in the container, one ask is normally the whole story: on a video sitting at
-// hd1440, a single setPlaybackQualityRange('hd2160') read back as hd2160 within five seconds.
+// Asking restarts a running stream, so a rung the player will not take is dropped rather than
+// pressed: one ask before the first frame, one to correct it, and never a third.
 const LIMITS = { maxAttempts: 2, retryDelay: 5000 };
 
 const RESTART_JUMP = 2;
 
-// Asking after the fact can only ever be a correction: by the time there is a player to ask, the
-// first segment has been chosen and often fetched, and changing it fetches those same seconds
-// again. What decides that first choice is the bandwidth estimate the player starts with, and on a
-// cold start there is none — so it guesses low, measures, and climbs. Seeding the estimate it would
-// have reached anyway is what stops the video being loaded twice.
-//
-// Both keys are YouTube's own and are written in YouTube's own envelope: the value is a JSON string
-// under `data`, with `creation` and `expiration` beside it. The player reads the estimate straight
-// into its ABR policy at start-up (`if (t.byterate > 0) p = t.byterate`), and reads the ceiling as
-// the top of the range it opens with (`rH('auto', p_[nk()], …)` — a maximum, not a target, which is
-// why the ceiling alone would not be enough).
+// YouTube's own keys, written in YouTube's own envelope: the value is a JSON string under `data`,
+// with `creation` and `expiration` beside it. The estimate is read into the ABR policy at start-up
+// and is what decides the rung it opens on. The ceiling is only the top of that range, not a
+// target, so it cannot do that job by itself.
 const BANDWIDTH_KEY = 'yt-player-bandwidth';
 const CEILING_KEY = 'yt-player-quality';
 
-// Bytes per second. A named rung is pinned outright below, so its estimate only has to be large
-// enough not to argue with the pin — fifty megabits, which is honest about a 5GHz link and carries
-// 2160p60 HDR with headroom. `highest` has nothing else forcing its hand: the estimate is the only
-// thing standing between it and a cautious opening rung, so it is told the link is far larger than
-// any stream could use. ABR measures the truth for itself within a segment or two regardless; the
-// number exists to stop it opening low, not to be believed forever.
+// Bytes per second. A named rung is pinned below, so its estimate need only be plausible. `highest`
+// has nothing else forcing its hand, so it is told the link is larger than any stream could use —
+// ABR measures the truth within a segment or two either way.
 const SEEDED_BYTERATE = 6250000;
 const UNCAPPED_BYTERATE = 1250000000;
 const REMEMBERED_FOR = 2592000;
@@ -69,15 +53,13 @@ const openAtPreferredQuality = () => {
     if (!preference || preference === 'auto') return;
 
     try {
-        // Written every time, not only when the slot is empty: the player saves its own measured
-        // estimate back after each video, so a seed seeded once would be overwritten and only ever
-        // decide the very first video. Every opening should be optimistic, not just the first.
+        // Written every time: the player saves its own measurement back over this key as each video
+        // ends, so a value written once would decide the first video and nothing after it.
         remember(BANDWIDTH_KEY, {
             byterate: preference === 'highest' ? UNCAPPED_BYTERATE : SEEDED_BYTERATE
         });
 
-        // The ceiling is the setting, so the setting is what it says. `highest` wants no ceiling at
-        // all, and a stored zero is how the player spells that.
+        // `highest` wants no ceiling, and a stored zero is how the player spells that.
         const height = parseInt(preference, 10) || 0;
         remember(CEILING_KEY, { quality: height, previousQuality: height });
     } catch (e) {
@@ -154,17 +136,13 @@ function watchPreferredQuality() {
         if (!preference || preference === 'auto') return;
         if (isShorts(player)) return;
 
-        // Deliberately not waiting for playback. `getAvailableQualityData()` reads off the player
-        // response rather than off playback state, so the rungs are known before the first frame is
-        // decoded — and asking then costs nothing, because there is no stream yet to restart.
-        // Waiting for isPlaying is what turned this into a visible switch partway into a video, and
-        // an empty ladder already answers for itself below.
+        // Not waiting for playback: getAvailableQualityData() reads off the player response, so the
+        // rungs are known before the first frame and asking then costs no restart.
         const chosen = chooseQuality(preference, player.getAvailableQualityData());
         if (!chosen) return;
 
-        // The ladder is not complete the moment playback starts, so settling on what was on offer
-        // then would pin the video under a rung that appeared a second later. A different answer
-        // reopens the decision; the same answer leaves a hand-picked quality where it was put.
+        // The ladder is not complete the moment playback starts, so a settled choice is reopened
+        // when the answer changes — and left alone when it does not, so a hand-picked rung survives.
         if (held.settled && held.settledOn === chosen) return;
         held.settled = false;
 
@@ -180,13 +158,10 @@ function watchPreferredQuality() {
         askFor(player, chosen, current);
     };
 
-    // A named rung needs no ladder — the setting names it outright — so the range can be pinned as
-    // soon as there is a player to pin it on, before a video is loaded at all, let alone fetched.
-    // That is what makes the quality a decision rather than a correction, and it is the only way to
-    // be certain the first segment fetched is the right one. `highest` cannot be pinned this way:
-    // which rung is highest is not knowable until the response lists them, so it goes on settling
-    // through the burst below. If the video turns out not to offer the named rung, the ladder
-    // arrives before formats are chosen and the range is corrected down to the best on offer.
+    // A named rung needs no ladder, so it can be pinned before a video is loaded at all — the only
+    // point early enough to be sure the first segment fetched is the right one. `highest` cannot:
+    // which rung is highest is not known until the response lists them. A rung the video turns out
+    // not to offer is corrected down once the ladder arrives, before formats are chosen.
     const pinNamed = (player) => {
         const named = NAMED[parseInt(configRead(QUALITY), 10)];
         if (!named) return;
@@ -240,12 +215,10 @@ function watchPreferredQuality() {
         tick();
     });
 
-    // The earliest the rungs can be known is the moment the player response is parsed — earlier
-    // than any state the player element reports, and earlier than the heartbeat below would notice.
-    // Seeing that response is not the same as the player having ingested it, though, so it opens a
-    // brief burst of close-together ticks instead of asking there and then. That closes the gap
-    // between the ladder existing and the ask, which is the whole difference between setting the
-    // quality and switching it. Reading the response only; the rungs on offer are left alone.
+    // The rungs cannot be known before the response that lists them. Seeing it is not the same as
+    // the player having ingested it, so it opens a burst of close-together looks rather than an ask
+    // there and then; the three second heartbeat is far too coarse to land inside that window. The
+    // response is only read — the rungs on offer are left alone, so the quality menu keeps them all.
     const settleQuickly = () => {
         clearInterval(held.settling);
 
@@ -266,22 +239,11 @@ function watchPreferredQuality() {
     attachToPlayer();
 }
 
-// This was switched off inside the container on the belief that its player does not report the rung
-// back under the name we asked for, so the retry never settled and the third ask wedged playback.
-// Measured on the set instead: it reports back exactly what it was given. On a video sitting at
-// hd1440 with preferred=auto, one ask for hd2160 came back as hd2160 within five seconds and
-// playback carried on. The unbounded retry was the fault, and it is two asks at most now.
-//
-// Note the video element is no use as the check: it reads 3840x2160 while the player is on hd1440,
-// because it reports the size it presents at and not the size it decoded.
-// Seeded first and separately: it has to be in storage before the player reads it, and the
-// userscript runs ahead of kabuki because ours is a parser-inserted tag while kabuki's own is
-// appended to the body and therefore async.
+// Seeded before the watcher starts: it has to be in storage before the player reads it, which our
+// tag manages because it is parser-inserted while kabuki's own script is appended to the body and
+// therefore async. Renewed on navigation for the same reason it is written unconditionally.
 if (typeof window !== 'undefined') {
     openAtPreferredQuality();
-
-    // Renewed before each new video rather than only at start-up, for the same reason it is written
-    // unconditionally: the player replaces the estimate with its own measurement as each video ends.
     window.addEventListener('hashchange', openAtPreferredQuality);
 
     watchPreferredQuality();

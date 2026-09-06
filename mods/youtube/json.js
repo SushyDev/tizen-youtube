@@ -54,10 +54,9 @@ const adopt = () => {
     });
 };
 
-// The module that parses innertube responses is not in the registry when the page starts: the app
+// The module that parses innertube responses is not in the registry when the page starts — the app
 // is still fetching two megabytes of its own code through the proxy well past fifteen seconds, and
-// a window that closed then left every response going through YouTube's own JSON — so nothing the
-// userscript rewrites, ads or shelves or the shopping card, ever reached the screen.
+// a window that closes before it arrives leaves every response going through YouTube's own JSON.
 const ADOPTION_WINDOW = 60000;
 const ADOPTION_INTERVAL = 250;
 

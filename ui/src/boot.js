@@ -387,6 +387,8 @@ const boot = async () => {
     return useProxy(reached.state);
 };
 
+// This screen only ever runs in a build without the container metadata: a package carrying
+// nativeID never runs its own content, and the platform launches Cobalt in its place.
 const useProxy = (state) => {
     const target = (state && state.proxyUrl) || localProxyUrl();
 

@@ -2,7 +2,6 @@ import './boot.css';
 
 // Must match service/lib/ports.js, which this cannot require.
 const PORT = 8099;
-const DIAL_PORT = 8095;
 
 const platform = typeof tizen === 'undefined' ? null : tizen;
 const application = platform ? platform.application.getCurrentApplication() : null;
@@ -162,9 +161,7 @@ const isPlaceholder = (origin) => {
     }
 };
 
-const localProxyUrl = () => `${BASE}/tv` + (onTv
-    ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${DIAL_PORT}/dial/apps/YouTube`)}`
-    : '');
+const localProxyUrl = () => `${BASE}/tv`;
 
 const withArgs = (url, args) => (args ? `${url}${url.indexOf('?') === -1 ? '?' : '&'}${args}` : url);
 

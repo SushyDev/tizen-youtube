@@ -19,13 +19,10 @@ function run(cmd, args) {
     execFileSync(cmd, args, { cwd: root, stdio: 'inherit' });
 }
 
-console.log('[1/5] vendoring googlevideo as CommonJS');
-run('node', [join(__dirname, 'vendor.js')]);
-
-console.log('[2/5] bundling with ncc');
+console.log('[1/4] bundling with ncc');
 run('npx', ['ncc', 'build', 'index.js', '-o', staging, '--no-source-map-register']);
 
-console.log('[3/5] lowering the bundle to the syntax floor');
+console.log('[2/4] lowering the bundle to the syntax floor');
 const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8'), {
     configFile: join(root, 'babel.config.json'),
     sourceType: 'script',
@@ -71,7 +68,7 @@ readdirSync(staging).forEach((entry) => {
 
 rmSync(staging, { recursive: true, force: true });
 
-console.log('[4/5] embedding the userscript bundles');
+console.log('[3/4] embedding the userscript bundles');
 if (!existsSync(assetsDir)) mkdirSync(assetsDir);
 
 const embedded = ['modern', 'legacy'].filter((variant) => {
@@ -92,5 +89,5 @@ if (embedded.length !== 2) {
     process.exit(1);
 }
 
-console.log('[5/5] verifying the syntax floor');
+console.log('[4/4] verifying the syntax floor');
 run('node', [join(__dirname, 'check-syntax.js'), join(outDir, 'index.js')]);

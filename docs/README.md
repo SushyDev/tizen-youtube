@@ -115,7 +115,7 @@ From cold this takes about six seconds:
 ```
 cobalt: staged: 136 files into /home/owner/share/tube/cobalt-content
 cobalt: issued: Tube Local CA (Samsung)
-cobalt: trusted: Tube Local CA (Samsung) as 942e0bcf.0 and 007d6692.0
+cobalt: trusted: Tube Local CA (Samsung) — 942e0bcf.0 written, 007d6692.0 written
 mitm: accepted www.youtube.com
 ```
 
@@ -182,7 +182,7 @@ to develop and package against.
 ```sh
 npm run dev          # the whole app in a browser
 npm run dev:boot     # just the boot screen, held on screen
-npm run dev:service  # the proxy, rewrite table and loader, headless on :8099
+npm run dev:service  # the proxy, injection and loader, headless on :8099
 npm test
 ```
 
@@ -201,9 +201,7 @@ environment variables that nothing in a build sets:
 | `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
-Only DIAL discovery and debugger injection need real hardware, and those report
-clearly instead of crashing. Point the dev server at a set with
-`TUBE_TV=192.168.2.9 npm run dev`.
+Point the dev server at a set with `TUBE_TV=192.168.2.9 npm run dev`.
 
 `npm run dev:boot` is the other half: the boot screen exists to disappear, so
 looking at it needs a stand-in that answers and never hands over. That is
@@ -219,17 +217,18 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `mods/features/` | Adblock, SponsorBlock, quality, queueing, subtitles |
 | `mods/ui/` | The settings panel drawn over YouTube's own |
 | `service/index.js` | Routes, and the once-per-launch update check |
-| `service/lib/injector.js` | CDP injection over loopback sdb |
-| `service/lib/proxy.js` | The rewrite table, carried unchanged |
+| `service/lib/proxy.js` | The fallback route: what is fetched upstream and what is rewritten on the way back |
 | `service/lib/loader.js` | Which bundle a TV gets, and from where |
-| `service/lib/ports.js` | 8099 proxy, 8095 DIAL, 26101 sdb, 8001 Smart View |
-| `ui/src/boot.js` | The boot screen, which exists to disappear |
+| `service/lib/ports.js` | 8099 proxy, 8097 diagnostics, 26101 sdb, 8001 Smart View |
+| `ui/src/boot.js` | The boot screen, which only runs in a `TUBE_COBALT_CONTAINER=off` build |
+| `service/lib/cobalt.js` | Staging Cobalt's content directory and issuing the local CA |
+| `service/lib/forward.js` | The CONNECT tunnel Cobalt's `--proxy` needs, and the MITM in front of it |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 
 Two platform floors are easy to trip and the build enforces both: the boot
 screen against Chromium 63, which drops CSS it cannot parse *silently*, and the
-service bundle against Node 4.4.3 — `service/build/check-node4.js` walks the AST
-and fails on syntax Tizen 3 cannot parse. Route order is load bearing too:
+service bundle against ES2019 — `service/build/check-syntax.js` parses the
+bundle and fails on syntax the oldest supported set cannot read. Route order is load bearing too:
 `proxy.attachFallback()` runs **after** the service registers its endpoints, or
 the catch-all shadows them and the app never launches. `service/test/routing.js`
 pins it.

@@ -7,39 +7,39 @@ const cors = require('cors');
 const ports = require('./ports.js');
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
-const sabr = require('./sabr.js');
 
 const STALE_AFTER = 10000;
+const ANSWER_KEPT = 60000;
+const MOST_QUEUED = 64;
 
 // /eval runs whatever it is handed; this token is what keeps the network out of it.
 const BUILD_TOKEN = '__TUBE_DEV_TOKEN__';
 const TOKEN = process.env.TUBE_DEV_TOKEN
     || (BUILD_TOKEN.indexOf('TUBE_DEV_TOKEN') === -1 ? BUILD_TOKEN : crypto.randomBytes(8).toString('hex'));
 
-let server = null;
-let latest = null;
-let receivedAt = 0;
-let queue = [];
-
 const answers = new Map();
-const ANSWER_KEPT = 60000;
 
-function forget() {
-    const now = Date.now();
-    answers.forEach((held, id) => {
-        if (now - held.at > ANSWER_KEPT) answers.delete(id);
-    });
-}
+const state = { server: null, latest: null, receivedAt: 0, queue: [] };
 
-function ask(source, seconds) {
+const trusted = (req) => (req.get('x-tube-token') || '') === TOKEN;
+
+const enqueue = (command) => {
+    state.queue.push(command);
+    while (state.queue.length > MOST_QUEUED) state.queue.shift();
+
+    return state.queue.length;
+};
+
+const ask = (source, seconds) => {
     const id = crypto.randomBytes(8).toString('hex');
     const deadline = Date.now() + (Math.min(Number(seconds) || 30, 120) * 1000);
 
-    queue.push({ action: 'eval', source, id });
+    enqueue({ action: 'eval', source, id });
 
     return new Promise((resolve) => {
         const look = () => {
             const held = answers.get(id);
+
             if (held) {
                 answers.delete(id);
                 return resolve(held.answer);
@@ -49,19 +49,93 @@ function ask(source, seconds) {
                 return resolve({ id, error: 'the page did not answer — is it open, with diagnostics on?' });
             }
 
-            setTimeout(look, 50);
-            return undefined;
+            return setTimeout(look, 50);
         };
 
         look();
     });
-}
+};
+
+const forget = () => {
+    const now = Date.now();
+
+    answers.forEach((held, id) => {
+        if (now - held.at > ANSWER_KEPT) answers.delete(id);
+    });
+};
+
+const start = () => {
+    if (state.server) return state.server;
+
+    journal.open(true);
+
+    const app = express();
+    app.use(cors());
+
+    app.get('/health', (_, res) => res.json({ ok: true, port: ports.DEV, hasReading: !!state.latest }));
+
+    app.get('/stats', (_, res) => res.json({
+        ok: true,
+        port: ports.DEV,
+        age: state.receivedAt ? Math.round((Date.now() - state.receivedAt) / 1000) : null,
+        stale: !state.receivedAt || Date.now() - state.receivedAt > STALE_AFTER,
+        reading: state.latest
+    }));
+
+    app.get('/log', (req, res) => res.type('text/plain')
+        .send(journal.read(Number(req.query && req.query.tail) || 0) || 'nothing recorded yet'));
+
+    app.post('/log/clear', (_, res) => { journal.clear(); res.json({ cleared: true }); });
+
+    app.get('/postmortem', (_, res) => res.type('text/plain').send(postmortem.read() || 'nothing recorded'));
+
+    app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), (req, res) => {
+        if (!trusted(req)) return res.status(403).json({ error: 'wrong token' });
+
+        const source = String(req.body || '').trim();
+        if (!source) return res.status(400).json({ error: 'nothing to evaluate' });
+
+        return ask(source, req.query.seconds).then((answer) => res.json(answer));
+    });
+
+    app.post('/command', express.json({ limit: '64kb' }), (req, res) => {
+        if (!trusted(req)) return res.status(403).json({ error: 'bad token' });
+        if (!req.body || !req.body.action) return res.status(400).json({ error: 'no action' });
+
+        return res.json({ queued: req.body.action, depth: enqueue(req.body) });
+    });
+
+    state.server = app.listen(ports.DEV, '0.0.0.0', () => {
+        console.log(`[devbridge] open on 0.0.0.0:${ports.DEV}; commands need token ${TOKEN}.`);
+    });
+
+    state.server.on('error', (error) => {
+        postmortem.note('devbridge', `could not open ${ports.DEV}: ${postmortem.describe(error)}`);
+        state.server = null;
+    });
+
+    return state.server;
+};
+
+const stop = () => {
+    if (!state.server) return;
+
+    journal.open(false);
+    try { state.server.close(); } catch (e) { /* already going */ }
+
+    state.server = null;
+    state.latest = null;
+    state.receivedAt = 0;
+    state.queue = [];
+
+    console.log('[devbridge] reading port closed.');
+};
 
 // Registered before the proxy's catch-all.
-function attach(app) {
+const attach = (app) => {
     app.post('/__tube/dev/report', express.json({ limit: '256kb' }), (req, res) => {
-        latest = req.body || null;
-        receivedAt = Date.now();
+        state.latest = req.body || null;
+        state.receivedAt = Date.now();
         res.json({ received: true });
     });
 
@@ -71,8 +145,8 @@ function attach(app) {
     });
 
     app.get('/__tube/dev/commands', (_, res) => {
-        const pending = queue;
-        queue = [];
+        const pending = state.queue;
+        state.queue = [];
         res.json({ commands: pending });
     });
 
@@ -85,96 +159,13 @@ function attach(app) {
     });
 
     app.all('/__tube/dev/enable', (req, res) => {
-        const wanted = String((req.query && req.query.on) || '');
-        if (wanted === '1' || wanted === 'true') start();
-        if (wanted === '0' || wanted === 'false') stop();
-        res.json({ open: !!server, port: ports.DEV });
+        const asked = String((req.query && req.query.on) || '');
+
+        if (asked === '1' || asked === 'true') start();
+        if (asked === '0' || asked === 'false') stop();
+
+        res.json({ open: !!state.server, port: ports.DEV });
     });
-}
-
-function start() {
-    if (server) return server;
-
-    journal.open(true);
-
-    const app = express();
-    app.use(cors());
-
-    const snapshot = () => ({
-        ok: true,
-        port: ports.DEV,
-        age: receivedAt ? Math.round((Date.now() - receivedAt) / 1000) : null,
-        stale: !receivedAt || Date.now() - receivedAt > STALE_AFTER,
-        reading: latest
-    });
-
-    app.get('/health', (_, res) => res.json({ ok: true, port: ports.DEV, hasReading: !!latest }));
-
-    app.get('/sabr/session', (req, res) => {
-        const session = sabr.observed.session;
-        if (!session) return res.json({ seen: false });
-
-        const trusted = (req.get('x-tube-token') || '') === TOKEN;
-
-        res.json({
-            seen: true,
-            age: Math.round((Date.now() - session.at) / 1000),
-            url: session.streamingUrl,
-            hasPoToken: !!session.poToken,
-            poToken: trusted ? session.poToken : undefined,
-            ustreamerConfig: trusted ? session.ustreamerConfig : undefined
-        });
-    });
-
-    app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), (req, res) => {
-        if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'wrong token' });
-
-        const source = String(req.body || '').trim();
-        if (!source) return res.status(400).json({ error: 'nothing to evaluate' });
-
-        return ask(source, req.query.seconds).then((answer) => res.json(answer));
-    });
-
-    app.get('/stats', (_, res) => res.json(snapshot()));
-
-    app.get('/log', (req, res) => {
-        const count = Number(req.query && req.query.tail) || 0;
-        res.type('text/plain').send(journal.read(count) || 'nothing recorded yet');
-    });
-
-    app.post('/log/clear', (_, res) => { journal.clear(); res.json({ cleared: true }); });
-
-    app.get('/postmortem', (_, res) => res.type('text/plain').send(postmortem.read() || 'nothing recorded'));
-
-    app.post('/command', express.json({ limit: '64kb' }), (req, res) => {
-        if ((req.get('x-tube-token') || '') !== TOKEN) return res.status(403).json({ error: 'bad token' });
-        if (!req.body || !req.body.action) return res.status(400).json({ error: 'no action' });
-
-        queue.push(req.body);
-        res.json({ queued: req.body.action, depth: queue.length });
-    });
-
-    server = app.listen(ports.DEV, '0.0.0.0', () => {
-        console.log(`[devbridge] open on 0.0.0.0:${ports.DEV}; commands need token ${TOKEN}.`);
-    });
-
-    server.on('error', (error) => {
-        console.error(`[devbridge] could not open ${ports.DEV}: ${error.message}`);
-        server = null;
-    });
-
-    return server;
-}
-
-function stop() {
-    if (!server) return;
-    journal.open(false);
-    try { server.close(); } catch (e) { }
-    server = null;
-    latest = null;
-    receivedAt = 0;
-    queue = [];
-    console.log('[devbridge] reading port closed.');
-}
+};
 
 module.exports = { attach, start, stop };

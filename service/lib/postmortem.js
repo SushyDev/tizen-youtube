@@ -4,63 +4,58 @@ const { appendFileSync, readFileSync, statSync, renameSync, mkdirSync } = requir
 const { dirname } = require('path');
 
 const LOG = process.env.TUBE_LOG || '/home/owner/share/tube/service.log';
-
 const MAX_BYTES = 64 * 1024;
 
-// The directory is not there on a set where nothing has created it yet, and appending into a
-// missing one throws — inside the catch below, so every line written on such a set went nowhere
-// and the log simply appeared to be empty. That is worse than no logging at all: it reads as
-// evidence that the service never ran. Make the directory once, by hand rather than with a
-// recursive mkdir, because the option is newer than the runtime on some of these televisions.
-let ready = false;
+const state = { ready: false };
 
-function ensure() {
-    if (ready) return;
-    ready = true;
+// mkdirSync's recursive option is newer than the runtime on some of these sets, and appending
+// into a missing directory throws inside the catch below — so the log reads as empty, which
+// looks exactly like a service that never ran.
+const ensure = () => {
+    if (state.ready) return;
+    state.ready = true;
 
-    const directory = dirname(LOG);
-    const parts = directory.split('/');
+    const parts = dirname(LOG).split('/');
 
-    for (let i = 2; i <= parts.length; i += 1) {
-        try {
-            mkdirSync(parts.slice(0, i).join('/'));
-        } catch (e) { /* already there, or not ours to make */ }
+    for (let step = 2; step <= parts.length; step += 1) {
+        try { mkdirSync(parts.slice(0, step).join('/')); } catch (e) { /* there, or not ours */ }
     }
-}
+};
 
-function roll() {
-    try {
-        if (statSync(LOG).size > MAX_BYTES) renameSync(LOG, `${LOG}.1`);
-    } catch (e) {
-    }
-}
+// One shape for every error the service reports, so a log line always names the code.
+const describe = (detail) => {
+    if (!detail) return String(detail);
+    if (typeof detail === 'string') return detail;
 
-function note(what, detail) {
+    const code = detail.code || detail.name || 'Error';
+
+    if (detail.stack) return `${code}: ${detail.stack}`;
+    if (detail.message) return `${code}: ${detail.message}`;
+
+    return String(detail);
+};
+
+const note = (what, detail) => {
     try {
         ensure();
-        roll();
-        const said = (detail && detail.stack) || String(detail);
-        appendFileSync(LOG, `${new Date().toISOString()}  ${what}: ${said}\n`);
-    } catch (e) {
-    }
-}
+        try { if (statSync(LOG).size > MAX_BYTES) renameSync(LOG, `${LOG}.1`); } catch (e) { /* new */ }
+        appendFileSync(LOG, `${new Date().toISOString()}  ${what}: ${describe(detail)}\n`);
+    } catch (e) { /* logging must never be a reason to fail */ }
+};
 
-function read() {
+const read = () => {
     try {
         return readFileSync(LOG, 'utf8').slice(-MAX_BYTES);
     } catch (e) {
         return '';
     }
-}
+};
 
-function watch() {
+const watch = () => {
+    // Exit rather than linger: a dying process goes on holding the port, so every restart lands
+    // on EADDRINUSE and the service never recovers. The log outlives it.
     process.on('uncaughtException', (error) => {
         note('uncaught', error);
-
-        // Exit, and let auto-restart have its turn. Staying alive to keep a diagnostic port open
-        // was tried and is worse than the problem: the dying process goes on holding the port, so
-        // every restart lands on EADDRINUSE and the service never recovers. The log is on disk and
-        // outlives the process, which is what makes lingering unnecessary.
         process.exit(1);
     });
 
@@ -68,6 +63,6 @@ function watch() {
     process.on('exit', (code) => { if (code) note('exit', `code ${code}`); });
 
     note('started', `pid ${process.pid}, node ${process.version}`);
-}
+};
 
-module.exports = { LOG, note, read, watch };
+module.exports = { LOG, describe, note, read, watch };

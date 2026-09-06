@@ -1,20 +1,16 @@
-import { configRead, configChangeEmitter } from "../config.js";
+import { configRead, configChangeEmitter } from '../config.js';
 import { chooseQuality, shouldAsk } from './quality.js';
 
-const SELECTORS = {
-    PLAYER: '.html5-video-player',
-};
-
-const EVENTS = {
-    YT_STATE_CHANGE: 'onStateChange',
-    CONFIG_CHANGE: 'configChange',
-};
-
-const CONFIG_KEYS = {
-    QUALITY: 'preferredVideoQuality',
-};
+const PLAYER = '.html5-video-player';
+const QUALITY = 'preferredVideoQuality';
 
 const CHECK_INTERVAL = 3000;
+
+// Fast while the page is settling, then easing off: a page with no player must not poll at 10Hz
+// for as long as it is open.
+const ATTACH_FAST = 100;
+const ATTACH_SLOW = 1000;
+const ATTACH_SETTLING = 50;
 
 // Asking restarts the stream, so a rung the player will not take is dropped after a few tries.
 const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
@@ -24,6 +20,7 @@ const RESTART_JUMP = 2;
 class PreferredQualityHandler {
     #player = null;
     #attachTimeout = null;
+    #attachAttempts = 0;
 
     #lastVideoId = null;
     #lastTime = 0;
@@ -38,6 +35,19 @@ class PreferredQualityHandler {
     // A deliberate restart looks like a new video from here: same id, time back at the start.
     #keepChoice = false;
 
+    constructor() {
+        this.#pollForPlayer();
+
+        configChangeEmitter.addEventListener('configChange', (event) => {
+            if (event.detail?.key !== QUALITY) return;
+
+            this.#forget();
+            this.#tick();
+        });
+
+        setInterval(() => this.#tick(), CHECK_INTERVAL);
+    }
+
     keepCurrentChoice() {
         this.#keepChoice = true;
         this.#settled = true;
@@ -45,38 +55,23 @@ class PreferredQualityHandler {
         this.#target = null;
     }
 
-    constructor() {
-        this.init();
-    }
-
-    init() {
-        this.#pollForPlayer();
-        this.#setupConfigListener();
-        setInterval(() => this.#tick(), CHECK_INTERVAL);
-    }
-
-    #pollForPlayer() {
+    #pollForPlayer = () => {
         clearTimeout(this.#attachTimeout);
 
-        const playerElement = document.querySelector(SELECTORS.PLAYER);
+        const found = document.querySelector(PLAYER);
 
-        if (!playerElement) {
-            this.#attachTimeout = setTimeout(() => this.#pollForPlayer(), 100);
+        if (!found) {
+            this.#attachAttempts += 1;
+            this.#attachTimeout = setTimeout(this.#pollForPlayer,
+                this.#attachAttempts < ATTACH_SETTLING ? ATTACH_FAST : ATTACH_SLOW);
             return;
         }
 
-        this.#player = playerElement;
-        this.#player.addEventListener(EVENTS.YT_STATE_CHANGE, this.#tick);
+        this.#attachAttempts = 0;
+        this.#player = found;
+        this.#player.addEventListener('onStateChange', this.#tick);
         this.#tick();
-    }
-
-    #setupConfigListener() {
-        configChangeEmitter.addEventListener(EVENTS.CONFIG_CHANGE, (ev) => {
-            if (ev.detail?.key !== CONFIG_KEYS.QUALITY) return;
-            this.#forget();
-            this.#tick();
-        });
-    }
+    };
 
     #forget() {
         this.#target = null;
@@ -100,7 +95,7 @@ class PreferredQualityHandler {
 
     #isShorts() {
         try {
-            return Object.values(this.#player.getVideoStats()).some((a) => a === 'shortspage');
+            return Object.values(this.#player.getVideoStats()).some((value) => value === 'shortspage');
         } catch (e) {
             return false;
         }
@@ -108,6 +103,15 @@ class PreferredQualityHandler {
 
     #tick = () => {
         if (!this.#player) return;
+
+        // The player element is replaced on some navigations, which leaves the listener on a node
+        // nothing plays through any more.
+        if (this.#player.isConnected === false) {
+            this.#player = null;
+            this.#forget();
+            this.#pollForPlayer();
+            return;
+        }
 
         try {
             if (this.#startedOver()) {
@@ -119,7 +123,9 @@ class PreferredQualityHandler {
                 }
             }
 
-            const preference = configRead(CONFIG_KEYS.QUALITY);
+            if (this.#settled) return;
+
+            const preference = configRead(QUALITY);
             if (!preference || preference === 'auto') return;
             if (!this.#player.getPlayerStateObject?.()?.isPlaying) return;
             if (this.#isShorts()) return;
@@ -127,9 +133,8 @@ class PreferredQualityHandler {
             const chosen = chooseQuality(preference, this.#player.getAvailableQualityData());
             if (!chosen) return;
 
-            if (this.#settled) return;
-
             const current = this.#player.getPlaybackQuality();
+
             if (current === chosen.quality) {
                 this.#attempts = 0;
                 this.#settled = true;
@@ -137,6 +142,7 @@ class PreferredQualityHandler {
             }
 
             const again = chosen.quality === this.#target;
+
             const state = {
                 current,
                 wanted: chosen.quality,
@@ -144,6 +150,7 @@ class PreferredQualityHandler {
                 attempts: this.#attempts,
                 askedAt: this.#askedAt
             };
+
             if (!shouldAsk(state, Date.now(), LIMITS)) return;
 
             this.#player.setPlaybackQualityRange(chosen.quality, chosen.quality);
@@ -151,15 +158,14 @@ class PreferredQualityHandler {
             this.#attempts = again ? this.#attempts + 1 : 1;
             this.#askedAt = Date.now();
         } catch (e) {
-            console.warn('[PreferredQuality] Failed to apply quality:', e);
+            console.warn('[tube] could not apply the preferred quality:', e);
         }
     };
 }
 
-// Not inside Samsung's Cobalt container. Asking restarts the stream, and the container's player
-// does not report the rung back under the name we asked for, so the retry never settles — three
-// asks, five seconds apart, and the third one wedges playback for good about fifteen seconds in.
-// Cobalt chooses its own quality, which is the whole reason for being in there.
+// Not inside Cobalt's container. Asking restarts the stream, and the container's player does not
+// report the rung back under the name we asked for, so the retry never settles — three asks, five
+// seconds apart, and the third wedges playback for good about fifteen seconds in.
 const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.userAgent || '');
 
 if (typeof window !== 'undefined' && !inCobalt) {

@@ -2,17 +2,10 @@
 
 // An upstream fetch that survives YouTube's response headers.
 //
-// Node caps the response header block: 8KB on Node 12, 16KB from Node 14. YouTube's answer to a
-// Cobalt client is **16.3KB**, almost all of it one `content-security-policy` header of 13KB
-// carrying Cobalt's own source expressions, plus nine set-cookies. So an older television refuses
-// every page with `HPE_HEADER_OVERFLOW`, the proxy turns that into a 500, and the container answers
-// a 500 for its page by retrying for ever behind a network error. A newer one passes with about
-// seventy bytes to spare, which is not a margin so much as a coincidence.
-//
-// The limit belongs to the HTTP/1 parser and cannot be raised from inside the process — it is a
-// command line flag, and nothing hands one to a Tizen service. HTTP/2 carries headers in HPACK
-// instead, with a limit an order of magnitude higher, so this speaks h2 to the same origin and
-// presents just enough of node-fetch's shape for the proxy not to care which one answered.
+// Node caps the response header block at 8KB on Node 12 and 16KB from Node 14, and cannot be
+// told otherwise from inside the process. YouTube's answer to a Cobalt client is 16.3KB, almost
+// all of it one content-security-policy carrying Cobalt's own source expressions. HTTP/2 carries
+// headers in HPACK, where the limit is an order of magnitude higher.
 
 const http2 = require('http2');
 const zlib = require('zlib');
@@ -20,18 +13,19 @@ const { PassThrough } = require('stream');
 const URL = require('url');
 
 const SESSION_IDLE = 30000;
+const REQUEST_TIMEOUT = 30000;
+const MAX_HEADER_LIST = 262144;
 
-// One session per origin, closed when idle. Opening one per request would cost a handshake apiece.
+const ILLEGAL_IN_H2 = ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'host'];
+
+// One session per origin, closed when idle: a session per request would cost a handshake apiece.
 const sessions = new Map();
 
-function sessionFor(origin) {
+const sessionFor = (origin) => {
     const existing = sessions.get(origin);
     if (existing && !existing.closed && !existing.destroyed) return existing;
 
-    const session = http2.connect(origin, {
-        // The whole point: room for a header block Node's HTTP/1 parser will not take.
-        settings: { maxHeaderListSize: 262144 }
-    });
+    const session = http2.connect(origin, { settings: { maxHeaderListSize: MAX_HEADER_LIST } });
 
     session.setTimeout(SESSION_IDLE, () => session.close());
     session.on('error', () => sessions.delete(origin));
@@ -39,21 +33,21 @@ function sessionFor(origin) {
 
     sessions.set(origin, session);
     return session;
-}
+};
 
-// node-fetch's Response, in the two shapes the proxy actually uses: `headers.raw()` for copying
-// them out, `headers.get()` for reading one, and a readable `body`.
-function responseOf(status, headers, stream) {
-    const raw = {};
+// node-fetch's Response in the shapes the proxy uses: headers.raw(), headers.get(), a readable
+// body and text().
+const responseOf = (status, received, stream) => {
+    const raw = Object.keys(received).reduce((all, name) => {
+        if (name[0] === ':') return all;                    // h2 pseudo-headers are not real headers
 
-    Object.keys(headers).forEach((name) => {
-        if (name[0] === ':') return;                       // h2 pseudo-headers are not real headers
-        const value = headers[name];
-        raw[name] = Array.isArray(value) ? value : [String(value)];
-    });
+        const value = received[name];
+        return Object.assign(all, { [name]: Array.isArray(value) ? value : [String(value)] });
+    }, {});
 
-    const collect = () => new Promise((resolve, reject) => {
+    const text = () => new Promise((resolve, reject) => {
         const parts = [];
+
         stream.on('data', (chunk) => parts.push(chunk));
         stream.on('end', () => resolve(Buffer.concat(parts).toString('utf8')));
         stream.on('error', reject);
@@ -70,82 +64,68 @@ function responseOf(status, headers, stream) {
                 return found ? found.join(', ') : null;
             }
         },
-        text: collect,
-        buffer: () => collect().then((text) => Buffer.from(text, 'utf8'))
+        text
     };
-}
+};
 
-// Only the request shapes the proxy makes: a method, headers, and an optional buffered body.
-function fetchOverHttp2(target, options) {
-    return new Promise((resolve, reject) => {
-        let parsed;
-        try {
-            parsed = URL.parse(target);
-        } catch (e) {
-            return reject(e);
-        }
+// node-fetch decompresses and this does not, which is a difference that does not announce
+// itself: the body arrives gzipped, is treated as text because the type says html, has a script
+// injected into the middle of it and is served as a loaded page behind a black screen.
+const decoded = (request, encoding) => {
+    const out = new PassThrough();
+    const decoder = encoding === 'gzip' ? zlib.createGunzip()
+        : (encoding === 'deflate' ? zlib.createInflate() : null);
 
-        const origin = `https://${parsed.host}`;
-        let session;
-        try {
-            session = sessionFor(origin);
-        } catch (e) {
-            return reject(e);
-        }
+    request.on('error', (error) => out.destroy(error));
 
-        const headers = Object.assign({}, options.headers);
+    if (!decoder) {
+        request.pipe(out);
+        return out;
+    }
 
-        // Connection-level headers are illegal in h2 and make the peer reset the stream.
-        ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'host']
-            .forEach((name) => { delete headers[name]; });
+    decoder.on('error', (error) => out.destroy(error));
+    request.pipe(decoder).pipe(out);
 
-        const request = session.request(Object.assign({
-            ':method': options.method || 'GET',
-            ':path': parsed.path || '/',
-            ':authority': parsed.host,
-            ':scheme': 'https'
-        }, headers));
+    return out;
+};
 
-        request.setTimeout(30000, () => request.close(http2.constants.NGHTTP2_CANCEL));
-        request.on('error', reject);
+const fetchOverHttp2 = (target, options) => new Promise((resolve, reject) => {
+    const parsed = URL.parse(target);
+    if (!parsed.host) return reject(new Error(`not a URL this can fetch: ${target}`));
 
-        request.on('response', (received) => {
-            const status = Number(received[':status']) || 502;
+    const session = sessionFor(`https://${parsed.host}`);
 
-            // Handed on as a stream, so a media response is not held in memory.
-            const out = new PassThrough();
+    const headers = ILLEGAL_IN_H2.reduce((all, name) => {
+        delete all[name];
+        return all;
+    }, Object.assign({}, options.headers));
 
-            // node-fetch decompresses for you and this does not, which is a difference that does
-            // not announce itself: the body arrives gzipped, is treated as text because the type
-            // says html, has a script injected into the middle of it and is served as plain HTML.
-            // The client gets rubbish and renders nothing — a loaded page behind a black screen.
-            const encoding = String(received['content-encoding'] || '').toLowerCase();
-            const decoder = encoding === 'gzip' ? zlib.createGunzip()
-                : (encoding === 'deflate' ? zlib.createInflate() : null);
+    const request = session.request(Object.assign({
+        ':method': options.method || 'GET',
+        ':path': parsed.path || '/',
+        ':authority': parsed.host,
+        ':scheme': 'https'
+    }, headers));
 
-            if (decoder) {
-                decoder.on('error', (error) => out.destroy(error));
-                request.pipe(decoder).pipe(out);
-            } else {
-                request.pipe(out);
-            }
+    request.setTimeout(REQUEST_TIMEOUT, () => request.destroy(new Error('http2 request timed out')));
+    request.on('error', reject);
 
-            request.on('error', (error) => out.destroy(error));
+    request.on('response', (received) => {
+        // Whatever is handed on is identity-encoded now, so the headers must not claim otherwise.
+        const announced = Object.assign({}, received);
+        delete announced['content-encoding'];
+        delete announced['content-length'];
 
-            // Whatever is handed on is now identity-encoded, so the header must not claim otherwise.
-            const headers = Object.assign({}, received);
-            delete headers['content-encoding'];
-            delete headers['content-length'];
-
-            resolve(responseOf(status, headers, out));
-        });
-
-        if (options.body && Buffer.isBuffer(options.body)) request.end(options.body);
-        else request.end();
+        resolve(responseOf(
+            Number(received[':status']) || 502,
+            announced,
+            decoded(request, String(received['content-encoding'] || '').toLowerCase())
+        ));
     });
-}
 
-// Whether an error is the one this module exists for.
+    return Buffer.isBuffer(options.body) ? request.end(options.body) : request.end();
+});
+
 const isHeaderOverflow = (error) => !!error
     && (error.code === 'HPE_HEADER_OVERFLOW' || /header overflow/i.test(error.message || ''));
 

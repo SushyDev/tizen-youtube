@@ -178,11 +178,8 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
-// the "last fired" record, and arrived on every launch regardless of the setting.
-// Answering it takes a remote, so an app left to start on its own got no further.
-//
-// These are the triggers that mean "before anything has been asked for", as against a
-// locked account, a PIN or an upgrade, where a real answer is needed.
+// The triggers that mean "before anything has been asked for", as against a locked account, a PIN
+// or an upgrade, where a real answer is needed.
 const ON_ARRIVAL = [
     'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
     'ACCOUNT_EVENT_TRIGGER_WHO_FALLBACK',

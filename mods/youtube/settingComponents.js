@@ -23,10 +23,10 @@ const settingOf = (endpoint) => {
     return configRead(key) === undefined ? null : { key, on: data.boolValue };
 };
 
-let claimed = false;
+const state = { booleans: false, notes: false, redrawName: null };
 
 function claimBooleanRows() {
-    if (claimed) return true;
+    if (state.booleans) return true;
 
     const component = findBooleanRow();
     if (!component) return false;
@@ -44,7 +44,7 @@ function claimBooleanRows() {
         }
     });
 
-    claimed = true;
+    state.booleans = true;
     return true;
 }
 
@@ -60,8 +60,8 @@ const noteFor = (H, note) => H(
     H('div', { className: 'vAMQc', 'aria-label': note }, note)
 );
 
-const withNote = (original, H) => function (props, state) {
-    const tree = original.call(this, props, state);
+const withNote = (original, H) => function withTubeNote(props, rowState) {
+    const tree = original.call(this, props, rowState);
     const note = props && props.data && props.data.tubeNote;
 
     if (note && tree && Array.isArray(tree.children)) tree.children.push(noteFor(H, note));
@@ -69,11 +69,9 @@ const withNote = (original, H) => function (props, state) {
     return tree;
 };
 
-let noted = false;
-
 // `template` is assigned per instance in the constructor, so the wrap has to be an accessor.
 function claimActionRows() {
-    if (noted) return true;
+    if (state.notes) return true;
 
     const component = findComponent(ACTION_ROW);
     if (!component) return false;
@@ -98,7 +96,7 @@ function claimActionRows() {
         instance.template = original;
     }
 
-    noted = true;
+    state.notes = true;
     redrawSettingRows();
     return true;
 }
@@ -109,12 +107,10 @@ const ROWS = [
     'ytlr-setting-action-renderer'
 ].join(',');
 
-let redrawName = null;
-
 const findRedraw = (instance) => {
-    let prototype = Object.getPrototypeOf(instance);
-
-    while (prototype && prototype !== Object.prototype) {
+    for (let prototype = Object.getPrototypeOf(instance);
+        prototype && prototype !== Object.prototype;
+        prototype = Object.getPrototypeOf(prototype)) {
         const name = Object.getOwnPropertyNames(prototype).find((key) => {
             const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
             const method = descriptor && descriptor.value;
@@ -125,7 +121,6 @@ const findRedraw = (instance) => {
         });
 
         if (name) return name;
-        prototype = Object.getPrototypeOf(prototype);
     }
 
     return null;
@@ -138,9 +133,9 @@ function redrawSettingRows() {
         const instance = rows[index].__instance;
         if (!instance) continue;
 
-        if (!redrawName) redrawName = findRedraw(instance);
+        if (!state.redrawName) state.redrawName = findRedraw(instance);
 
-        const redraw = redrawName && instance[redrawName];
+        const redraw = state.redrawName && instance[state.redrawName];
         if (typeof redraw === 'function') redraw.call(instance);
     }
 }

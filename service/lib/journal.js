@@ -1,50 +1,49 @@
 'use strict';
 
 const KEEP = 400;
+const STARTED = Date.now();
 
-const lines = [];
-const started = Date.now();
+const state = { listening: false, lines: [] };
 
-let listening = false;
+const trim = () => { while (state.lines.length > KEEP) state.lines.shift(); };
 
-const open = (yes) => { listening = !!yes; if (!yes) lines.length = 0; };
+const open = (yes) => {
+    state.listening = !!yes;
+    if (!yes) state.lines.length = 0;
+};
 
-const wanted = () => listening;
+const wanted = () => state.listening;
 
-function note(from, topic, text) {
-    if (!listening) return;
+const note = (from, topic, text) => {
+    if (!state.listening) return;
 
-    lines.push({ at: Date.now(), from, topic, text: String(text) });
-    if (lines.length > KEEP) lines.shift();
-}
+    state.lines.push({ at: Date.now(), from, topic: String(topic), text: String(text) });
+    trim();
+};
 
 const service = (topic, text) => note('service', topic, text);
 
-function fromPage(entries) {
-    (entries || []).forEach((entry) => {
-        lines.push({
-            at: Number(entry.at) || Date.now(),
-            from: 'page',
-            topic: String(entry.topic || '?'),
-            text: String(entry.text || '')
-        });
-    });
+const fromPage = (entries) => {
+    if (!state.listening || !entries || !entries.length) return;
 
-    lines.sort((a, b) => a.at - b.at);
-    while (lines.length > KEEP) lines.shift();
-}
+    entries.forEach((entry) => state.lines.push({
+        at: Number(entry && entry.at) || Date.now(),
+        from: 'page',
+        topic: String((entry && entry.topic) || '?'),
+        text: String((entry && entry.text) || '')
+    }));
 
-function read(count) {
-    const wanted = count > 0 ? lines.slice(-count) : lines;
+    state.lines.sort((a, b) => a.at - b.at);
+    trim();
+};
 
-    return wanted.map((line) => {
-        const at = ((line.at - started) / 1000).toFixed(1).padStart(7);
-        return `${at}s ${line.from === 'page' ? 'page   ' : 'service'} ${line.topic.padEnd(9)} ${line.text}`;
-    }).join('\n');
-}
+const read = (count) => (count > 0 ? state.lines.slice(-count) : state.lines)
+    .map((line) => {
+        const at = ((line.at - STARTED) / 1000).toFixed(1).padStart(7);
+        return `${at}s ${line.from.padEnd(7)} ${line.topic.padEnd(9)} ${line.text}`;
+    })
+    .join('\n');
 
-function clear() {
-    lines.length = 0;
-}
+const clear = () => { state.lines.length = 0; };
 
 module.exports = { clear, fromPage, note, open, read, service, wanted };

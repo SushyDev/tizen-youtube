@@ -2,59 +2,66 @@ import { configRead, configChangeEmitter } from '../config.js';
 import { DEV_TOOLS } from '../dev/tools.js';
 import { measured } from './playbackStats.js';
 
-const INTERVAL = 1000;
-
+const REPORT_EVERY = 1000;
 const LISTEN_EVERY = 200;
+const AWAIT_FOR = 25000;
 
-let timer = null;
-let listener = null;
+const PLAYER = '#movie_player, .html5-video-player';
 
-// Any plain-HTTP origin with a port is this service: it is the only thing that serves the app.
-// Not just localhost — inside Samsung's Cobalt container the page arrives by the set's network
-// address, because one package cannot reach another's loopback.
+const timers = { report: null, listen: null };
+const held = { lastEval: null };
+
+// Any plain-HTTP origin with a port is this service: it is the only thing that serves the app. Not
+// just localhost — inside Cobalt's container the page arrives by the set's network address,
+// because one package cannot reach another's loopback.
 const servedByService = () => /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
 
-function reading() {
+const safely = (read, fallback) => {
+    try {
+        const value = read();
+        return value === undefined ? fallback : value;
+    } catch (e) {
+        return fallback;
+    }
+};
+
+const post = (path, body) => fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body
+}).catch(() => { });
+
+const reading = () => {
     const video = document.querySelector('video');
-    const player = document.querySelector('#movie_player, .html5-video-player');
     if (!video) return { playing: false };
 
+    const player = document.querySelector(PLAYER);
     const quality = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
-    let stats = {};
-    try { stats = player.getStatsForNerds(); } catch (e) { }
+    const stats = safely(() => player.getStatsForNerds(), {});
+
+    const buffered = safely(() => {
+        const ranges = video.buffered;
+        if (!ranges || !ranges.length) return '0.00 s';
+
+        return `${(ranges.end(ranges.length - 1) - video.currentTime).toFixed(2)} s`;
+    }, stats.buffer_health_seconds || null);
 
     return {
-        videoId: (function () {
-            try { return player.getVideoData().video_id; } catch (e) { return null; }
-        }()),
-        route: location.hash.slice(0, 32),
-        box: (function () {
+        videoId: safely(() => player.getVideoData().video_id, null),
+        route: window.location.hash.slice(0, 32),
+        box: safely(() => {
             const rect = video.getBoundingClientRect();
-            return Math.round(rect.width) + 'x' + Math.round(rect.height);
-        }()),
+            return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
+        }, null),
 
-        intrinsic: video.videoWidth + 'x' + video.videoHeight,
+        intrinsic: `${video.videoWidth}x${video.videoHeight}`,
         resolution: stats.resolution || null,
-
         codecs: stats.codecs || null,
         colour: stats.color || null,
-        buffer: (function () {
-            try {
-                const ranges = video.buffered;
-                if (!ranges || !ranges.length) return '0.00 s';
-                return `${(ranges.end(ranges.length - 1) - video.currentTime).toFixed(2)} s`;
-            } catch (e) {
-                return stats.buffer_health_seconds || null;
-            }
-        }()),
+        buffer: buffered,
 
-        quality: (function () {
-            try { return player.getPlaybackQuality(); } catch (e) { return null; }
-        }()),
-        available: (function () {
-            try { return (player.getAvailableQualityData() || []).map(function (e) { return e.qualityLabel; }); }
-            catch (e) { return null; }
-        }()),
+        quality: safely(() => player.getPlaybackQuality(), null),
+        available: safely(() => (player.getAvailableQualityData() || []).map((e) => e.qualityLabel), null),
         preferred: configRead('preferredVideoQuality'),
 
         frames: stats.dims_and_frames || null,
@@ -64,107 +71,88 @@ function reading() {
         derived: !!(quality && quality.tubeDerived),
 
         measured: measured(),
+        evaluated: held.lastEval,
 
-        evaluated: lastEval,
         mediaTime: +video.currentTime.toFixed(2),
         paused: video.paused,
         readyState: video.readyState
     };
-}
+};
 
-let lastEval = null;
-
-const AWAIT_FOR = 25000;
-
-function settle(value) {
+const settle = (value) => {
     if (!value || typeof value.then !== 'function') return Promise.resolve(value);
 
     return Promise.race([
         Promise.resolve(value),
         new Promise((_, fail) => setTimeout(() => fail(new Error('timed out waiting for a promise')), AWAIT_FOR))
     ]);
-}
+};
 
-function describe(value) {
+const describe = (value) => {
     if (typeof value === 'undefined') return 'undefined';
 
-    try {
-        return JSON.stringify(value);
-    } catch (e) {
+    return safely(() => JSON.stringify(value), safely(() => String(value), '[unprintable]'));
+};
+
+const reason = (failure) => String((failure && failure.message) || failure);
+
+const answer = (id, source, outcome) => {
+    held.lastEval = Object.assign({ source }, outcome);
+
+    if (!id) return undefined;
+
+    return post('/__tube/dev/result', JSON.stringify(Object.assign({ id }, outcome)));
+};
+
+const run = (command) => {
+    const value = (() => {
         try {
-            return String(value);
-        } catch (also) {
-            return '[unprintable]';
+            return { ok: eval(command.source) };
+        } catch (e) {
+            return { failed: e };
         }
-    }
-}
+    })();
 
-function answer(id, source, outcome) {
-    lastEval = Object.assign({ source }, outcome);
+    if (value.failed) return answer(command.id, command.source, { error: reason(value.failed) });
 
-    if (!id) return;
+    return settle(value.ok).then(
+        (settled) => answer(command.id, command.source, { value: describe(settled) }),
+        (failure) => answer(command.id, command.source, { error: reason(failure) })
+    );
+};
 
-    fetch('/__tube/dev/result', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(Object.assign({ id }, outcome))
-    }).catch(() => { });
-}
+const collect = () => fetch('/__tube/dev/commands')
+    .then((response) => response.json())
+    .then((body) => (body.commands || []).forEach((command) => {
+        if (command.action === 'eval') run(command);
+    }))
+    .catch(() => { });
 
-function collect() {
-    fetch('/__tube/dev/commands')
-        .then((response) => response.json())
-        .then((body) => (body.commands || []).forEach((command) => {
-            if (command.action !== 'eval') return;
+const report = () => {
+    const body = safely(() => JSON.stringify(reading()), null);
+    if (body) post('/__tube/dev/report', body);
+};
 
-            let value;
-            try {
-                value = eval(command.source);
-            } catch (e) {
-                answer(command.id, command.source, { error: String(e && e.message || e) });
-                return;
-            }
-
-            settle(value).then(
-                (settled) => answer(command.id, command.source, { value: describe(settled) }),
-                (failure) => answer(command.id, command.source, { error: String(failure && failure.message || failure) })
-            );
-        }))
-        .catch(() => { });
-}
-
-function push() {
-    let body;
-    try { body = JSON.stringify(reading()); } catch (e) { return; }
-
-    fetch('/__tube/dev/report', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body
-    }).catch(() => { });
-}
-
-function apply(enabled) {
+const apply = (enabled) => {
     if (!servedByService()) return;
 
     fetch(`/__tube/dev/enable?on=${enabled ? 1 : 0}`)
         .then((response) => response.json())
-        .then((state) => console.log(`[tube] diagnostics ${state.open ? 'readable on :' + state.port : 'closed'}`))
+        .then((state) => console.log(`[tube] diagnostics ${state.open ? `readable on :${state.port}` : 'closed'}`))
         .catch(() => { });
 
-    clearInterval(timer);
-    clearInterval(listener);
+    clearInterval(timers.report);
+    clearInterval(timers.listen);
 
-    timer = enabled ? setInterval(push, INTERVAL) : null;
-    listener = enabled ? setInterval(collect, LISTEN_EVERY) : null;
-}
+    timers.report = enabled ? setInterval(report, REPORT_EVERY) : null;
+    timers.listen = enabled ? setInterval(collect, LISTEN_EVERY) : null;
+};
 
 // Hung off the baked constant, not the setting, so a release build drops all of this.
 if (DEV_TOOLS) {
     apply(configRead('enableDevBridge'));
 
     configChangeEmitter.addEventListener('configChange', (event) => {
-        if (event.detail.key !== 'enableDevBridge') return;
-        apply(event.detail.value);
+        if (event.detail.key === 'enableDevBridge') apply(event.detail.value);
     });
 }

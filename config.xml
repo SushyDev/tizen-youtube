@@ -20,39 +20,15 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- Claims the Cobalt container slot the official app used to hold. `native.userdata` reaches
-         Cobalt as command line switches; Cobalt is the stack that plays 2160p60 VP9 HDR properly.
-
-         nativeID is what delivers native.userdata to the container, and it cannot be dropped.
-         Measured, twice: without it our own boot screen runs and launches the container
-         successfully — with the default operation and with Samsung's own
-         launch_mode=backgroundAtStartup — but the container arrives with none of these switches, so
-         nothing of it ever reaches the service. The slot's own registration says why: it carries
-         `read.metadata.from.hybrid.webapp` with an empty value, meaning it takes its switches from
-         the webapp paired to it, and nativeID is what makes that pairing.
-
-         So a boot screen cannot run before the container in this package, because with nativeID
-         this package never runs its own content at all. Sequencing the two would need a second
-         package — a plain one that boots, starts the service, waits, then launches this one — and
-         that was considered and rejected: one app is worth more than the ordering it would buy.
-
-         Every value here is the same on every television, which is the whole point: the widget is
-         shareable and installs with sdb unchanged. (Note no double hyphen may appear in an XML
-         comment, so the switches are named without their leading dashes below.)
-
-         The proxy switch says 127.0.0.2, and the second octet is the whole trick. A package on
-         this platform cannot reach another package's socket on 127.0.0.1; the kernel answers
-         EHOSTUNREACH, and 0.0.0.0 the same, which is why this needed an address at all. But the
-         refusal is tied to that literal address: 127.0.0.2, 127.0.0.7, 127.1.1.1 and
-         ::ffff:127.0.0.1 all connect straight through, cross-package, and the service binds
-         0.0.0.0 so it is already listening on every one of them.
-
-         So this is a fixed string that means "this television" on every television. No DNS, no
-         DHCP lease to follow, no hostname to collide with the set in the next room, and nothing
-         shared between sets.
-
-         The content switch must be the Evergreen content directory itself, never the tree above
-         it. The service stages that copy, and the authority inside it, on first run. -->
+    <!-- Claims the Cobalt container slot, the stack that plays 2160p60 VP9 HDR properly.
+         nativeID cannot be dropped: the slot carries read.metadata.from.hybrid.webapp, so it takes
+         its switches from the webapp nativeID pairs it to, and without it the container arrives
+         with none of them. That also means this package never runs its own content.
+         proxy names 127.0.0.2 because one package cannot reach another's 127.0.0.1 on this
+         platform (EHOSTUNREACH), while any other loopback address connects — so this is a fixed
+         string meaning "this television" on every television, with no DNS and nothing per-set.
+         content must be the Evergreen content directory itself, never the tree above it; the
+         service stages that copy, and the authority inside it, on first run. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://127.0.0.2:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
@@ -80,9 +56,7 @@
     <tizen:profile name="tv-samsung"/>
 
 
-    <!-- dial.js derives this id from the package id, so the suffix must match.
-
-         auto-restart and on-boot are what bring the service back when the set wakes from standby —
+    <!-- auto-restart and on-boot are what bring the service back when the set wakes from standby —
          observed directly: a new pid appears in service.log on resume, and without them nothing
          would start it, because a package carrying nativeID never runs its own content. They are
          documented as restricted to platform and partner signed packages, and this set holds a
@@ -90,6 +64,6 @@
     <tizen:service id="9Ur5IzDKqV.TubeService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>
-        <tizen:description>The proxy, media streaming and DIAL discovery.</tizen:description>
+        <tizen:description>The proxy and userscript injection.</tizen:description>
     </tizen:service>
 </widget>

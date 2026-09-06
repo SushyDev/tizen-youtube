@@ -2,12 +2,24 @@ import { configRead } from '../config.js';
 
 // The platform player reports zero frames, so this measures lost time instead.
 
-export const TOLERANCE = 0.02;
+const TICK = 250;
+const WINDOW = 30;
 
 // A longer gap is a suspended app, not playback, so it is charged to nobody.
 const MAX_GAP = 2;
+const MOST_RECENT = (WINDOW * 1000) / TICK;
 
 const DEFAULT_FPS = 60;
+const MAX_PLAUSIBLE_FPS = 200;
+const EMA = 0.3;
+
+// Looking for the panel costs a walk of the document, and a closed panel never opens by itself —
+// so a fruitless search backs off instead of repeating every two seconds for the whole video.
+const FIND_EVERY = 2000;
+const FIND_AT_MOST_EVERY = 30000;
+
+const PLAYER = '#movie_player, .html5-video-player';
+const MARK = 'data-tube-lost';
 
 // Both sides, not their difference: shortfalls only add, so jitter would read as lost time.
 export function account(previous, current) {
@@ -28,39 +40,58 @@ export function account(previous, current) {
     return { played: Math.min(advanced, expected), expected, advanced, reseed: false };
 }
 
-export const WINDOW = 30;
-
 export function lostBy(tally) {
     if (!tally.recent || !tally.recent.length) {
         return Math.max(0, (tally.expected || 0) - (tally.advanced || 0));
     }
 
-    let expected = 0;
-    let advanced = 0;
+    const summed = tally.recent.reduce(
+        (total, step) => ({ expected: total.expected + step.expected, advanced: total.advanced + step.advanced }),
+        { expected: 0, advanced: 0 }
+    );
 
-    for (let at = 0; at < tally.recent.length; at++) {
-        expected += tally.recent[at].expected;
-        advanced += tally.recent[at].advanced;
-    }
-
-    return Math.max(0, expected - advanced);
+    return Math.max(0, summed.expected - summed.advanced);
 }
 
 const tallies = new WeakMap();
 
-function tallyFor(video) {
-    let tally = tallies.get(video);
-    if (!tally) {
-        tally = { played: 0, expected: 0, advanced: 0, recent: [], fps: DEFAULT_FPS, width: -1, height: -1, previous: null, watching: false, timer: null, rate: 0, rateFrames: 0, rateAt: 0, node: null, label: null, lookedAt: 0 };
-        tallies.set(video, tally);
-    }
-    return tally;
-}
+const blank = () => ({
+    expected: 0,
+    advanced: 0,
+    recent: [],
+    fps: DEFAULT_FPS,
+    width: -1,
+    height: -1,
+    previous: null,
+    watching: false,
+    timer: null,
+    rate: 0,
+    rateFrames: 0,
+    rateAt: 0,
+    node: null,
+    label: null,
+    lookedAt: 0,
+    lookGap: FIND_EVERY
+});
 
-const EMA = 0.3;
-const MAX_PLAUSIBLE_FPS = 200;
+const tallyFor = (video) => {
+    const held = tallies.get(video);
+    if (held) return held;
 
-function measureRate(video, tally, wall) {
+    const made = blank();
+    tallies.set(video, made);
+    return made;
+};
+
+const latest = { reading: null };
+
+export const measured = () => latest.reading;
+
+// -- what the renderer says ----------------------------------------------------------------------
+
+const playerElement = () => document.querySelector(PLAYER);
+
+const measureRate = (video, tally, wall) => {
     // The prototype's own, so a patched getVideoPlaybackQuality is not averaged into itself.
     const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
     const real = proto && proto.getVideoPlaybackQuality;
@@ -72,7 +103,8 @@ function measureRate(video, tally, wall) {
     const elapsed = wall - tally.rateAt;
 
     if (tally.rateAt && elapsed > 0) {
-        const perSecond = (frames - tally.rateFrames) * 1000 / elapsed;
+        const perSecond = ((frames - tally.rateFrames) * 1000) / elapsed;
+
         if (perSecond >= 0 && perSecond < MAX_PLAUSIBLE_FPS) {
             tally.rate = tally.rate ? tally.rate * (1 - EMA) + perSecond * EMA : perSecond;
         }
@@ -80,72 +112,81 @@ function measureRate(video, tally, wall) {
 
     tally.rateFrames = frames;
     tally.rateAt = wall;
-}
+};
 
-const FIND_EVERY = 2000;
+const frameRate = (video, tally) => {
+    if (video.videoWidth === tally.width && video.videoHeight === tally.height) return;
 
-const searchable = () => typeof document !== 'undefined' && !!document.querySelectorAll;
+    tally.width = video.videoWidth;
+    tally.height = video.videoHeight;
 
-function framesNode() {
-    if (!searchable()) return null;
+    try {
+        const found = /@(\d+(?:\.\d+)?)/.exec(playerElement().getStatsForNerds().resolution || '');
+        if (found) tally.fps = parseFloat(found[1]) || tally.fps;
+    } catch (e) { /* no panel, or a build that does not answer */ }
+};
 
-    const all = document.querySelectorAll('div, span, pre');
-    for (let i = 0; i < all.length; i++) {
-        const node = all[i];
-        if (node.children.length === 0 && node.textContent.indexOf('dropped of') !== -1) return node;
+// -- the label on the stats panel ------------------------------------------------------------------
+
+const framesNode = () => {
+    const candidates = document.querySelectorAll('div, span, pre');
+
+    for (let at = 0; at < candidates.length; at += 1) {
+        const node = candidates[at];
+        if (!node.children.length && node.textContent.indexOf('dropped of') !== -1) return node;
     }
-    return null;
-}
 
-function said(tally) {
+    return null;
+};
+
+const said = (tally) => {
     const lost = lostBy(tally);
     const time = lost >= 0.05 ? `~${lost.toFixed(1)}s lost` : '~no time lost';
 
     return tally.rate ? `@ ${tally.rate.toFixed(2)} fps · ${time}` : time;
-}
+};
 
-function showRate(tally, wall) {
+// The panel is re-rendered under us, so the label is found by its mark rather than remembered, and
+// any duplicate a re-render left behind is removed.
+const showRate = (tally, wall) => {
     if (!tally.node || !tally.node.isConnected) {
-        if (wall - tally.lookedAt < FIND_EVERY) return;
+        if (wall - tally.lookedAt < tally.lookGap) return;
+
         tally.lookedAt = wall;
         tally.node = framesNode();
-        if (!tally.node) return;
+
+        if (!tally.node) {
+            tally.lookGap = Math.min(tally.lookGap * 2, FIND_AT_MOST_EVERY);
+            return;
+        }
+
+        tally.lookGap = FIND_EVERY;
     }
 
-    // The panel is re-rendered under us, and a remembered node is no guide to whether a label is
-    // already there — so it is found by its mark, and any duplicate left by a re-render is removed.
     const row = tally.node.parentNode;
-    const already = row.querySelectorAll('[data-tube-lost]');
+    const already = row.querySelectorAll(`[${MARK}]`);
 
-    for (let i = 1; i < already.length; i += 1) already[i].remove();
+    for (let at = 1; at < already.length; at += 1) already[at].remove();
 
     tally.label = already[0] || null;
 
     if (!tally.label) {
         tally.label = document.createElement('span');
-        tally.label.setAttribute('data-tube-lost', '');
+        tally.label.setAttribute(MARK, '');
         tally.label.style.cssText = 'display:inline;white-space:pre';
         row.insertBefore(tally.label, tally.node.nextSibling);
     }
 
     tally.label.textContent = `  ${said(tally)}`;
-}
+};
 
-function frameRate(video, tally) {
-    if (video.videoWidth === tally.width && video.videoHeight === tally.height) return tally.fps;
+const dropLabel = (tally) => {
+    if (tally.label && tally.label.parentNode) tally.label.parentNode.removeChild(tally.label);
+    tally.label = null;
+    tally.node = null;
+};
 
-    tally.width = video.videoWidth;
-    tally.height = video.videoHeight;
-
-    const player = document.querySelector('#movie_player, .html5-video-player');
-
-    try {
-        const match = /@(\d+(?:\.\d+)?)/.exec(player.getStatsForNerds().resolution || '');
-        if (match) tally.fps = parseFloat(match[1]) || tally.fps;
-    } catch (e) { }
-
-    return tally.fps;
-}
+// -- sampling ---------------------------------------------------------------------------------------
 
 export function sample(video) {
     const tally = tallyFor(video);
@@ -167,17 +208,17 @@ export function sample(video) {
     };
 
     const step = account(tally.previous, current);
-    tally.played += step.played;
+
     tally.expected += step.expected;
     tally.advanced += step.advanced;
-
     tally.recent.push({ expected: step.expected, advanced: step.advanced });
-    while (tally.recent.length > (WINDOW * 1000) / TICK) tally.recent.shift();
+    while (tally.recent.length > MOST_RECENT) tally.recent.shift();
+
     frameRate(video, tally);
     measureRate(video, tally, current.wall);
     showRate(tally, current.wall);
 
-    latest = {
+    latest.reading = {
         lost: +lostBy(tally).toFixed(3),
         window: WINDOW,
         rate: tally.rate ? +tally.rate.toFixed(2) : null,
@@ -187,16 +228,8 @@ export function sample(video) {
     tally.previous = step.reseed ? null : current;
 }
 
-let latest = null;
-
-export function measured() {
-    return latest;
-}
-
 // A timer, not timeupdate: the platform player does not always fire it while advancing.
-const TICK = 250;
-
-function watch(video) {
+const watch = (video) => {
     const tally = tallyFor(video);
     if (tally.watching) return;
 
@@ -215,37 +248,29 @@ function watch(video) {
 
     const restart = () => {
         stop();
-        tally.played = 0;
-        tally.expected = 0;
-        tally.advanced = 0;
-        tally.recent = [];
-        tally.width = -1;
-        tally.height = -1;
-        tally.rate = 0;
-        tally.rateAt = 0;
-        tally.node = null;
-        if (tally.label && tally.label.parentNode) tally.label.parentNode.removeChild(tally.label);
-        tally.label = null;
+        Object.assign(tally, blank(), { watching: true });
+        dropLabel(tally);
     };
+
+    const forget = () => { tally.previous = null; };
 
     video.addEventListener('playing', start);
     video.addEventListener('pause', stop);
     video.addEventListener('ended', stop);
     video.addEventListener('loadstart', restart);
     video.addEventListener('emptied', restart);
-    video.addEventListener('seeking', () => { tally.previous = null; });
-    video.addEventListener('ratechange', () => { tally.previous = null; });
+    video.addEventListener('seeking', forget);
+    video.addEventListener('ratechange', forget);
 
     if (!video.paused) start();
-}
+};
 
 export function install() {
-    const proto = window.HTMLVideoElement && window.HTMLVideoElement.prototype;
-    if (!proto) return;
-
     document.addEventListener('play', (event) => {
         if (event.target instanceof window.HTMLVideoElement) watch(event.target);
     }, true);
 }
+
+export { WINDOW };
 
 if (typeof window !== 'undefined' && configRead('reportPlaybackStats')) install();

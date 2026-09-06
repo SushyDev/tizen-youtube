@@ -68,14 +68,10 @@ function stageContents(staging) {
     });
 }
 
-// Diagnostic packaging, added to the staged copy so the file in the repository stays the
-// file that ships:
-//
-//   TUBE_GAME_MODE=1 npm run package -- --unsigned
-//
-// use.game.mode is what makes the platform's renderer count frames — a pristine
-// getVideoPlaybackQuality reads 0/0/0 through a playing video otherwise. It is said to
-// cost frames, so a package built with it is for measuring and not for watching.
+// TUBE_GAME_MODE=1 npm run package. use.game.mode is what makes the renderer count frames — a
+// pristine getVideoPlaybackQuality reads 0/0/0 otherwise — and is said to cost frames, so a
+// package built with it is for measuring and not for watching. Added to the staged copy, so the
+// file in the repository stays the file that ships.
 const GAME_MODE = '<tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="true"/>';
 
 const wantsGameMode = () => process.env.TUBE_GAME_MODE === '1';
@@ -86,18 +82,10 @@ const xmlAttribute = (value) => String(value)
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-// Opt-in profile for testing Cobalt's native HTTPS origin and trust path.
-//
-// --content is the loader's *alternative content directory*, and it replaces the Evergreen
-// content directory wholesale: `starboard/loader_app/loader_app.cc` substitutes it for
-// `<content>/app/cobalt/content`, and `slot_management.cc` for `<installation>/content`. So it
-// names the directory that directly holds `fonts/`, `icu/`, `licenses/` and `ssl/certs/` — not the
-// loader root above it, and not `app/cobalt`. It has no bearing on where libcobalt is loaded
-// from, so the copy needs no `manifest.json` and no `lib/`.
 // Not every Tizen device has the container — a Smart Monitor is not a television — and on one that
-// does not, the metadata hands the launch to something absent and our own content never runs, so
-// nothing starts the service either. TUBE_COBALT_CONTAINER=off drops the three keys and the app is
-// the ordinary Chromium one again.
+// does not, the metadata hands the launch to something absent, our own content never runs, and
+// nothing starts the service. TUBE_COBALT_CONTAINER=off drops the three keys and the app is the
+// ordinary Chromium one again.
 function withoutContainer(staging) {
     if (process.env.TUBE_COBALT_CONTAINER !== 'off') return;
 
@@ -128,30 +116,29 @@ function addCobaltProfile(staging) {
     if (content && /[\s"&<>]/.test(content)) {
         throw friendly('TUBE_COBALT_CONTENT must be a path without whitespace or XML characters.');
     }
+    // --content replaces the Evergreen content directory wholesale, so it names the directory that
+    // directly holds fonts/, icu/, licenses/ and ssl/certs/ — not the loader root above it.
     if (content && /\/app\/cobalt$|\/app$/.test(content)) {
         throw friendly(
-            `TUBE_COBALT_CONTENT names the Evergreen content directory itself, not the tree above\n` +
+            'TUBE_COBALT_CONTENT names the Evergreen content directory itself, not the tree above\n' +
             `  it. ${content}/content is probably what you meant.`
         );
     }
 
-    let base;
-    let proxy;
-    try { base = new URL(baseUrl); } catch (e) {
-        throw friendly(`TUBE_COBALT_BASE_URL is not a URL: ${baseUrl}`);
-    }
-    try { proxy = new URL(proxyUrl); } catch (e) {
-        throw friendly(`TUBE_COBALT_PROXY is not a URL: ${proxyUrl}`);
-    }
-    if (base.protocol !== 'https:') {
-        throw friendly('TUBE_COBALT_BASE_URL must use https.');
-    }
-    if (proxy.protocol !== 'http:') {
-        throw friendly('TUBE_COBALT_PROXY must use http.');
-    }
+    const checkUrl = (name, value, scheme) => {
+        const parsed = (() => {
+            try { return new URL(value); } catch (e) { return null; }
+        })();
+
+        if (!parsed) throw friendly(`${name} is not a URL: ${value}`);
+        if (parsed.protocol !== scheme) throw friendly(`${name} must use ${scheme.slice(0, -1)}.`);
+    };
+
+    checkUrl('TUBE_COBALT_BASE_URL', baseUrl, 'https:');
+    checkUrl('TUBE_COBALT_PROXY', proxyUrl, 'http:');
 
     const path = join(staging, 'config.xml');
-    let xml = readFileSync(path, 'utf8');
+    const xml = readFileSync(path, 'utf8');
     const metadata = 'http://samsung.com/tv/metadata/native.userdata';
     const expression = new RegExp(`(<tizen:metadata\\s+key="${metadata}"\\s+value=")([^"]*)("\\s*/>)`);
     if (!expression.test(xml)) throw friendly('config.xml has no Cobalt native.userdata metadata.');
@@ -168,8 +155,8 @@ function addCobaltProfile(staging) {
         content ? `--content=${content}` : null,
         ...existing
     ].filter(Boolean).join(' ');
-    xml = xml.replace(expression, `$1${xmlAttribute(args)}$3`);
-    writeFileSync(path, xml);
+
+    writeFileSync(path, xml.replace(expression, `$1${xmlAttribute(args)}$3`));
 }
 
 function addGameMode(staging) {

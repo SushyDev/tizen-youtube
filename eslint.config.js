@@ -24,8 +24,6 @@ const NODE_GLOBALS = {
 
 const BROWSER_GLOBALS = {
     window: 'readonly',
-    EventTarget: 'readonly',
-    MediaSource: 'readonly',
     document: 'readonly',
     navigator: 'readonly',
     location: 'writable',
@@ -90,8 +88,7 @@ module.exports = [
             '**/.ncc/**',
             '**/.package/**',
             'mods/domrect-polyfill.js',
-            'mods/tiny-sha256.js',
-            'service/vendor/**'
+            'mods/tiny-sha256.js'
         ]
     },
     {

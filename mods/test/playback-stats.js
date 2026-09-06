@@ -1,5 +1,7 @@
 import * as stats from '../features/playbackStats.js';
-import { account, lostBy, TOLERANCE, install } from '../features/playbackStats.js';
+import { account, lostBy, install } from '../features/playbackStats.js';
+
+const SLIGHT_LAG = 0.01;
 
 const shortfall = (step) => lostBy({ expected: step.expected, advanced: step.advanced });
 
@@ -35,7 +37,7 @@ const at = (wall, media, over) => Object.assign(
 }
 
 {
-    const step = account(at(0, 10), at(1000, 1 + 10 - TOLERANCE / 2));
+    const step = account(at(0, 10), at(1000, 1 + 10 - SLIGHT_LAG));
     check('a sample that lags slightly records it', shortfall(step) > 0, JSON.stringify(step));
 }
 

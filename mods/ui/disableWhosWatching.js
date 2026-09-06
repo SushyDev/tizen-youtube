@@ -4,80 +4,92 @@ const RECURRING_ACTIONS = 'yt.leanback.default::recurring_actions';
 
 const WAIT_WINDOW = 15000;
 const WAIT_INTERVAL = 250;
+const RECENT = 2 * 60 * 60 * 1000;
+const KEEP_ALIVE = 60 * 1000;
+const WEEK = 7;
+
+const GUEST_PROMPT = 'startup-screen-account-selector-with-guest';
 
 const PROMPTS = [
-    'startup-screen-account-selector-with-guest',
+    GUEST_PROMPT,
     'whos_watching_fullscreen_zero_accounts',
     'startup-screen-signed-out-welcome-back'
 ];
 
-function readActions() {
+const state = { keepAlive: null };
+
+const readActions = () => {
     try {
         const parsed = JSON.parse(localStorage[RECURRING_ACTIONS]);
         return parsed && parsed.data && parsed.data.data ? parsed : null;
     } catch (error) {
         return null;
     }
-}
+};
 
-configChangeEmitter.addEventListener('configChange', (event) => {
-    const { key, value } = event.detail;
-    if (key === 'enableWhoIsWatchingMenu') {
-        disableWhosWatching(value);
-    }
-});
+function disableWhosWatching(enabled) {
+    const stored = readActions();
+    if (!stored) return false;
 
-let interval;
-
-function disableWhosWatching(value) {
-    const LeanbackRecurringActions = readActions();
-    if (!LeanbackRecurringActions) return false;
-
-    const actions = LeanbackRecurringActions.data.data;
-    const shouldPermanentlyEnable = configRead('permanentlyEnableWhoIsWatchingMenu');
+    const actions = stored.data.data;
+    const permanent = configRead('permanentlyEnableWhoIsWatchingMenu');
     const date = new Date();
 
-    function setActions() {
+    const stampAll = () => {
         PROMPTS.forEach((prompt) => {
             if (!actions[prompt]) actions[prompt] = {};
             actions[prompt].lastFired = date.getTime();
         });
-        localStorage[RECURRING_ACTIONS] = JSON.stringify(LeanbackRecurringActions);
+
+        localStorage[RECURRING_ACTIONS] = JSON.stringify(stored);
+    };
+
+    if (!enabled) {
+        date.setDate(date.getDate() + WEEK);
+        stampAll();
+        return true;
     }
 
-    if (!value) {
-        date.setDate(date.getDate() + 7);
-        setActions();
-    } else {
-        if (date.getTime() - actions['startup-screen-account-selector-with-guest']?.lastFired > 0 && date.getTime() - actions['startup-screen-account-selector-with-guest']?.lastFired < 2 * 60 * 60 * 1000
-        && !shouldPermanentlyEnable) {
-            return true;
-        }
-        setActions();
-        if (shouldPermanentlyEnable) {
-            date.setDate(date.getDate() - 7);
-            setActions();
-            interval = setInterval(setActions, 60 * 1000);
-        } else if (interval) clearInterval(interval);
+    const lastFired = (actions[GUEST_PROMPT] || {}).lastFired;
+    const since = date.getTime() - lastFired;
+
+    if (!permanent && since > 0 && since < RECENT) return true;
+
+    stampAll();
+
+    if (permanent) {
+        date.setDate(date.getDate() - WEEK);
+        stampAll();
+        state.keepAlive = state.keepAlive || setInterval(stampAll, KEEP_ALIVE);
+    } else if (state.keepAlive) {
+        clearInterval(state.keepAlive);
+        state.keepAlive = null;
     }
 
     return true;
 }
 
+configChangeEmitter.addEventListener('configChange', (event) => {
+    if (event.detail.key === 'enableWhoIsWatchingMenu') disableWhosWatching(event.detail.value);
+});
+
 if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
     const until = Date.now() + WAIT_WINDOW;
+
     const waiting = setInterval(() => {
         if (disableWhosWatching(configRead('enableWhoIsWatchingMenu')) || Date.now() > until) {
             clearInterval(waiting);
         }
     }, WAIT_INTERVAL);
 }
-const SELECTOR = 'ytlr-account-selector';
 
-// The app acts on what it believes is focused rather than on what was clicked, so the
-// container is focused first and the key is sent to the document as well as to the tile.
-// Everything else was tried and dismissed it only sometimes.
-function answerSelector() {
+// Only while the app is starting: a selector the viewer opened themselves is one they meant to
+// open. The app acts on what it believes is focused rather than on what was clicked, so the
+// container is focused first and the key goes to the document as well as to the tile.
+const SELECTOR = 'ytlr-account-selector';
+const ANSWER_WITHIN = 60000;
+
+const answerSelector = () => {
     const selector = document.querySelector(SELECTOR);
     if (!selector) return false;
 
@@ -102,25 +114,22 @@ function answerSelector() {
     });
 
     return true;
-}
+};
 
-// Only while the app is starting. An account selector the viewer opened themselves is
-// one they meant to open.
-const ANSWER_WITHIN = 60000;
-
-// This runs before the page has a body, so the watch is armed on whichever of the two
-// exists first.
-function watchForSelector() {
+// This runs before the page has a body, so the watch is armed on whichever exists first.
+const watchForSelector = () => {
     const until = Date.now() + ANSWER_WITHIN;
 
     const watching = new MutationObserver(() => {
         if (Date.now() > until) return watching.disconnect();
-        if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return;
+        if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return undefined;
         if (answerSelector()) watching.disconnect();
+
+        return undefined;
     });
 
     watching.observe(document.body || document.documentElement, { childList: true, subtree: true });
-}
+};
 
 if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
     if (document.body) watchForSelector();

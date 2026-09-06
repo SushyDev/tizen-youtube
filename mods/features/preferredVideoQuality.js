@@ -1,5 +1,6 @@
 import { configRead, configChangeEmitter } from '../config.js';
 import { waitFor } from '../utils/waitFor.js';
+import { onResponse } from '../youtube/json.js';
 import { chooseQuality, shouldAsk } from './quality.js';
 
 const PLAYER = '.html5-video-player';
@@ -8,12 +9,18 @@ const QUALITY = 'preferredVideoQuality';
 const CHECK_INTERVAL = 3000;
 const ATTACH_EVERY = 250;
 
+// A player response means a ladder is about to exist. Three seconds is far too coarse a heartbeat
+// to catch that before the first frame, so it is met with a short burst of close-together looks.
+const SETTLING_EVERY = 250;
+const SETTLING_FOR = 8000;
+
 // Asking restarts the stream, so a rung the player will not take is dropped rather than pressed.
-// One ask is all it takes when it works — measured in the container: the player was on hd1440 with
-// preferred=auto, a single setPlaybackQualityRange('hd2160') put it on hd2160 within five seconds,
-// and playback ran on through it. A second and third ask are what earned this feature its
-// reputation for wedging playback, and they only ever happened because the settle never landed.
-const LIMITS = { maxAttempts: 1, retryDelay: 5000 };
+// Two asks: the first before the first frame, where it is free, and one to correct it if the player
+// was not ready to hear it that early. Never a third — three asks five seconds apart is what earned
+// this feature its reputation for wedging playback, and they only happened because the settle never
+// landed. Measured in the container, one ask is normally the whole story: on a video sitting at
+// hd1440, a single setPlaybackQualityRange('hd2160') read back as hd2160 within five seconds.
+const LIMITS = { maxAttempts: 2, retryDelay: 5000 };
 
 const RESTART_JUMP = 2;
 
@@ -27,7 +34,8 @@ function watchPreferredQuality() {
         askedAt: 0,
         // Without this, a quality chosen from the player's own menu is overridden on the next tick.
         settled: false,
-        settledOn: null
+        settledOn: null,
+        settling: null
     };
 
     const forget = () => {
@@ -83,9 +91,13 @@ function watchPreferredQuality() {
 
         const preference = configRead(QUALITY);
         if (!preference || preference === 'auto') return;
-        if (!player.getPlayerStateObject?.()?.isPlaying) return;
         if (isShorts(player)) return;
 
+        // Deliberately not waiting for playback. `getAvailableQualityData()` reads off the player
+        // response rather than off playback state, so the rungs are known before the first frame is
+        // decoded — and asking then costs nothing, because there is no stream yet to restart.
+        // Waiting for isPlaying is what turned this into a visible switch partway into a video, and
+        // an empty ladder already answers for itself below.
         const chosen = chooseQuality(preference, player.getAvailableQualityData());
         if (!chosen) return;
 
@@ -143,6 +155,28 @@ function watchPreferredQuality() {
         tick();
     });
 
+    // The earliest the rungs can be known is the moment the player response is parsed — earlier
+    // than any state the player element reports, and earlier than the heartbeat below would notice.
+    // Seeing that response is not the same as the player having ingested it, though, so it opens a
+    // brief burst of close-together ticks instead of asking there and then. That closes the gap
+    // between the ladder existing and the ask, which is the whole difference between setting the
+    // quality and switching it. Reading the response only; the rungs on offer are left alone.
+    const settleQuickly = () => {
+        clearInterval(held.settling);
+
+        const until = Date.now() + SETTLING_FOR;
+
+        held.settling = setInterval(() => {
+            tick();
+            if (!held.settled && Date.now() <= until) return;
+
+            clearInterval(held.settling);
+            held.settling = null;
+        }, SETTLING_EVERY);
+    };
+
+    onResponse('preferred quality', ['streamingData'], settleQuickly);
+
     setInterval(tick, CHECK_INTERVAL);
     attachToPlayer();
 }
@@ -151,7 +185,7 @@ function watchPreferredQuality() {
 // back under the name we asked for, so the retry never settled and the third ask wedged playback.
 // Measured on the set instead: it reports back exactly what it was given. On a video sitting at
 // hd1440 with preferred=auto, one ask for hd2160 came back as hd2160 within five seconds and
-// playback carried on. The retry was the fault, and it is bounded to a single ask now.
+// playback carried on. The unbounded retry was the fault, and it is two asks at most now.
 //
 // Note the video element is no use as the check: it reads 3840x2160 while the player is on hd1440,
 // because it reports the size it presents at and not the size it decoded.

@@ -48,7 +48,7 @@ jobs:
       - name: Package
         env:
           STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && vars.TUBE_ORIGIN != '') && '--release' || '' }}
-        run: npm run package -- --unsigned $STRICT
+        run: npm run package -- $STRICT
 
       - name: Say the origin is a placeholder
         if: vars.TUBE_ORIGIN == ''

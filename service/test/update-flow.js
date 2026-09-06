@@ -22,10 +22,10 @@ const origin = http.createServer((req, res) => {
         res.setHeader('content-type', 'application/json');
         return res.end(JSON.stringify({
             version: '1.2.3',
-            bundles: { modern: { path: '1.2.3/userScript.modern.js', sha256: digest } }
+            bundle: { path: '1.2.3/userScript.js', sha256: digest }
         }));
     }
-    if (req.url === '/1.2.3/userScript.modern.js') {
+    if (req.url === '/1.2.3/userScript.js') {
         if (mode === 'truncated') return res.end(GOOD.slice(0, 10));
         return res.end(GOOD);
     }
@@ -46,14 +46,14 @@ origin.listen(0, '127.0.0.1', () => {
     const cacheA = mkdtempSync(join(tmpdir(), 'tube-up-'));
     const loaderA = loadLoader(cacheA, url);
 
-    loaderA.checkForUpdate('7.0')
+    loaderA.checkForUpdate()
         .then((updated) => {
             check('a digest-matching update is accepted', updated === true, String(updated));
-            const resolved = loaderA.resolve('7.0');
+            const resolved = loaderA.resolve();
             check('the accepted update is what gets served',
                 resolved.origin === 'cache' && resolved.source.indexOf('__tube') !== -1,
                 `${resolved.origin}`);
-            return loaderA.checkForUpdate('7.0');
+            return loaderA.checkForUpdate();
         })
         .then((again) => {
             check('re-checking does not re-download an unchanged bundle', again === false, String(again));
@@ -61,11 +61,11 @@ origin.listen(0, '127.0.0.1', () => {
             mode = 'badDigest';
             const cacheB = mkdtempSync(join(tmpdir(), 'tube-bad-'));
             const loaderB = loadLoader(cacheB, url);
-            return loaderB.checkForUpdate('7.0').then((updated) => {
+            return loaderB.checkForUpdate().then((updated) => {
                 check('a bundle whose digest does not match is rejected', updated === false, String(updated));
                 check('nothing was written to the cache',
-                    !existsSync(join(cacheB, 'userScript.modern.js')), 'a rejected bundle was written to disk');
-                const resolved = loaderB.resolve('7.0');
+                    !existsSync(join(cacheB, 'userScript.js')), 'a rejected bundle was written to disk');
+                const resolved = loaderB.resolve();
                 check('the bundled script is still what runs after a rejection',
                     resolved.origin === 'bundled', resolved.origin);
             });
@@ -74,19 +74,19 @@ origin.listen(0, '127.0.0.1', () => {
             mode = 'truncated';
             const cacheC = mkdtempSync(join(tmpdir(), 'tube-trunc-'));
             const loaderC = loadLoader(cacheC, url);
-            return loaderC.checkForUpdate('7.0').then((updated) => {
+            return loaderC.checkForUpdate().then((updated) => {
                 check('a truncated download is rejected by its digest', updated === false, String(updated));
                 check('the truncated bundle was not cached',
-                    !existsSync(join(cacheC, 'userScript.modern.js')), 'truncated bundle was written');
+                    !existsSync(join(cacheC, 'userScript.js')), 'truncated bundle was written');
             });
         })
         .then(() => {
             const cacheD = mkdtempSync(join(tmpdir(), 'tube-down-'));
             const loaderD = loadLoader(cacheD, 'http://127.0.0.1:1');
-            return loaderD.checkForUpdate('7.0').then((updated) => {
+            return loaderD.checkForUpdate().then((updated) => {
                 check('an unreachable origin fails soft', updated === false, String(updated));
                 check('the app still has a script to run with the origin down',
-                    loaderD.resolve('7.0').origin === 'bundled', 'no script available');
+                    loaderD.resolve().origin === 'bundled', 'no script available');
             });
         })
         .then(() => {

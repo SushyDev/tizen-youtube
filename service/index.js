@@ -26,7 +26,7 @@ function maybeCheckForUpdate() {
 
     lastUpdateCheck = now;
     updateInFlight = true;
-    loader.checkForUpdate(platformVersion).then(
+    loader.checkForUpdate().then(
         () => { updateInFlight = false; },
         () => { updateInFlight = false; }
     );
@@ -35,15 +35,14 @@ function maybeCheckForUpdate() {
 function describeState() {
     let script = null;
     try {
-        const resolved = loader.resolve(platformVersion);
-        script = { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
+        const resolved = loader.resolve();
+        script = { version: resolved.version, origin: resolved.origin };
     } catch (e) {
         script = { error: e.message };
     }
 
     return {
         platformVersion,
-        variant: loader.variantFor(platformVersion),
         script,
         proxyUrl: `http://localhost:${ports.PROXY}/tv`
     };
@@ -103,7 +102,7 @@ function announceReady() {
 const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
 
 app.listen(ports.PROXY, BIND, () => {
-    console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
+    console.log(`tube service on 127.0.0.1:${ports.PROXY}`);
     if (!isTV) {
         console.log('Running off-TV: proxy and userscript are live.');
     }

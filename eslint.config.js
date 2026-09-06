@@ -87,7 +87,6 @@ module.exports = [
             '**/release/**',
             '**/.ncc/**',
             '**/.package/**',
-            'mods/domrect-polyfill.js',
             'mods/tiny-sha256.js'
         ]
     },

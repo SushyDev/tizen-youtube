@@ -31,11 +31,9 @@ const speedButton = (speed) => buttonItem({ title: `${speed}x` }, null, [
 
 const speedLadder = () => {
     const increment = configRead('speedSettingsIncrement') || DEFAULT_INCREMENT;
-    const rungs = [];
+    const rungs = Math.floor(MAX_SPEED / increment);
 
-    for (let speed = increment; speed <= MAX_SPEED; speed += increment) rungs.push(round(speed));
-
-    return rungs;
+    return Array.from({ length: rungs }, (_, step) => round((step + 1) * increment));
 };
 
 function openSpeedOptions() {

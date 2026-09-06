@@ -5,7 +5,7 @@ const STARTED = Date.now();
 
 const state = { listening: false, lines: [] };
 
-const trim = () => { while (state.lines.length > KEEP) state.lines.shift(); };
+const trim = () => { state.lines.splice(0, Math.max(0, state.lines.length - KEEP)); };
 
 const open = (yes) => {
     state.listening = !!yes;

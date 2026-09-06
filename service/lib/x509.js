@@ -11,8 +11,9 @@ const crypto = require('crypto');
 const length = (n) => {
     if (n < 0x80) return Buffer.from([n]);
 
-    const bytes = [];
-    for (let value = n; value > 0; value = Math.floor(value / 256)) bytes.unshift(value % 256);
+    const base256 = (value) => (value > 0 ? base256(Math.floor(value / 256)).concat(value % 256) : []);
+
+    const bytes = base256(n);
 
     return Buffer.concat([Buffer.from([0x80 | bytes.length]), Buffer.from(bytes)]);
 };
@@ -30,14 +31,13 @@ const nul = Buffer.from([0x05, 0x00]);
 
 // A DER INTEGER is signed, so a leading bit set needs a zero byte in front of it.
 const integer = (value) => {
-    const trimmed = (() => {
-        const bytes = Buffer.isBuffer(value) ? value : Buffer.from([value]);
+    const withoutLeadingZeroes = (bytes) => (
+        bytes.length > 1 && bytes[0] === 0 && !(bytes[1] & 0x80)
+            ? withoutLeadingZeroes(bytes.slice(1))
+            : bytes
+    );
 
-        let at = 0;
-        while (at < bytes.length - 1 && bytes[at] === 0 && !(bytes[at + 1] & 0x80)) at += 1;
-
-        return bytes.slice(at);
-    })();
+    const trimmed = withoutLeadingZeroes(Buffer.isBuffer(value) ? value : Buffer.from([value]));
 
     return tagged(0x02, trimmed[0] & 0x80 ? Buffer.concat([Buffer.from([0]), trimmed]) : trimmed);
 };
@@ -48,14 +48,14 @@ const bitString = (body) => tagged(0x03, Buffer.concat([Buffer.from([0]), body])
 const oid = (dotted) => {
     const parts = dotted.split('.').map(Number);
 
-    const encoded = parts.slice(2).reduce((bytes, part) => {
-        const chunk = [part & 0x7f];
-        for (let rest = Math.floor(part / 128); rest > 0; rest = Math.floor(rest / 128)) {
-            chunk.unshift((rest & 0x7f) | 0x80);
-        }
+    const carry = (rest) => (rest > 0 ? carry(Math.floor(rest / 128)).concat((rest & 0x7f) | 0x80) : []);
 
-        return bytes.concat(chunk);
-    }, [parts[0] * 40 + parts[1]]);
+    const varint = (part) => carry(Math.floor(part / 128)).concat(part & 0x7f);
+
+    const encoded = parts.slice(2).reduce(
+        (bytes, part) => bytes.concat(varint(part)),
+        [parts[0] * 40 + parts[1]]
+    );
 
     return tagged(0x06, Buffer.from(encoded));
 };
@@ -132,9 +132,12 @@ const extension = (id, critical, body) => (critical
 // trailing bits rather than a zero.
 const keyUsage = (bits) => {
     const highest = Math.max(...bits);
-    const bytes = Buffer.alloc(Math.floor(highest / 8) + 1);
 
-    bits.forEach((bit) => { bytes[Math.floor(bit / 8)] |= 0x80 >> (bit % 8); });
+    const byteAt = (index) => bits
+        .filter((bit) => Math.floor(bit / 8) === index)
+        .reduce((byte, bit) => byte | (0x80 >> (bit % 8)), 0);
+
+    const bytes = Buffer.from(Array.from({ length: Math.floor(highest / 8) + 1 }, (_, i) => byteAt(i)));
 
     return tagged(0x03, Buffer.concat([Buffer.from([7 - (highest % 8)]), bytes]));
 };

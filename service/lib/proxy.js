@@ -34,6 +34,9 @@ const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encodi
 const CSP_HEADER = 'content-security-policy';
 const BODIED = ['POST', 'PUT', 'PATCH'];
 
+const YOUTUBE_HOST = 'www.youtube.com';
+const YOUTUBE_ORIGIN = `https://${YOUTUBE_HOST}`;
+
 // A dead pooled socket is handed out anyway and the request dies on it; newer Node retries that
 // internally, Node 12 does not. Every one of those became a 500, which the container answers by
 // retrying for ever behind a network error.
@@ -264,36 +267,47 @@ const create = () => {
 
 // Where a request is really going, and how the answer has to be dressed to be usable.
 const routeFor = (req) => {
+    const urlBehindTheBypassPrefix = () => {
+        const raw = req.url.substring('/cors-bypass/'.length);
+        return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
+    };
+
+    const whereTheRequestIsReallyGoing = (forwarded, isBypass, intercepted) => {
+        if (forwarded) return forwarded;
+        if (isBypass) return urlBehindTheBypassPrefix();
+        if (intercepted && req.path.indexOf('/__tube/') === 0) return `${localOrigin()}${req.url}`;
+        if (intercepted && req.headers.host) return `https://${req.headers.host}${req.url}`;
+
+        return `${YOUTUBE_ORIGIN}${req.url}`;
+    };
+
+    const hostNamedBy = (target) => {
+        try { return URL.parse(target).host || YOUTUBE_HOST; } catch (e) { return YOUTUBE_HOST; }
+    };
+
+    // Google answers over TLS whatever the request line said; the plain scheme only exists so the
+    // request reaches us in the first place.
+    const overTlsWhateverTheSchemeSaid = (target, forGoogle) => (
+        forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target
+    );
+
     const forwarded = forward.absoluteTarget(req.url);
     const isBypass = !forwarded && req.path.indexOf('/cors-bypass/') === 0;
     const intercepted = interceptedTls(req);
 
-    const target = (() => {
-        if (forwarded) return forwarded;
-
-        if (isBypass) {
-            const raw = req.url.substring('/cors-bypass/'.length);
-            return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
-        }
-
-        if (intercepted && req.path.indexOf('/__tube/') === 0) return `${localOrigin()}${req.url}`;
-        if (intercepted && req.headers.host) return `https://${req.headers.host}${req.url}`;
-
-        return `https://www.youtube.com${req.url}`;
-    })();
-
-    const host = (() => {
-        try { return URL.parse(target).host || 'www.youtube.com'; } catch (e) { return 'www.youtube.com'; }
-    })();
+    const target = whereTheRequestIsReallyGoing(forwarded, isBypass, intercepted);
+    const host = hostNamedBy(target);
     const forGoogle = GOOGLE.test(host.split(':')[0]);
 
-    // Google answers over TLS whatever the request line said; the plain scheme only exists so the
-    // request reaches us in the first place.
-    const url = forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target;
-
-    // Whether the answer goes back as youtube.com over our own TLS rather than as the service on
-    // plain HTTP. Cookies and the injection origin both depend on it.
-    return { url, host, forGoogle, isBypass, asOurselves: intercepted };
+    // asOurselves: whether the answer goes back as youtube.com over our own TLS rather than as the
+    // service on plain HTTP. Cookies and the injection origin both depend on it.
+    return {
+        url: overTlsWhateverTheSchemeSaid(target, forGoogle),
+        host,
+        forGoogle,
+        isBypass,
+        asOurselves: intercepted
+    };
 };
 
 const headersFor = (req, route) => {

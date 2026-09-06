@@ -128,15 +128,13 @@ const frameRate = (video, tally) => {
 
 // -- the label on the stats panel ------------------------------------------------------------------
 
+// find.call over the NodeList rather than Array.from(...).find: it short-circuits and copies
+// nothing, and this walks every div, span and pre on the page.
 const framesNode = () => {
-    const candidates = document.querySelectorAll('div, span, pre');
+    const isTheFramesLine = (node) => !node.children.length
+        && node.textContent.indexOf('dropped of') !== -1;
 
-    for (let at = 0; at < candidates.length; at += 1) {
-        const node = candidates[at];
-        if (!node.children.length && node.textContent.indexOf('dropped of') !== -1) return node;
-    }
-
-    return null;
+    return Array.prototype.find.call(document.querySelectorAll('div, span, pre'), isTheFramesLine) || null;
 };
 
 const said = (tally) => {
@@ -166,7 +164,7 @@ const showRate = (tally, wall) => {
     const row = tally.node.parentNode;
     const already = row.querySelectorAll(`[${MARK}]`);
 
-    for (let at = 1; at < already.length; at += 1) already[at].remove();
+    Array.from(already).slice(1).forEach((duplicate) => duplicate.remove());
 
     tally.label = already[0] || null;
 
@@ -212,7 +210,7 @@ export function sample(video) {
     tally.expected += step.expected;
     tally.advanced += step.advanced;
     tally.recent.push({ expected: step.expected, advanced: step.advanced });
-    while (tally.recent.length > MOST_RECENT) tally.recent.shift();
+    tally.recent.splice(0, Math.max(0, tally.recent.length - MOST_RECENT));
 
     frameRate(video, tally);
     measureRate(video, tally, current.wall);

@@ -149,20 +149,25 @@ function takeMoved(items) {
 
     const taken = {};
 
-    for (let index = items.length - 1; index >= 0; index--) {
-        const found = categoryOf(items[index]);
-        if (!found || !Array.isArray(found.items)) continue;
+    const keep = (row) => {
+        const move = moveFor(row, reachable);
+        if (!move) return true;
 
-        found.items = found.items.filter((row) => {
-            const move = moveFor(row, reachable);
-            if (!move) return true;
+        (taken[move.to] = taken[move.to] || []).push({ row, move });
+        return false;
+    };
 
-            (taken[move.to] = taken[move.to] || []).push({ row, move });
-            return false;
-        });
+    // Emptied categories are removed after the walk, not during it: splicing mid-iteration skips
+    // whatever followed each removal.
+    const emptied = items.filter((item) => {
+        const found = categoryOf(item);
+        if (!found || !Array.isArray(found.items)) return false;
 
-        if (found.items.length === 0) items.splice(index, 1);
-    }
+        found.items = found.items.filter(keep);
+        return found.items.length === 0;
+    });
+
+    emptied.forEach((item) => items.splice(items.indexOf(item), 1));
 
     return taken;
 }

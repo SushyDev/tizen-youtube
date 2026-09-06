@@ -81,7 +81,7 @@ const defaultConfig = {
 
 };
 
-const stored = (() => {
+function readStoredSettings() {
   try {
     const parsed = JSON.parse(window.localStorage[CONFIG_KEY]);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -89,7 +89,9 @@ const stored = (() => {
     console.warn('Stored settings were unreadable; starting from defaults.', e);
     return {};
   }
-})();
+}
+
+const stored = readStoredSettings();
 
 const localConfig = Object.assign({}, defaultConfig, stored);
 

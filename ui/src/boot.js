@@ -55,7 +55,9 @@ const say = (facility, message, tone) => {
 
     logElement.appendChild(line);
 
-    while (logElement.childNodes.length > MAX_LINES) logElement.removeChild(logElement.firstChild);
+    Array.from(logElement.childNodes)
+        .slice(0, Math.max(0, logElement.childNodes.length - MAX_LINES))
+        .forEach((line) => logElement.removeChild(line));
 };
 
 const handOver = () => {

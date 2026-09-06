@@ -15,14 +15,17 @@ export function waitFor(find, onFound, options) {
     const until = Date.now() + ((options && options.forMs) || GIVE_UP_AFTER);
     const pending = { timer: null };
 
+    // A finder runs against a page mid-render, so it will sometimes throw. That is "not yet".
+    const lookOnce = () => {
+        try {
+            return find();
+        } catch (e) {
+            return null;
+        }
+    };
+
     const look = () => {
-        const found = (() => {
-            try {
-                return find();
-            } catch (e) {
-                return null;
-            }
-        })();
+        const found = lookOnce();
 
         if (found) return onFound(found);
         if (Date.now() > until) return undefined;

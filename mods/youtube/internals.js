@@ -82,9 +82,11 @@ const findActionRunner = () => {
     const routerOf = (value) => {
         if (!value || typeof value.getInstance !== 'function') return null;
 
-        const instance = (() => {
-            try { return value.getInstance(); } catch (e) { return null; }
-        })();
+        const instanceOf = (holder) => {
+            try { return holder.getInstance(); } catch (e) { return null; }
+        };
+
+        const instance = instanceOf(value);
 
         if (!instance) return null;
 

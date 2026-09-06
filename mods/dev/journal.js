@@ -36,7 +36,7 @@ export function note(topic, text) {
     if (!wanted()) return;
 
     state.held.push({ at: Date.now(), topic, text: String(text) });
-    while (state.held.length > MOST_HELD) state.held.shift();
+    state.held.splice(0, Math.max(0, state.held.length - MOST_HELD));
 
     if (!state.flushing) state.flushing = setInterval(flush, FLUSH_EVERY);
 }

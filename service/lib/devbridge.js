@@ -25,7 +25,7 @@ const trusted = (req) => (req.get('x-tube-token') || '') === TOKEN;
 
 const enqueue = (command) => {
     state.queue.push(command);
-    while (state.queue.length > MOST_QUEUED) state.queue.shift();
+    state.queue.splice(0, Math.max(0, state.queue.length - MOST_QUEUED));
 
     return state.queue.length;
 };

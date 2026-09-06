@@ -37,6 +37,9 @@ const HOSTS = [
 const REISSUE_WITHIN = 30 * 86400000;
 const RELAUNCH_QUIET = 20000;
 
+// OpenSSL steps <hash>.0, .1, .2 … when a name collides.
+const SLOTS = 8;
+
 const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.describe(detail)}`);
 
 const state = { config: undefined, prepared: null, preparing: false, lastWake: 0, waiting: [] };
@@ -214,29 +217,51 @@ const issue = (done) => {
 const installCa = (certs, ca) => {
     fs.mkdirSync(certs, { recursive: true });
 
-    const hashes = x509.subjectHashes(ca.commonName);
-
-    const place = (hash) => {
-        for (let suffix = 0; suffix < 8; suffix += 1) {
-            const file = path.join(certs, `${hash}.${suffix}`);
-
-            const existing = (() => {
-                try { return fs.readFileSync(file, 'utf8'); } catch (e) { return null; }
-            })();
-
-            if (existing === ca.cert) return 'already there';
-            if (existing !== null) continue;
-
-            fs.writeFileSync(file, ca.cert);
-            return 'written';
-        }
-
-        return 'no free slot';
+    const contentsOf = (file) => {
+        try { return fs.readFileSync(file, 'utf8'); } catch (e) { return null; }
     };
 
-    const placed = [hashes.hash, hashes.hashOld].map((hash) => `${hash}.0 ${place(hash)}`);
+    // A collision with one of the roots already there would be remarkable, but stepping the suffix
+    // is what OpenSSL itself does, and the log has to name the file it really wrote.
+    const place = (hash) => {
+        const slots = Array.from({ length: SLOTS }, (_, suffix) => ({
+            suffix,
+            file: path.join(certs, `${hash}.${suffix}`)
+        }));
 
-    note('trusted', `${ca.commonName} — ${placed.join(', ')}`);
+        const already = slots.find((slot) => contentsOf(slot.file) === ca.cert);
+        if (already) return `${hash}.${already.suffix} already there`;
+
+        const free = slots.find((slot) => contentsOf(slot.file) === null);
+        if (!free) return `${hash} has no free slot`;
+
+        fs.writeFileSync(free.file, ca.cert);
+        return `${hash}.${free.suffix} written`;
+    };
+
+    const hashes = x509.subjectHashes(ca.commonName);
+
+    note('trusted', `${ca.commonName} — ${[hashes.hash, hashes.hashOld].map(place).join(', ')}`);
+};
+
+const cobaltIsInstalledHere = () => {
+    try { return fs.statSync(STOCK).isDirectory(); } catch (e) { return false; }
+};
+
+// About 5.1MB on the first run, then nothing.
+const stagedMaterial = (content) => {
+    const copied = copyInto(STOCK, content);
+    if (copied) note('staged', `${copied} files into ${content}`);
+
+    return existingMaterial();
+};
+
+const stageOrFail = (content) => {
+    try {
+        return { material: stagedMaterial(content) };
+    } catch (error) {
+        return { error };
+    }
 };
 
 const prepare = (done) => {
@@ -262,9 +287,7 @@ const prepare = (done) => {
 
     // Reported either way and before anything else: on a set the service cannot be reached from,
     // this one line is the whole diagnosis. Not every Tizen device has the container.
-    const present = (() => {
-        try { return fs.statSync(STOCK).isDirectory(); } catch (e) { return false; }
-    })();
+    const present = cobaltIsInstalledHere();
 
     note(present ? 'present' : 'absent', present
         ? `Cobalt is at ${STOCK}`
@@ -277,19 +300,10 @@ const prepare = (done) => {
 
     if (!present) return finish(null, null);
 
-    const material = (() => {
-        try {
-            const copied = copyInto(STOCK, content);
-            if (copied) note('staged', `${copied} files into ${content}`);
+    const staged = stageOrFail(content);
+    if (staged.error) return finish(staged.error);
 
-            return existingMaterial();
-        } catch (e) {
-            finish(e);
-            return undefined;
-        }
-    })();
-
-    if (material === undefined) return undefined;
+    const material = staged.material;
 
     const trust = (issued) => {
         try {

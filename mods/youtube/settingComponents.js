@@ -85,16 +85,17 @@ function claimActionRows() {
         set: function (original) { this.tubeTemplate = withNote(original, H); }
     });
 
-    const standing = document.querySelectorAll(ACTION_ROW);
-
-    for (let index = 0; index < standing.length; index++) {
-        const instance = standing[index].__instance;
-        if (!instance || !Object.prototype.hasOwnProperty.call(instance, 'template')) continue;
+    // Rows already on screen were built before the accessor existed; reassigning makes it fire.
+    const restamp = (row) => {
+        const instance = row.__instance;
+        if (!instance || !Object.prototype.hasOwnProperty.call(instance, 'template')) return;
 
         const original = instance.template;
         delete instance.template;
         instance.template = original;
-    }
+    };
+
+    Array.from(document.querySelectorAll(ACTION_ROW)).forEach(restamp);
 
     state.notes = true;
     redrawSettingRows();
@@ -107,37 +108,39 @@ const ROWS = [
     'ytlr-setting-action-renderer'
 ].join(',');
 
+const redrawsFrom = (prototype) => Object.getOwnPropertyNames(prototype).find((key) => {
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
+    const method = descriptor && descriptor.value;
+    if (typeof method !== 'function' || method.length !== 0) return false;
+
+    const source = sourceOf(method);
+    return source.indexOf('this.state') !== -1 && source.indexOf('Object.assign') === -1;
+});
+
 const findRedraw = (instance) => {
-    for (let prototype = Object.getPrototypeOf(instance);
-        prototype && prototype !== Object.prototype;
-        prototype = Object.getPrototypeOf(prototype)) {
-        const name = Object.getOwnPropertyNames(prototype).find((key) => {
-            const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
-            const method = descriptor && descriptor.value;
-            if (typeof method !== 'function' || method.length !== 0) return false;
+    const walk = (prototype) => {
+        if (!prototype || prototype === Object.prototype) return null;
 
-            const source = sourceOf(method);
-            return source.indexOf('this.state') !== -1 && source.indexOf('Object.assign') === -1;
-        });
+        return redrawsFrom(prototype) || walk(Object.getPrototypeOf(prototype));
+    };
 
-        if (name) return name;
-    }
-
-    return null;
+    return walk(Object.getPrototypeOf(instance));
 };
 
 function redrawSettingRows() {
-    const rows = document.querySelectorAll(ROWS);
-
-    for (let index = 0; index < rows.length; index++) {
-        const instance = rows[index].__instance;
-        if (!instance) continue;
+    // The name is found once and remembered: locating it reads the source of every method on the
+    // prototype chain.
+    const redraw = (row) => {
+        const instance = row.__instance;
+        if (!instance) return;
 
         if (!state.redrawName) state.redrawName = findRedraw(instance);
 
-        const redraw = state.redrawName && instance[state.redrawName];
-        if (typeof redraw === 'function') redraw.call(instance);
-    }
+        const method = state.redrawName && instance[state.redrawName];
+        if (typeof method === 'function') method.call(instance);
+    };
+
+    Array.from(document.querySelectorAll(ROWS)).forEach(redraw);
 }
 
 export { claimBooleanRows, claimActionRows, redrawSettingRows, ROWS };

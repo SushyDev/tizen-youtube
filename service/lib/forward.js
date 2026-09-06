@@ -14,14 +14,16 @@ const postmortem = require('./postmortem.js');
 
 // Guarded for the same reason as in index.js: interception is an extra, and a module that will
 // not load here must cost the MITM, never the tunnel.
-const cobalt = (() => {
+function cobaltIfItLoads() {
     try {
         return require('./cobalt.js');
     } catch (e) {
         postmortem.note('cobalt', `module would not load: ${postmortem.describe(e)}`);
         return null;
     }
-})();
+}
+
+const cobalt = cobaltIfItLoads();
 
 const ABSOLUTE = /^https?:\/\//i;
 

@@ -60,7 +60,7 @@ function getCountryLanguage(countryCode) {
     }
 }
 
-let isPatched = false;
+const patched = { yes: false };
 
 function getUserCountryCode() {
     try {
@@ -180,7 +180,7 @@ function createSectionTitle(title) {
 }
 
 function patchSubtitleMenu() {
-    if (isPatched) return;
+    if (patched.yes) return;
 
     waitFor(
         () => document.querySelector('.html5-video-player') && window._yttv,
@@ -322,7 +322,7 @@ function patchSubtitleMenuNow() {
 
     resolver.resolveCommand.isPatchedBySubtitleLocalization = true;
     console.log("Subtitles: Patch successful!");
-    isPatched = true;
+    patched.yes = true;
 }
 
 waitFor(

@@ -13,14 +13,16 @@ const forward = require('./lib/forward.js');
 
 // Guarded, and the guard is the point. Everything the container route needs is a convenience laid
 // on a proxy that has to start regardless.
-const cobalt = (() => {
+function cobaltIfItLoads() {
     try {
         return require('./lib/cobalt.js');
     } catch (e) {
         postmortem.note('cobalt', `module would not load: ${postmortem.describe(e)}`);
         return null;
     }
-})();
+}
+
+const cobalt = cobaltIfItLoads();
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -97,18 +99,18 @@ const maybeCheckForUpdate = () => {
 };
 
 const describeState = () => {
-    const script = (() => {
+    const theScriptThisSetWouldRun = () => {
         try {
             const resolved = loader.resolve();
             return { version: resolved.version, origin: resolved.origin };
         } catch (e) {
             return { error: e.message };
         }
-    })();
+    };
 
     return {
+        script: theScriptThisSetWouldRun(),
         platformVersion,
-        script,
         // Which container slot this build claims, if any. Reported for diagnosis: it is what
         // decides whether our own content ever runs.
         container: containerRoute,

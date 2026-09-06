@@ -105,13 +105,15 @@ const answer = (id, source, outcome) => {
 };
 
 const run = (command) => {
-    const value = (() => {
+    const evaluate = (source) => {
         try {
-            return { ok: eval(command.source) };
+            return { ok: eval(source) };
         } catch (e) {
             return { failed: e };
         }
-    })();
+    };
+
+    const value = evaluate(command.source);
 
     if (value.failed) return answer(command.id, command.source, { error: reason(value.failed) });
 

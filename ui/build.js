@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { build } from 'vite';
 import { unsupportedCss, stylesOf } from '../tools/css-support.js';
 
@@ -20,5 +21,7 @@ if (problems.length > 0) {
 
     process.exit(1);
 }
+
+execFileSync('node', ['../tools/check-output.js', 'dist/index.html', 'cobalt3'], { stdio: 'inherit' });
 
 console.log('\nchecked the boot screen against Chromium 63 — nothing the TV would drop\n');

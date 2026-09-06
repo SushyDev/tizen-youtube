@@ -155,13 +155,28 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 
-Two platform floors are easy to trip and the build enforces both: the boot
-screen against Chromium 63, which drops CSS it cannot parse *silently*, and the
-service bundle against Node 4.4.3 — `service/build/check-node4.js` walks the AST
-and fails on syntax Tizen 3 cannot parse. Route order is load bearing too:
-`proxy.attachFallback()` runs **after** the service registers its endpoints, or
-the catch-all shadows them and the app never launches. `service/test/routing.js`
-pins it.
+**One floor, enforced three ways.** Two device pairs are verified on hardware —
+Tizen 6.5 / node 12.16.3 / Cobalt 3.2.1, and Tizen 9.0 / node 18.18.2 /
+Cobalt 5.2.1 — and everything between them is unverified, so the lower pair is
+the floor. `tools/check-output.js` reads every built bundle and refuses a
+*library* call newer than that: Babel and esbuild lower syntax to their target
+and do it well, but neither polyfills `[].flatMap`, which compiles to itself and
+throws on an engine that has never heard of it. A parser cannot see that,
+because it is a method name and not a keyword — which is how `Object.values`
+came to ship into a Chromium 47 bundle unnoticed.
+
+A syntax gate cannot see a module that does not resolve either:
+`require('fs/promises')` passes every check on a modern runner and kills the
+service on its first require on the set. So `service/test/smoke.js` loads the
+built bundle for real and asks it a question, on each Node a television is known
+to run — in CI as the `runtimes` job, and locally as `npm run test:matrix`.
+`tools/engine-probe.js` measures what Cobalt actually supports, for raising the
+floor on evidence rather than on hope.
+
+The boot screen has its own floor, Chromium 63, which drops CSS it cannot parse
+*silently*. Route order is load bearing too: `proxy.attachFallback()` runs
+**after** the service registers its endpoints, or the catch-all shadows them and
+the app never launches. `service/test/routing.js` pins it.
 
 **Releasing.** Pushing a `v*` tag builds the widget and opens a
 **draft** release carrying it — no secrets at all, on purpose, so it works on a

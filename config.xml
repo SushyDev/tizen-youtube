@@ -51,7 +51,7 @@
          it. The service stages that copy, and the authority inside it, on first run. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://Samsung:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden --ignore_certificate_errors"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://Samsung:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
 
     <!-- Must stay true: false terminates the app on focus loss rather than hiding it, so
          Home and Back re-run the boot screen instead of returning to the video. -->

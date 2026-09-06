@@ -26,8 +26,8 @@ const CONTRAST = 'data:image/svg+xml;charset=utf-8,'
 const Switch = (key, title, summary, image, on = true) =>
   ({ kind: 'switch', key, title, summary, image, on });
 
-const Choice = (key, title, summary, image, options, prefix) =>
-  ({ kind: 'choice', key, title, summary, image, options, prefix: prefix || title });
+const Choice = (key, title, summary, image, options, prefix, note) =>
+  ({ kind: 'choice', key, title, summary, image, options, prefix: prefix || title, note });
 
 const Set_ = (key, title, summary, image, options, invert = false) =>
   ({ kind: 'set', key, title, summary, image, options, invert });
@@ -168,7 +168,10 @@ const GROUPS = [
         SCREEN, CODECS, 'Codec'),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step')
+        SKIPPING, INCREMENTS, 'Step'),
+      Switch('rememberPlaybackSpeed', 'Remember playback speed',
+        'Carry the speed you chose into the next video. YouTube starts each one at normal '
+        + 'speed', SKIPPING)
     ]
   },
   {

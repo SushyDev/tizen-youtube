@@ -178,13 +178,36 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
+// The triggers that mean "before anything has been asked for", as against a locked account, a PIN
+// or an upgrade, where a real answer is needed.
+const ON_ARRIVAL = [
+    'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
+    'ACCOUNT_EVENT_TRIGGER_WHO_FALLBACK',
+    'ACCOUNT_EVENT_TRIGGER_APP_WELCOME',
+    'ACCOUNT_EVENT_TRIGGER_WELCOME_BACK'
+];
+
+const skipWhosWatchingOnArrival = (command) => {
+    const request = command.requestAccountSelectorCommand;
+
+    const trigger = request
+        && request.identityActionContext
+        && request.identityActionContext.eventTrigger;
+
+    if (!trigger || ON_ARRIVAL.indexOf(trigger) === -1) return PASS;
+    if (configRead('enableWhoIsWatchingMenu') || configRead('permanentlyEnableWhoIsWatchingMenu')) return PASS;
+
+    return false;
+};
+
 const INTERPRETERS = [
     applyOurSettings,
     runCustomActions,
     dressPlaybackSettings,
     forgetMiniPlayer,
     runCommandBatch,
-    skipWhosWatchingOnExit
+    skipWhosWatchingOnExit,
+    skipWhosWatchingOnArrival
 ];
 
 const interceptCommands = () => {

@@ -36,21 +36,16 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
-const nameOf = (target) => {
-    const match = entries().find(([, value]) => value === target);
-    return match ? match[0] : null;
+// `S` is the component's custom-element name; survives releases that rename the export.
+const findComponent = (tag) => {
+    const match = entries().find(([, value]) => typeof value === 'function' && value.S === tag);
+    return match ? match[1] : null;
 };
 
 // Several settings live in Maps parked in the registry, found by a key only they carry.
 const findMap = (key) => {
     const match = entries().find(([, value]) => value instanceof Map && value.has(key));
     return match ? match[1] : null;
-};
-
-const replace = (target, replacement) => {
-    const name = nameOf(target);
-    if (name) registry()[name] = replacement;
-    return !!name;
 };
 
 const findResolver = () => {
@@ -119,4 +114,4 @@ const reloadGuide = () => {
     if (run) run('reloadGuideAction');
 };
 
-export { findBySource, findByPrototype, findMap, nameOf, replace, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };
+export { findBySource, findByPrototype, findComponent, findMap, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };

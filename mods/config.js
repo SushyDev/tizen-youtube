@@ -32,7 +32,9 @@ const defaultConfig = {
 
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
+  reportPlaybackStats: true,
   videoSpeed: 1,
+  rememberPlaybackSpeed: false,
   speedSettingsIncrement: 0.25,
 
   enableShorts: false,

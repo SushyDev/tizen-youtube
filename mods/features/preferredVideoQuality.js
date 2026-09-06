@@ -38,10 +38,14 @@ const RESTART_JUMP = 2;
 const BANDWIDTH_KEY = 'yt-player-bandwidth';
 const CEILING_KEY = 'yt-player-quality';
 
-// Bytes per second. 2160p60 HDR wants five or six of these megabytes; fifty megabits opens there
-// with headroom and stays honest about a 5GHz link, so ABR is not told something it has to walk
-// back in the middle of the video.
+// Bytes per second. A named rung is pinned outright below, so its estimate only has to be large
+// enough not to argue with the pin — fifty megabits, which is honest about a 5GHz link and carries
+// 2160p60 HDR with headroom. `highest` has nothing else forcing its hand: the estimate is the only
+// thing standing between it and a cautious opening rung, so it is told the link is far larger than
+// any stream could use. ABR measures the truth for itself within a segment or two regardless; the
+// number exists to stop it opening low, not to be believed forever.
 const SEEDED_BYTERATE = 6250000;
+const UNCAPPED_BYTERATE = 1250000000;
 const REMEMBERED_FOR = 2592000;
 
 // The player's own names for the rungs, so a named setting can be acted on without the ladder.
@@ -65,11 +69,12 @@ const openAtPreferredQuality = () => {
     if (!preference || preference === 'auto') return;
 
     try {
-        // Only ever seeded when there is nothing there. Once the player has measured this link for
-        // itself, its number is worth more than our guess and is left alone.
-        if (!window.localStorage.getItem(BANDWIDTH_KEY)) {
-            remember(BANDWIDTH_KEY, { byterate: SEEDED_BYTERATE });
-        }
+        // Written every time, not only when the slot is empty: the player saves its own measured
+        // estimate back after each video, so a seed seeded once would be overwritten and only ever
+        // decide the very first video. Every opening should be optimistic, not just the first.
+        remember(BANDWIDTH_KEY, {
+            byterate: preference === 'highest' ? UNCAPPED_BYTERATE : SEEDED_BYTERATE
+        });
 
         // The ceiling is the setting, so the setting is what it says. `highest` wants no ceiling at
         // all, and a stored zero is how the player spells that.
@@ -274,5 +279,10 @@ function watchPreferredQuality() {
 // appended to the body and therefore async.
 if (typeof window !== 'undefined') {
     openAtPreferredQuality();
+
+    // Renewed before each new video rather than only at start-up, for the same reason it is written
+    // unconditionally: the player replaces the estimate with its own measurement as each video ends.
+    window.addEventListener('hashchange', openAtPreferredQuality);
+
     watchPreferredQuality();
 }

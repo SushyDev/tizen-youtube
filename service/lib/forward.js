@@ -11,7 +11,15 @@ const URL = require('url');
 
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
-const cobalt = require('./cobalt.js');
+
+// Guarded for the same reason as in index.js: interception is an extra, and the tunnel has to work
+// without it. A module that will not load here must cost the MITM, never the proxy.
+let cobalt = null;
+try {
+    cobalt = require('./cobalt.js');
+} catch (e) {
+    postmortem.note('cobalt', `module would not load: ${(e && e.message) || e}`);
+}
 
 const ABSOLUTE = /^https?:\/\//i;
 
@@ -20,9 +28,15 @@ const ABSOLUTE = /^https?:\/\//i;
 // every host is tunnelled through untouched, which is a working television showing stock YouTube
 // rather than a broken one. A `disabled` file beside the keys forces that state permanently.
 function mitmConfig() {
-    if (fs.existsSync(`${cobalt.MITM_DIR}/disabled`)) return null;
+    if (!cobalt) return null;
 
-    return cobalt.material();
+    try {
+        if (fs.existsSync(`${cobalt.MITM_DIR}/disabled`)) return null;
+
+        return cobalt.material();
+    } catch (e) {
+        return null;
+    }
 }
 
 function mitmHost(host) {

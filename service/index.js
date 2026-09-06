@@ -1,17 +1,59 @@
 'use strict';
 
+// First, before anything else is loaded: a dependency in this bundle declares a class extending
+// `Event` at load time, and on the older Node some of these sets ship that is a ReferenceError
+// during require — the service dies before it can even open its log.
+require('./lib/globals.js');
+
 const os = require('os');
 
 const postmortem = require('./lib/postmortem.js');
 postmortem.watch();
 
 const ports = require('./lib/ports.js');
+
+// A server that serves nothing but the log, bound before anything that could fail is even loaded,
+// and handed over to the real service the moment that one is ready to bind.
+//
+// If start-up dies — an older runtime rejecting something one of these modules does at load time,
+// which is exactly what a Tizen 6.5 set does with code that a 9.0 set runs happily — then this is
+// what is left listening, and `/__tube/log` still answers with the stack that killed it. Without
+// it a failed start is completely silent from outside: no port, no log, nothing to read, and
+// indistinguishable from a service the platform never launched at all.
+// Only the log. Answering anything else would have the boot screen mistake this for the service
+// proper and wait for a state that is never coming, instead of reporting it unreachable.
+const rescue = require('http').createServer((req, res) => {
+    // Never keep-alive. A held connection would stop this server releasing the port to the real
+    // one, and the boot screen polls it every few hundred milliseconds.
+    if (String(req.url).indexOf('/__tube/log') !== 0) {
+        res.writeHead(503, { 'content-type': 'text/plain', connection: 'close' });
+        return res.end('the service did not finish starting; GET /__tube/log for why');
+    }
+
+    res.writeHead(200, { 'content-type': 'text/plain', connection: 'close' });
+    res.end(postmortem.read() || '(nothing logged)');
+});
+
+rescue.on('error', () => {});
+rescue.listen(ports.PROXY, '0.0.0.0');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
 const devbridge = require('./lib/devbridge.js');
 const dial = require('./lib/dial.js');
 const forward = require('./lib/forward.js');
-const cobalt = require('./lib/cobalt.js');
+
+// Guarded, and the guard is the point. Everything the container route needs is a convenience laid
+// on top of a proxy that has to start regardless: if this module cannot even be loaded on some set
+// — an older runtime missing something it uses at load time, say — that must cost the container
+// route, not the whole service. Without this an exception here reaches postmortem's uncaught
+// handler, the process exits, and from outside it is indistinguishable from a service that was
+// never started at all. Which is exactly the state one television was left in.
+let cobalt = null;
+try {
+    cobalt = require('./lib/cobalt.js');
+} catch (e) {
+    postmortem.note('cobalt', `module would not load: ${(e && e.message) || e}`);
+}
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -72,7 +114,7 @@ function describeState() {
         // container rather than by navigating itself. It is named here because the service is what
         // reads the package metadata, and because the boot screen must not launch it until the
         // service is answering — the container dials immediately and does not recover.
-        container: cobalt.container(),
+        container: cobalt ? cobalt.container() : null,
         proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
             ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
             : '')
@@ -237,6 +279,13 @@ function listen(addresses, index) {
     });
 }
 
+// Everything loaded without dying, so the rescue server gives the port back. Deliberately not
+// waiting on close()'s callback: it fires only once every connection has drained, and the boot
+// screen is polling this very port — so the callback can simply never come, and then the real
+// server is never started at all. That is a deadlock, and it is silent, because nothing throws and
+// nothing exits. Ask for the close, then bind; if the socket has not been released yet, listen()
+// sees EADDRINUSE, says so, and retries.
+rescue.close();
 listen(candidates(), 0);
 
 // The container route needs a writable copy of Cobalt's content directory and a certificate
@@ -244,7 +293,15 @@ listen(candidates(), 0);
 // which is what lets one widget serve any set — and, for the authority, is the only arrangement
 // that is safe to publish at all. It is skipped entirely unless this package names a --content
 // path, so an ordinary build does none of it.
-cobalt.prepare();
+// Same reasoning: staging a directory and issuing a certificate must not be able to stop the
+// proxy answering. Anything that goes wrong in there is written down and the service carries on.
+if (cobalt) {
+    try {
+        cobalt.prepare();
+    } catch (e) {
+        postmortem.note('cobalt', `prepare threw: ${(e && e.stack) || e}`);
+    }
+}
 
 
 if (isTV) dial.start();

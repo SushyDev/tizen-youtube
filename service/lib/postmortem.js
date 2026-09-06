@@ -1,10 +1,32 @@
 'use strict';
 
-const { appendFileSync, readFileSync, statSync, renameSync } = require('fs');
+const { appendFileSync, readFileSync, statSync, renameSync, mkdirSync } = require('fs');
+const { dirname } = require('path');
 
 const LOG = process.env.TUBE_LOG || '/home/owner/share/tube/service.log';
 
 const MAX_BYTES = 64 * 1024;
+
+// The directory is not there on a set where nothing has created it yet, and appending into a
+// missing one throws — inside the catch below, so every line written on such a set went nowhere
+// and the log simply appeared to be empty. That is worse than no logging at all: it reads as
+// evidence that the service never ran. Make the directory once, by hand rather than with a
+// recursive mkdir, because the option is newer than the runtime on some of these televisions.
+let ready = false;
+
+function ensure() {
+    if (ready) return;
+    ready = true;
+
+    const directory = dirname(LOG);
+    const parts = directory.split('/');
+
+    for (let i = 2; i <= parts.length; i += 1) {
+        try {
+            mkdirSync(parts.slice(0, i).join('/'));
+        } catch (e) { /* already there, or not ours to make */ }
+    }
+}
 
 function roll() {
     try {
@@ -15,6 +37,7 @@ function roll() {
 
 function note(what, detail) {
     try {
+        ensure();
         roll();
         const said = (detail && detail.stack) || String(detail);
         appendFileSync(LOG, `${new Date().toISOString()}  ${what}: ${said}\n`);
@@ -30,10 +53,17 @@ function read() {
     }
 }
 
+// Long enough to read the log off the set, short enough that auto-restart still gets its turn.
+const LINGER = 120000;
+
 function watch() {
     process.on('uncaughtException', (error) => {
         note('uncaught', error);
-        process.exit(1);
+
+        // Exiting at once is what made a start-up failure unreadable: the process took the
+        // diagnostic server down with it, auto-restart brought it back, it died again, and from
+        // outside the port merely flickered. Stay up for a while so the stack can be fetched.
+        setTimeout(() => process.exit(1), LINGER).unref();
     });
 
     process.on('unhandledRejection', (error) => note('unhandled rejection', error));

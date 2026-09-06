@@ -1,7 +1,6 @@
 import { configRead, configChangeEmitter } from '../config.js';
 import { DEV_TOOLS } from '../dev/tools.js';
 import { measured } from './playbackStats.js';
-import { servingNow } from './nativePlayback.js';
 
 const INTERVAL = 1000;
 
@@ -10,7 +9,10 @@ const LISTEN_EVERY = 200;
 let timer = null;
 let listener = null;
 
-const servedByService = () => /^http:\/\/localhost:\d+$/.test(window.location.origin);
+// Any plain-HTTP origin with a port is this service: it is the only thing that serves the app.
+// Not just localhost — inside Samsung's Cobalt container the page arrives by the set's network
+// address, because one package cannot reach another's loopback.
+const servedByService = () => /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
 
 function reading() {
     const video = document.querySelector('video');
@@ -34,19 +36,8 @@ function reading() {
         intrinsic: video.videoWidth + 'x' + video.videoHeight,
         resolution: stats.resolution || null,
 
-        // Not getStatsForNerds, which reports what the player selected: it said opus (251) over AAC.
-        codecs: (function () {
-            const now = servingNow();
-            if (!now || !now.video || !now.audio) return stats.codecs || null;
-            return `${now.video.codecs} (${now.video.itag}) / ${now.audio.codecs} (${now.audio.itag})`;
-        }()),
-        colour: (function () {
-            const now = servingNow();
-            if (now && now.video && now.video.colour) {
-                return `${now.video.colour.transfer} / ${now.video.colour.primaries}`;
-            }
-            return stats.color || null;
-        }()),
+        codecs: stats.codecs || null,
+        colour: stats.color || null,
         buffer: (function () {
             try {
                 const ranges = video.buffered;

@@ -214,4 +214,12 @@ function sweep() {
     });
 }
 
-module.exports = { awaitSession, follow, observed, open, sweep };
+// What proof-of-origin token, if any, the page put in a media request.
+function tokenIn(body) {
+    const request = VideoPlaybackAbrRequest.decode(body);
+    const context = request.streamerContext || {};
+    if (!context.poToken || !context.poToken.length) return 'none';
+    return `${context.poToken.length}b`;
+}
+
+module.exports = { awaitSession, follow, observed, open, sweep, tokenIn };

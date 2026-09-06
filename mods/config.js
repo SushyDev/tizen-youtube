@@ -35,8 +35,6 @@ const defaultConfig = {
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
   reportPlaybackStats: true,
-  bypassMediaSource: true,
-  nativePlaybackContainer: 'dash',
   enableDevBridge: DEV_TOOLS,
   videoSpeed: 1,
   rememberPlaybackSpeed: false,

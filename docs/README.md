@@ -65,6 +65,46 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run version:set 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
 
+For a clean Cobalt-origin experiment, package an opt-in profile without changing the default
+`config.xml`:
+
+```sh
+TUBE_COBALT_BASE_URL=https://www.youtube.com/tv \
+TUBE_COBALT_PROXY=http://192.168.1.29:8099 \
+npm run package -- --unsigned
+```
+
+This uses Cobalt's own HTTPS page and the service only as its forward proxy. It intentionally does
+not inject the userscript; use the ordinary package again for the enhanced-player profile.
+
+To hand Cobalt a writable copy of its own resources — a trust store it does not otherwise let you
+near, say — add a content directory:
+
+```sh
+TUBE_COBALT_CONTENT=/home/owner/share/tube/cobalt-content \
+TUBE_COBALT_BASE_URL=https://www.youtube.com/tv \
+TUBE_COBALT_PROXY=http://192.168.1.29:8099 \
+npm run package -- --unsigned
+```
+
+`--content` is the loader's *alternative content directory*, and the name reads one level too
+high. It replaces the Evergreen content directory outright —
+`starboard/loader_app/loader_app.cc` substitutes it for `<content>/app/cobalt/content`, and
+`slot_management.cc` for `<installation>/content` — so it names the directory that itself holds
+`fonts/`, `icu/`, `licenses/` and `ssl/certs/`. Point it at the tree above (`.../cobalt-root`, the
+mirror of `/usr/apps/com.samsung.tv.cobalt/content`) and the container still starts, because the
+library path is resolved separately and this switch does not touch it — it just comes up with no
+certificates and no ICU data. For the same reason the copy needs no `manifest.json` and no `lib/`.
+
+On this set the tree to copy is `/usr/apps/com.samsung.tv.cobalt/content/app/cobalt/content`, and
+`ssl/certs/` is an OpenSSL hashed directory: a certificate added to it must be named
+`<subject_hash>.0` from `openssl x509 -subject_hash`, with a second copy under
+`-subject_hash_old` to cover both lookups.
+
+The service's own TLS interception is off unless `mitm/enabled` exists beside the key material in
+`/home/owner/share/tube/mitm/`. It is a file rather than an environment variable because the
+platform starts the service and nothing can hand it one.
+
 ---
 
 ## How it works

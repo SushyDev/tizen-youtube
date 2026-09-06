@@ -13,63 +13,22 @@ const URL = require('url');
 const { readFileSync } = require('fs');
 
 const journal = require('./journal.js');
-const media = require('./stream.js');
-
-// The page's own player fetches a second copy of every video into a source buffer that
-// keeps none of it, and decoding two 2160p60 streams is more than this set can do. Only
-// the start of a response: pacing the whole body made a twelve-megabyte reply take over a
-// minute, and those connections accumulated until the proxy stopped answering at all.
-const HOLD_MS = 250;
-const HOLD_FOR_FIRST = 12;
-const MOST_HELD_AT_ONCE = 2;
-
-let holding = 0;
-
-function held(source) {
-    if (holding >= MOST_HELD_AT_ONCE) return source;
-
-    holding += 1;
-
-    let chunks = 0;
-    let done = false;
-
-    const release = () => {
-        if (done) return;
-        done = true;
-        holding -= 1;
-    };
-
-    source.on('end', release);
-    source.on('error', release);
-    source.on('close', release);
-
-    source.on('data', () => {
-        chunks += 1;
-        if (done || chunks > HOLD_FOR_FIRST) return release();
-
-        source.pause();
-        setTimeout(() => source.resume(), HOLD_MS);
-        return undefined;
-    });
-
-    return source;
-}
-
-// Off, because asking for the player response without the account's token is also what
-// makes the app believe nobody is signed in: it arrives at guest mode and an account
-// picker loop with no way out. Set TUBE_ANON_PLAYER=1 at build time to measure with it on.
-const ANONYMOUS_PLAYER = process.env.TUBE_ANON_PLAYER === '1';
+// TEMPORARY, for the Cobalt attestation investigation.
+const exchange = require('./exchange.js');
 
 // Without an agent node-fetch reconnects per request, so every segment of a 4K stream
 // paid for a TLS handshake on the set's own processor while it was decoding.
-const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: 8, timeout: 60000 };
+// No socket timeout. A SABR answer is a single long-lived response that the player reads from for
+// as long as it is watching, so any timeout here is a hard cap on how long a video plays: at sixty
+// seconds the socket was closed, the buffer drained to exactly that, and the player was torn down.
+const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: 8, timeout: 0 };
 const httpsAgent = new https.Agent(AGENT_OPTIONS);
 const httpAgent = new http.Agent(AGENT_OPTIONS);
 const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
-const sabr = require('./sabr.js');
+const forward = require('./forward.js');
 
 // The set reaches the service on loopback. TUBE_PROXY_HOST points it at another machine
 // instead, which is how the proxy's cost can be taken off the television entirely.
@@ -107,120 +66,143 @@ function spoofUserAgent(text) {
     return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
 }
 
-// TEMPORARY, for the Cobalt container experiment: flipped by hand to bisect our own mods against
-// the proxy. `process.env` is no use here — it is read on the television, not at build time.
-const INJECT_USERSCRIPT = true;
-const INSTRUMENT = true;
-const REWRITE_FOR_COBALT = true;
+// The container's player reads its own configuration out of `serializedExperimentFlags` in the
+// page. Setting one here changes which delivery path the player asks for — the whole reason this
+// exists is to be able to move it off SABR and onto the ordinary adaptive formats, which are
+// plain ranged GETs with no UMP framing. Set at runtime through /__tube/dev/flags so an A/B does
+// not cost a reinstall; empty means the page is passed through untouched.
+const flagOverrides = new Map();
 
-function rewriteBody(text, url, forCobalt) {
-    // TEMPORARY: instrumentation only, no mods. Wraps the page's own networking so we can see
-    // what the player asks for and, more to the point, what it never asks for.
-    if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1 && INSTRUMENT) {
-        // TEMPORARY, for the Cobalt container experiment. The container's player refuses a media
-        // URL whose host is not googlevideo, so the response cannot be rewritten — but sending it
-        // straight to Google fails CORS, because the origin is ours rather than youtube.com. So
-        // the player builds its own URL and this swaps it at send time, same origin, no CORS.
-        const spy = '<script>(function(){'
-            + `var origin='${LOCAL_ORIGIN}';`
-            + 'var beacon=function(w){try{var i=new Image();'
-            + "i.src=origin+'/__tube/oops?m='+encodeURIComponent(w);}catch(e){}};"
-            + "beacon('shim installed');"
-            + 'try{'
-            + 'var reroute=function(u){var s=String(u);'
-            + "if(s.indexOf('googlevideo.com')===-1)return u;"
-            + "if(s.indexOf('/cors-bypass/')!==-1)return u;"
-            + "if(s.indexOf('//')===0)s='https:'+s;"
-            + "return origin+'/cors-bypass/'+s;};"
-            + 'var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){'
-            + 'var t=reroute(u);'
-            + "if(t!==u)beacon('rerouted xhr '+m);"
-            + 'arguments[1]=t;return X.apply(this,arguments);};'
-            + 'var F=window.fetch;if(F)window.fetch=function(u,o){'
-            + 'var s=(u&&u.url)||u;var t=reroute(s);'
-            + "if(t!==s){beacon('rerouted fetch');"
-            + 'if(u&&u.url){u=new Request(t,u);}else{u=t;}}'
-            + 'return F.call(window,u,o);};'
-            + "beacon('shim armed');"
-            + "}catch(e){beacon('shim threw '+e);}"
-            + '})();</script>';
-        // Before </body>, not in <head>: the container runs the first and ignores the second.
-        if (text.indexOf('</body>') !== -1) text = text.replace('</body>', `${spy}</body>`);
+// 'https://www.youtube.com' (the default), 'pass' to forward the page's own, or 'drop' for none.
+// Media hosts only: pointing innertube at a foreign origin breaks SAPISIDHASH and signs the
+// account out, which is not obvious until it happens.
+const upstream = {
+    origin: 'https://www.youtube.com',
+    abrThroughService: false,
+    onesie: 'auto',
+    nativeProxyPatches: true
+};
+
+// Onesie delivers the player response encrypted inside the media stream, so with it on there is no
+// JSON for the service to read or rewrite. The html5_onesie flag does not stop it — the client uses
+// onesie whenever the page hands it a hot config, so the way to turn it off is to take that away.
+function withoutOnesie(text) {
+    return text.replace(/"onesieHotConfig"/g, '"onesieHotConfigWithheld"');
+}
+
+// With SABR there is exactly one media URL in the player response and every byte comes from it.
+// Sending that one field through the service means the page needs no patched fetch to reach
+// googlevideo — the only way to run the client with the platform genuinely untouched.
+function rerouteAbr(text) {
+    return text.replace(
+        /"serverAbrStreamingUrl":"(https:\\?\/\\?\/[^"]+)"/g,
+        (whole, url) => `"serverAbrStreamingUrl":"${PROXY_PREFIX}${url}"`
+    );
+}
+
+function proxyGoogleUrl(url) {
+    return `${PROXY_PREFIX}${url}`;
+}
+
+// With the native patches off nothing rewrites an absolute https://www.youtube.com/… URL, so those
+// requests leave over Cobalt's --proxy tunnel where the service cannot read them — which is why the
+// attestation challenge arrived unrewritten. The client has its own knob for this: kabuki and the
+// player both read INNERTUBE_HOST_OVERRIDE and prefix every innertube call with it, so setting it
+// brings that traffic here with nothing in the page patched.
+function overrideInnertubeHost(text) {
+    return text.replace(
+        '"INNERTUBE_CONTEXT_CLIENT_NAME"',
+        `"INNERTUBE_HOST_OVERRIDE":${JSON.stringify(LOCAL_ORIGIN)},"INNERTUBE_CONTEXT_CLIENT_NAME"`
+    );
+}
+
+// TEMPORARY: the BotGuard program URL has been missed twice by guessing at its shape. This says
+// which response carries it and what it actually looks like on the wire.
+function noteAttestationShape(text, targetUrl, contentType) {
+    if (!journal.wanted()) return;
+
+    const at = text.indexOf('interpreterUrl');
+    if (at === -1) return;
+
+    journal.service('bgchallenge', `${targetUrl.slice(0, 70)} [${contentType}] ${text.slice(at, at + 140)}`);
+}
+
+function rewriteAttestation(text, targetUrl) {
+    if (/tv-player-[^/]+\.js/.test(targetUrl) || /player-es6/.test(targetUrl)) {
+        text = text.replace(/https:\/\/jnn-pa\.googleapis\.com/g,
+            proxyGoogleUrl('https://jnn-pa.googleapis.com'));
     }
 
-    if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1 && INJECT_USERSCRIPT) {
+    // BotGuard's program URL. It took three wrong guesses to pin down, so for the record: it is not
+    // in /att/get (this client never calls it), it is not in the page, and it does not ride in
+    // browse/next/player. It comes from /tv_config, wrapped in a TrustedResourceUrl, protocol-
+    // relative, and inside a JSON string — so the quotes around it arrive escaped:
+    //
+    //   interpreterUrl\":{\"privateDoNotAccessOrElse…WrappedValue\":\"//www.google.com/js/th/….js
+    //
+    // Any pattern expecting a bare " matches nothing at all and fails silently. Both quotings are
+    // allowed for here. Getting this right is what lets the script reach us without patching
+    // HTMLScriptElement.src in the page.
+    // The slashes may be escaped as well as the quotes, so the URL is matched as "// or \/\/
+    // followed by anything that is not an unescaped quote".
+    const WRAPPED = /(\\?"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
+    const PLAIN = /(\\?"interpreterUrl\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
+
+    text = text.replace(WRAPPED, (whole, prefix, url) => `${prefix}${PROXY_PREFIX}https:${url}`);
+    text = text.replace(PLAIN, (whole, prefix, url) => `${prefix}${PROXY_PREFIX}https:${url}`);
+
+    return text;
+}
+
+// In the page the blob is a JSON string, so its separators arrive escaped: `=` as = and `&`
+// as &. Matching the plain form alone silently does nothing, which is worth a comment because
+// it looks like it is working.
+// Tolerant of both, because the page carries it plain and a nested JSON payload would escape it.
+const BLOB = /serializedExperimentFlags\\?":\\?"/;
+
+function retuneFlags(text) {
+    let out = text;
+
+    for (const [name, value] of flagOverrides) {
+        const escaped = new RegExp(`${name}\\\\u003d[^\\\\"]*`, 'g');
+        const plain = new RegExp(`${name}=[^&"\\\\]*`, 'g');
+
+        if (escaped.test(out)) {
+            out = out.replace(escaped, `${name}\\u003d${value}`);
+        } else if (plain.test(out)) {
+            out = out.replace(plain, `${name}=${value}`);
+        } else {
+            // Not every flag the player reads is one the server sent. An absent flag reads as off,
+            // so turning one on means adding it to the front of the blob.
+            const found = BLOB.exec(out);
+            if (found) {
+                const insert = found.index + found[0].length;
+                out = `${out.slice(0, insert)}${name}\\u003d${value}\\u0026${out.slice(insert)}`;
+            }
+        }
+    }
+
+    return out;
+}
+
+function rewriteBody(text, url, injectionOrigin) {
+    if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1) {
         if (DEV_USER_AGENT) text = spoofUserAgent(text);
-        // TEMPORARY, for the Cobalt container experiment: Cobalt has no reachable console, so
-        // whatever the userscript throws there is invisible. This carries it back to the journal.
-        const beacon = '<script>window.onerror=function(m,s,l,c){try{var i=new Image();'
-            + `i.src='${LOCAL_ORIGIN}/__tube/oops?m='+encodeURIComponent(m+' @'+s+':'+l+':'+c);`
-            + '}catch(e){}};</script>';
-        const tag = `<script src="${LOCAL_ORIGIN}/__tube/userScript.js?v=${Date.now()}"></script>`
-            + '<script>try{var i=new Image();i.src='
-            + `'${LOCAL_ORIGIN}/__tube/oops?m='+encodeURIComponent('secure='+window.isSecureContext`
-            + "+' mse='+(typeof window.MediaSource)"
-            + "+' eme='+(typeof navigator.requestMediaKeySystemAccess)"
-            + "+' origin='+location.origin);}catch(e){}</script>";
+        if (flagOverrides.size) text = retuneFlags(text);
+        if (upstream.onesie === 'off') text = withoutOnesie(text);
+        if (!upstream.nativeProxyPatches) text = overrideInnertubeHost(text);
+        // Only our own script. Nothing of the platform is patched: googlevideo and jnn-pa allow
+        // our origin, so the player reaches them itself, exactly as the stock app does.
+        const setting = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`;
+        const origin = injectionOrigin || LOCAL_ORIGIN;
+        const tag = `${setting}<script src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`;
 
-        // Appending past </html> is fine in Chromium and is dropped by Cobalt's parser, so the
-        // tags go inside the document — last thing before </body>, to keep the timing they had.
-        if (text.indexOf('</body>') !== -1) text = text.replace('</body>', `${beacon}${tag}</body>`);
-        else text += beacon + tag;
-        if (DEV_INJECT_PATH) text += `<script src="${LOCAL_ORIGIN}/__tube/dev.js?v=${Date.now()}"></script>`;
+        // Appended past </html> a browser still runs it; Cobalt's parser drops it. Inside the
+        // document, last thing before </body>, keeps the timing and works in both.
+        if (text.indexOf('</body>') !== -1) text = text.replace('</body>', `${tag}</body>`);
+        else text += tag;
+        if (DEV_INJECT_PATH) text += `<script src="${origin}/__tube/dev.js?v=${Date.now()}"></script>`;
     }
-
-    // TEMPORARY, for the Cobalt container experiment: the whole rewrite table off in one cut, to
-    // find out whether any of it is what stops the container's player from ever fetching media.
-    if (forCobalt && !REWRITE_FOR_COBALT) return text;
-
-    // TEMPORARY, for the Cobalt container experiment: the container's player never builds a media
-    // URL at all when these are rewritten — it has the formats and a token, does its eligibility
-    // check, then stops. Left alone it talks to googlevideo directly over https, which is what the
-    // stock app does and what plays. We lose media interception there; the enhanced player is off
-    // in the container anyway.
-    if (!forCobalt) {
-        text = text.replace(/https:\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `${PROXY_PREFIX}https://$1.googlevideo.com`);
-        text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/${PROXY_HOST}:${ports.PROXY}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
-        text = text.replace(/"\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `"${PROXY_PREFIX}https://$1.googlevideo.com`);
-    }
-
-    // Three spellings each, because YouTube emits absolute, escaped and protocol-relative
-    // forms.
-
-    text = text.replace(/https:\/\/www\.gstatic\.com/g, `${PROXY_PREFIX}https://www.gstatic.com`);
-    text = text.replace(/http:\/\/www\.gstatic\.com/g, `${PROXY_PREFIX}https://www.gstatic.com`);
-    text = text.replace(/"\/\/www\.gstatic\.com/g, `"${PROXY_PREFIX}https://www.gstatic.com`);
-    text = text.replace(/\(\/\/www\.gstatic\.com/g, `(${PROXY_PREFIX}https://www.gstatic.com`);
-
-    text = text.replace(/https:\/\/yt3\.ggpht\.com/g, `${PROXY_PREFIX}https://yt3.ggpht.com`);
-
-    text = text.replace(/https:\/\/clients1\.google\.com/g, `${PROXY_PREFIX}https://clients1.google.com`);
-    text = text.replace(/http:\/\/clients1\.google\.com/g, `${PROXY_PREFIX}https://clients1.google.com`);
-    text = text.replace(/"\/\/clients1\.google\.com/g, `"${PROXY_PREFIX}https://clients1.google.com`);
-
-    // Without localhost in YouTube's postMessage allowlist, sign-in is dropped.
-    text = text.replace('Set(["www.youtube.com","accounts.google.com"]);', `Set(["www.youtube.com", "accounts.google.com", "localhost", ${JSON.stringify(PROXY_HOST)}]);`);
-
-    // Telemetry and player code compare the embedded page URL against the real origin.
-    text = text.replace(/:document\.location\.toString\(\)/g, `:document.location.toString().replace("${LOCAL_ORIGIN}", "https://www.youtube.com")`);
-    text = text.replace(/euri:[^,]+,/g, `euri:document.location.toString().replace("${LOCAL_ORIGIN}", "https://www.youtube.com"),`);
-
-    text = text.replace(/https:\/\/s\.youtube\.com/g, `${PROXY_PREFIX}https://s.youtube.com`);
-    text = text.replace(/redirector.googlevideo.com/g, `${PROXY_PREFIX}https://redirector.googlevideo.com`);
-
-    // Over plain HTTP the scheme must match or every media request is mixed content. Not in the
-    // Cobalt container, though: it refuses plain HTTP to any public host, so forcing the scheme
-    // down makes the player build a media URL its own network layer drops before requesting it —
-    // no request, no error, just a player that retries for ever.
-    if (!forCobalt) text = text.replace(/this.scheme="https"/, 'this.scheme="http"');
-
-    text = text.replace(/https\:\/\/jnn-pa.googleapis.com/g, `${PROXY_PREFIX}https://jnn-pa.googleapis.com`);
-    text = text.replace(/https:\/\/yt3\.googleusercontent\.com/g, `${PROXY_PREFIX}https://yt3.googleusercontent.com`);
-    text = text.replace(/"\/\/yt3\.googleusercontent\.com/g, `"${PROXY_PREFIX}https://yt3.googleusercontent.com`);
-
-    // Otherwise history entries carry the localhost origin and back navigation dies.
-    text = text.replace(/=window\.location\.href;/, `=window.location.href.replace("${LOCAL_ORIGIN}", "https://www.youtube.com");`);
-    text = text.replace(/=document\.location\.href/, `=document.location.href.replace("${LOCAL_ORIGIN}", "https://www.youtube.com")`);
 
     return text;
 }
@@ -252,25 +234,38 @@ function restoreCookiePrefixes(cookieHeader) {
 function create(platformVersion) {
     const app = express();
 
+    // Cobalt reaches the service two ways: as an ordinary origin, and — when it is started with
+    // --proxy — as a forward proxy, which names the whole URL on the request line. When that URL
+    // is the service itself, put it back to a path so the routes below see what they expect.
+    app.use((req, _, next) => {
+        forward.normaliseSelf(req, PROXY_HOST, ports.PROXY);
+        next();
+    });
+
+    // Only while diagnostics are open, and worth its keep: a page that has stopped asking for
+    // anything looks exactly like one that is asking and being refused, and the difference is
+    // most of the diagnosis.
+    app.use((req, _, next) => {
+        // req.url, not originalUrl: the forward-proxy form has already been put back to a path
+        // above, and originalUrl still holds the absolute URI the request line carried.
+        const path = String(req.url || req.originalUrl);
+
+        // Our own chatter would drown the page's: the dev bridge alone polls five times a second.
+        if (journal.wanted() && path.indexOf('/__tube/') !== 0) {
+            journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
+        }
+        if (journal.wanted() && req.socket && (req.socket.__tubeMitm || req.socket.encrypted)) {
+            journal.service('mitmreq', `${req.method} ${path.slice(0, 150)} host=${req.headers.host || '?'}`);
+        }
+        next();
+    });
+
     app.use((req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
         res.setHeader('Access-Control-Allow-Headers', '*');
         if (req.method === 'OPTIONS') return res.status(200).end();
         next();
-    });
-
-    // TEMPORARY, for the Cobalt container experiment: where the page's errors come back to.
-    app.get('/__tube/oops', (req, res) => {
-        const said = String((req.query && req.query.m) || '').slice(0, 400);
-        journal.service('cobalt', said);
-        // The journal only records once the dev bridge has opened it, and in the container it
-        // never does, so this one goes straight to the file.
-        try {
-            require('fs').appendFileSync('/home/owner/share/tube/service.log',
-                `${new Date().toISOString()}  cobalt threw: ${said}\n`);
-        } catch (e) { /* off-TV, or no such directory */ }
-        res.type('image/gif').status(204).end();
     });
 
     // Served from the package or the verified cache, never from a CDN.
@@ -299,98 +294,32 @@ function create(platformVersion) {
 }
 
 // Must be called after every other route is registered.
-function collect(req) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        req.on('data', (chunk) => chunks.push(chunk));
-        req.on('end', () => resolve(Buffer.concat(chunks)));
-        req.on('error', reject);
-    });
-}
-
-// TODO: remove before release.
-const TELLING = [
-    'authorization', 'x-goog-authuser', 'x-goog-pageid', 'x-goog-visitor-id',
-    'x-youtube-client-name', 'x-youtube-client-version', 'x-youtube-bootstrap-logged-in',
-    'x-youtube-device', 'x-youtube-page-cl', 'x-youtube-page-label', 'x-youtube-utc-offset',
-    'x-youtube-identity-token', 'x-goog-request-time', 'x-origin', 'origin', 'referer',
-    'content-type', 'user-agent', 'cookie'
-];
-
-// `context.client.deviceMake` is what YouTube keys the encrypted-ladder experiment to on
-// this client.
-function askUnbranded(headers, buffer) {
-    notePlayerCall(headers, buffer);
-
-    let body;
-    try {
-        body = JSON.parse(buffer.toString('utf8'));
-    } catch (e) {
-        return buffer;
-    }
-
-    const client = (body.context || {}).client;
-    if (!client || client.deviceMake === undefined || body.licenseRequest) return buffer;
-
-    // Not in the Cobalt container: stripping the brand is a Chromium-side workaround, and the
-    // container's player is the one YouTube actually targets. Leave its request untouched.
-    if (/Cobalt/i.test(String(headers['user-agent'] || ''))) return buffer;
-
-    delete client.deviceMake;
-
-    const plain = Buffer.from(JSON.stringify(body), 'utf8');
-    headers['content-length'] = String(plain.length);
-
-    if (!unbranded) {
-        unbranded = true;
-        journal.service('innertube', 'asking without deviceMake — that field is what the '
-            + 'encrypted ladder is keyed to');
-    }
-
-    return plain;
-}
-
-let unbranded = false;
-
-function notePlayerCall(headers, buffer) {
-    if (!journal.wanted()) return;
-
-    try {
-        const body = JSON.parse(buffer.toString('utf8'));
-        if (!body.videoId || body.licenseRequest) return;
-
-        const said = TELLING
-            .filter((name) => headers[name] !== undefined)
-            .map((name) => {
-                const value = String(headers[name]);
-                if (name === 'cookie') return `cookie[${value.split(';').length} names]`;
-                if (name === 'authorization') return `authorization[${value.split(' ')[0]} ${value.length}b]`;
-                return `${name}=${value.length > 40 ? `${value.slice(0, 37)}...` : value}`;
-            });
-
-        journal.service('askedwith', `${body.videoId}: ${said.join(' ')}`);
-    } catch (e) {
-    }
-}
-
-// TODO: remove before release.
-let lastAnswer = '';
-
-function noteAnswer(path, how) {
-    const line = `${path.split('?')[0]} ${how}`;
-    if (line === lastAnswer) return;
-    lastAnswer = line;
-    journal.service('innertube', `${line}`);
-}
-
 function attachFallback(app) {
     app.all('*', (req, res) => {
-        const isBypass = req.path.indexOf('/cors-bypass/') === 0;
+        // Refusing the onesie request is the way to get a plain /youtubei/v1/player response out of
+        // the client. Withholding its hot config does not work — the client stalls instead of
+        // falling back — but a failed request is a case it already handles.
+        if (upstream.onesie === 'fail' && req.url.indexOf('initplayback') !== -1) {
+            if (journal.wanted()) journal.service('onesie', `refused ${req.method}`);
+            return res.status(502).end();
+        }
+
+        // Anything still absolute here came from Cobalt's own --proxy and is meant for somewhere
+        // else on the network; it goes out untouched.
+        const forwarded = forward.absoluteTarget(req.url);
+        const isBypass = !forwarded && req.path.indexOf('/cors-bypass/') === 0;
 
         let targetUrl;
-        if (isBypass) {
+        if (forwarded) {
+            targetUrl = forwarded;
+        } else if (isBypass) {
             const raw = req.url.substring('/cors-bypass/'.length);
             targetUrl = raw.indexOf('http') === 0 ? raw : `https://${raw}`;
+        } else if (req.socket && (req.socket.__tubeMitm || req.socket.encrypted)
+            && req.path.indexOf('/__tube/') === 0) {
+            targetUrl = `http://${PROXY_HOST}:${ports.PROXY}${req.url}`;
+        } else if (req.socket && (req.socket.__tubeMitm || req.socket.encrypted) && req.headers.host) {
+            targetUrl = `https://${req.headers.host}${req.url}`;
         } else {
             targetUrl = `https://www.youtube.com${req.url}`;
         }
@@ -398,49 +327,54 @@ function attachFallback(app) {
         const headers = {};
         for (const key in req.headers) {
             if (!Object.prototype.hasOwnProperty.call(req.headers, key)) continue;
+            if (key === 'proxy-connection') continue;
             headers[key] = key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key];
         }
 
+        let host = 'www.youtube.com';
         try {
-            headers.host = URL.parse(targetUrl).host;
-        } catch (e) {
-            headers.host = 'www.youtube.com';
+            host = URL.parse(targetUrl).host;
+        } catch (e) { /* keep the default */ }
+        headers.host = host;
+
+        // Google answers over TLS whatever the request line said; the plain scheme only exists so
+        // the request reaches us in the first place.
+        const forGoogle = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com)(:|$)/
+            .test(String(host).split(':')[0]);
+        if (forGoogle && targetUrl.indexOf('http://') === 0) targetUrl = `https://${targetUrl.slice(7)}`;
+
+        // What Origin the request carries upstream. The default presents youtube.com, which is what
+        // the page's own code would have sent; `pass` forwards the page's real origin untouched and
+        // `drop` sends none. Runtime-settable so the three can be compared without a reinstall —
+        // the proof-of-origin token is minted at our origin, so if the server cross-checks the two
+        // this is the input that decides it.
+        if (forGoogle && upstream.origin !== 'pass') {
+            if (upstream.origin === 'drop') {
+                delete headers.origin;
+                delete headers.referer;
+            } else {
+                headers.origin = upstream.origin;
+                if (headers.referer) headers.referer = `${upstream.origin}/tv`;
+            }
         }
-
-        // Any innertube call can carry media in its answer — a watch-next payload embeds the
-        // streams for what it expects to be played — so which endpoint an encrypted ladder comes
-        // from decides where the token has to be stripped.
-        const isInnertube = req.path.indexOf('/youtubei/v1/') === 0;
-
-        const isMedia = targetUrl.indexOf('videoplayback') !== -1;
-
-        const isPlayerCall = req.path.indexOf('/youtubei/v1/player') === 0;
-
-        headers.origin = 'https://www.youtube.com';
-        if (headers.referer) headers.referer = 'https://www.youtube.com/tv';
         if (DEV_USER_AGENT) headers['user-agent'] = DEV_USER_AGENT;
-        // Brotli is not decoded downstream, so ask for encodings we can rewrite.
+        // Brotli is not decoded here, so ask for encodings that can be read.
         headers['accept-encoding'] = 'gzip, deflate';
-
-        // Signed with the player's bearer token the response carries formats transcoded as
-        // they are served and encrypted; unsigned it carries the ordinary indexed ladder.
-        // Only the player call: signing `next` out too reads as a client worth challenging,
-        // and starts the account picker looping with no way out.
-        if (isPlayerCall && ANONYMOUS_PLAYER) {
-            delete headers.authorization;
-            delete headers['x-goog-authuser'];
-            delete headers['x-goog-pageid'];
-        }
 
         const hasBody = ['POST', 'PUT', 'PATCH'].indexOf(req.method) !== -1;
 
-        // Held rather than streamed: a SABR request is a couple of kilobytes, and reading it is
-        // how this service learns the session the page opened.
-        const body = hasBody && sabr.observed.wants(req.method, targetUrl)
-            ? collect(req).then((buffer) => { sabr.observed.note(targetUrl, buffer); return buffer; })
-            : (hasBody && isPlayerCall
-                ? collect(req).then((buffer) => askUnbranded(headers, buffer))
-                : Promise.resolve(hasBody ? req : undefined));
+        // TEMPORARY: record the exchanges that decide whether media keeps flowing, so the whole
+        // session can be read off the set afterwards instead of a build-and-watch cycle per guess.
+        const tag = exchange.tagFor(targetUrl);
+        let sent = null;
+
+        const body = (tag && hasBody)
+            ? new Promise((done) => {
+                const parts = [];
+                req.on('data', (chunk) => parts.push(chunk));
+                req.on('end', () => { sent = Buffer.concat(parts); done(sent); });
+            })
+            : Promise.resolve(hasBody ? req : undefined);
 
         body.then((payload) => fetch(targetUrl, {
             method: req.method,
@@ -452,7 +386,9 @@ function attachFallback(app) {
             .then((response) => {
                 res.status(req.method === 'OPTIONS' ? 200 : response.status);
 
-                if (isInnertube) noteAnswer(req.path, headers.authorization ? 'signed' : 'anon');
+                if (isBypass && journal.wanted()) {
+                    journal.service('answered', `${response.status} ${targetUrl.slice(0, 110)}`);
+                }
 
                 const raw = response.headers.raw();
                 for (const key in raw) {
@@ -470,20 +406,63 @@ function attachFallback(app) {
                     res.setHeader(key, response.headers.get(key));
                 }
 
-                res.setHeader('Access-Control-Allow-Origin', '*');
+                // A wildcard is refused for a request that carries cookies, so when the page names
+                // itself the answer names it back.
+                const asked = req.get('origin');
+                res.setHeader('Access-Control-Allow-Origin', asked || '*');
+                if (asked) res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+                // A redirect is followed by the browser itself, underneath anything the page has
+                // hooked, so an untouched Location sends it straight to Google from our origin and
+                // the request dies on CORS. Media redirects constantly — SABR moves the session
+                // between googlevideo hosts — so the hop has to come back through here.
+                const movedTo = response.status >= 300 && response.status < 400
+                    && response.headers.get('location');
+
+                if (isBypass && movedTo && /^https?:\/\//.test(movedTo)) {
+                    res.setHeader('Location', PROXY_PREFIX + movedTo);
+                }
 
                 const contentType = response.headers.get('content-type') || '';
                 const isTextual = TEXTUAL.some((type) => contentType.indexOf(type) !== -1);
 
-                if (!isTextual) {
-                    if (!response.body) return res.end();
+                // TEMPORARY: see above. The head of the answer is kept while the rest streams on.
+                const note = (got, size) => exchange.record({
+                    tag,
+                    method: req.method,
+                    url: targetUrl.slice(0, 400),
+                    status: response.status,
+                    type: contentType,
+                    sent: sent ? sent.toString('base64').slice(0, 12000) : null,
+                    sentBytes: sent ? sent.length : 0,
+                    sentHash: exchange.fingerprint(sent),
+                    origin: headers.origin || null,
+                    got: got.toString('base64'),
+                    gotBytes: size,
+                    protection: tag === 'media' ? exchange.protectionStatus(got) : 0
+                });
 
-                    if (isMedia && media.busy()) return held(response.body).pipe(res);
+                if (!isTextual) {
+                    if (!response.body) {
+                        if (tag) note(Buffer.alloc(0), 0);
+                        return res.end();
+                    }
+
+                    if (tag) exchange.keepHead(response.body, note);
+
                     return response.body.pipe(res);
                 }
 
                 return response.text().then((text) => {
-                    const body = rewriteBody(text, req.url, /Cobalt/i.test(req.get('user-agent') || ''));
+                    noteAttestationShape(text, targetUrl, contentType);
+                    const injectionOrigin = req.socket && (req.socket.__tubeMitm || req.socket.encrypted)
+                        && req.headers.host
+                        ? `https://${req.headers.host}` : null;
+                    let body = rewriteBody(text, req.url, injectionOrigin);
+                    body = rewriteAttestation(body, targetUrl);
+                    if (tag === 'player' && upstream.abrThroughService) body = rerouteAbr(body);
+                    if (tag) note(Buffer.from(text.slice(0, exchange.KEEP_BYTES)), text.length);
+                    if (tag === 'player') exchange.keepWhole('player', text);
                     res.send(body);
                 });
             })
@@ -497,5 +476,7 @@ function attachFallback(app) {
 }
 
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes
+    create, attachFallback, rewriteBody, rewriteAttestation, rerouteAbr, withoutOnesie,
+    overrideInnertubeHost, rewriteSetCookie, restoreCookiePrefixes,
+    flagOverrides, upstream
 };

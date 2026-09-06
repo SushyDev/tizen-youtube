@@ -156,8 +156,17 @@ class PreferredQualityHandler {
     };
 }
 
-if (typeof window !== 'undefined') window.preferredVideoQualityHandler = new PreferredQualityHandler();
+// Not inside Samsung's Cobalt container. Asking restarts the stream, and the container's player
+// does not report the rung back under the name we asked for, so the retry never settles — three
+// asks, five seconds apart, and the third one wedges playback for good about fifteen seconds in.
+// Cobalt chooses its own quality, which is the whole reason for being in there.
+const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.userAgent || '');
+
+if (typeof window !== 'undefined' && !inCobalt) {
+    window.preferredVideoQualityHandler = new PreferredQualityHandler();
+}
 
 export function keepCurrentChoice() {
-    if (typeof window !== 'undefined') window.preferredVideoQualityHandler.keepCurrentChoice();
+    const handler = typeof window !== 'undefined' && window.preferredVideoQualityHandler;
+    if (handler) handler.keepCurrentChoice();
 }

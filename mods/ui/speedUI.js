@@ -1,5 +1,4 @@
 import { configRead } from '../config.js';
-import { noteSpeed } from '../features/nativePlayback.js';
 import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
 
 const interval = setInterval(() => {
@@ -17,9 +16,6 @@ function execute_once_dom_loaded_speed() {
         const speed = configRead('videoSpeed');
         const video = document.querySelector('video');
         if (video) video.playbackRate = speed;
-
-        // Speed decides which pipeline can play the video, so a carried-over one must be noted.
-        noteSpeed(speed);
     });
 
     const eventHandler = (evt) => {

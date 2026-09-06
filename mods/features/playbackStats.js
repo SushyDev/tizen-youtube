@@ -1,5 +1,4 @@
 import { configRead } from '../config.js';
-import { fedByUs, servingNow } from './nativePlayback.js';
 
 // The platform player reports zero frames, so this measures lost time instead.
 
@@ -85,106 +84,6 @@ function measureRate(video, tally, wall) {
 
 const FIND_EVERY = 2000;
 
-const CORRECTED = {
-    Codecs: (now) => `${now.video.codecs} (${now.video.itag}) / ${now.audio.codecs} (${now.audio.itag})`,
-
-    Color: (now) => (now.video.colour
-        ? `${now.video.colour.transfer} / ${now.video.colour.primaries}`
-        : null),
-
-    Protected: () => 'no — served from this app'
-};
-
-// Every miss walks every div: uncached, four lookups a tick locked the television's interface.
-const found = new Map();
-let searchedAt = 0;
-
-function valueBeside(label) {
-    if (!searchable()) return null;
-
-    const held = found.get(label);
-    if (held && held.isConnected) return held;
-
-    const all = document.querySelectorAll('div');
-
-    for (let i = 0; i < all.length; i++) {
-        const node = all[i];
-        if (node.children.length !== 0) continue;
-        if (node.textContent.trim() !== label) continue;
-
-        const value = node.nextElementSibling;
-        if (value && value.children.length === 0) {
-            found.set(label, value);
-            return value;
-        }
-    }
-
-    found.delete(label);
-    return null;
-}
-
-function markPipeline(video, after) {
-    const beside = valueBeside(after);
-    if (!beside || !beside.parentNode) return;
-
-    let row = added.get('Enhanced');
-
-    if (!row || !row.value.isConnected) {
-        // The whole row is cloned: inserting beside an existing pair lands inside that row.
-        const source = beside.parentNode;
-        const copy = source.cloneNode(true);
-
-        while (copy.children.length > 2) copy.removeChild(copy.lastElementChild);
-        if (copy.children.length < 2) return;
-
-        const name = copy.children[0];
-        const value = copy.children[1];
-
-        name.textContent = 'Enhanced';
-        source.parentNode.insertBefore(copy, source.nextSibling);
-
-        row = { name, value };
-        added.set('Enhanced', row);
-    }
-
-    const pipeline = pipelineOf(video);
-    const said = pipeline === 'enhanced' ? 'yes' : `no — ${pipeline} player`;
-
-    if (row.value.textContent !== said) row.value.textContent = said;
-}
-
-const added = new Map();
-
-function correctRows(video, wall) {
-    const cached = [...found.values()].some((node) => node && node.isConnected);
-    if (!cached) {
-        if (wall - searchedAt < FIND_EVERY) return;
-        searchedAt = wall;
-    }
-
-    markPipeline(video, 'Codecs');
-
-    if (pipelineOf(video) !== 'enhanced') return;
-
-    const now = servingNow();
-    if (!now || !now.video || !now.audio) return;
-
-    const write = (node, said) => {
-        if (node && said && node.textContent !== said) node.textContent = said;
-    };
-
-    Object.keys(CORRECTED).forEach((label) => {
-        let said;
-        try {
-            said = CORRECTED[label](now, video);
-        } catch (e) {
-            return;
-        }
-
-        write(valueBeside(label), said);
-    });
-}
-
 const searchable = () => typeof document !== 'undefined' && !!document.querySelectorAll;
 
 function framesNode() {
@@ -198,15 +97,6 @@ function framesNode() {
     return null;
 }
 
-function pipelineOf(video) {
-    const source = String(video.currentSrc || '');
-
-    if (source.indexOf('/dash/') !== -1) return 'enhanced';
-    if (fedByUs()) return 'fed by the app';
-
-    return 'default';
-}
-
 function said(tally) {
     const lost = lostBy(tally);
     const time = lost >= 0.05 ? `~${lost.toFixed(1)}s lost` : '~no time lost';
@@ -214,10 +104,7 @@ function said(tally) {
     return tally.rate ? `@ ${tally.rate.toFixed(2)} fps · ${time}` : time;
 }
 
-function showRate(video, tally, wall) {
-    // Before the frames row is looked for: the enhanced player has none, so the rest never runs.
-    correctRows(video, wall);
-
+function showRate(tally, wall) {
     if (!tally.node || !tally.node.isConnected) {
         if (wall - tally.lookedAt < FIND_EVERY) return;
         tally.lookedAt = wall;
@@ -225,13 +112,23 @@ function showRate(video, tally, wall) {
         if (!tally.node) return;
     }
 
-    if (!tally.label || !tally.label.isConnected) {
+    // The panel is re-rendered under us, and a remembered node is no guide to whether a label is
+    // already there — so it is found by its mark, and any duplicate left by a re-render is removed.
+    const row = tally.node.parentNode;
+    const already = row.querySelectorAll('[data-tube-lost]');
+
+    for (let i = 1; i < already.length; i += 1) already[i].remove();
+
+    tally.label = already[0] || null;
+
+    if (!tally.label) {
         tally.label = document.createElement('span');
+        tally.label.setAttribute('data-tube-lost', '');
         tally.label.style.cssText = 'display:inline;white-space:pre';
-        tally.node.parentNode.insertBefore(tally.label, tally.node.nextSibling);
+        row.insertBefore(tally.label, tally.node.nextSibling);
     }
 
-    tally.label.textContent = `  ${said(tally)} · ${pipelineOf(video)} player`;
+    tally.label.textContent = `  ${said(tally)}`;
 }
 
 function frameRate(video, tally) {
@@ -278,14 +175,13 @@ export function sample(video) {
     while (tally.recent.length > (WINDOW * 1000) / TICK) tally.recent.shift();
     frameRate(video, tally);
     measureRate(video, tally, current.wall);
-    showRate(video, tally, current.wall);
+    showRate(tally, current.wall);
 
     latest = {
         lost: +lostBy(tally).toFixed(3),
         window: WINDOW,
         rate: tally.rate ? +tally.rate.toFixed(2) : null,
-        claimed: tally.fps,
-        pipeline: pipelineOf(video)
+        claimed: tally.fps
     };
 
     tally.previous = step.reseed ? null : current;

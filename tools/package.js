@@ -80,6 +80,75 @@ const GAME_MODE = '<tizen:metadata key="http://samsung.com/tv/metadata/use.game.
 
 const wantsGameMode = () => process.env.TUBE_GAME_MODE === '1';
 
+const xmlAttribute = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+// Opt-in profile for testing Cobalt's native HTTPS origin and trust path.
+//
+// --content is the loader's *alternative content directory*, and it replaces the Evergreen
+// content directory wholesale: `starboard/loader_app/loader_app.cc` substitutes it for
+// `<content>/app/cobalt/content`, and `slot_management.cc` for `<installation>/content`. So it
+// names the directory that directly holds `fonts/`, `icu/`, `licenses/` and `ssl/certs/` — not the
+// loader root above it, and not `app/cobalt`. It has no bearing on where libcobalt is loaded
+// from, so the copy needs no `manifest.json` and no `lib/`.
+function addCobaltProfile(staging) {
+    const baseUrl = process.env.TUBE_COBALT_BASE_URL;
+    const proxyUrl = process.env.TUBE_COBALT_PROXY;
+    const content = process.env.TUBE_COBALT_CONTENT;
+    if (!baseUrl && !proxyUrl && !content) return;
+    if (!baseUrl || !proxyUrl) {
+        throw friendly('TUBE_COBALT_BASE_URL and TUBE_COBALT_PROXY must be supplied together.');
+    }
+    if (content && /[\s"&<>]/.test(content)) {
+        throw friendly('TUBE_COBALT_CONTENT must be a path without whitespace or XML characters.');
+    }
+    if (content && /\/app\/cobalt$|\/app$/.test(content)) {
+        throw friendly(
+            `TUBE_COBALT_CONTENT names the Evergreen content directory itself, not the tree above\n` +
+            `  it. ${content}/content is probably what you meant.`
+        );
+    }
+
+    let base;
+    let proxy;
+    try { base = new URL(baseUrl); } catch (e) {
+        throw friendly(`TUBE_COBALT_BASE_URL is not a URL: ${baseUrl}`);
+    }
+    try { proxy = new URL(proxyUrl); } catch (e) {
+        throw friendly(`TUBE_COBALT_PROXY is not a URL: ${proxyUrl}`);
+    }
+    if (base.protocol !== 'https:') {
+        throw friendly('TUBE_COBALT_BASE_URL must use https.');
+    }
+    if (proxy.protocol !== 'http:') {
+        throw friendly('TUBE_COBALT_PROXY must use http.');
+    }
+
+    const path = join(staging, 'config.xml');
+    let xml = readFileSync(path, 'utf8');
+    const metadata = 'http://samsung.com/tv/metadata/native.userdata';
+    const expression = new RegExp(`(<tizen:metadata\\s+key="${metadata}"\\s+value=")([^"]*)("\\s*/>)`);
+    if (!expression.test(xml)) throw friendly('config.xml has no Cobalt native.userdata metadata.');
+
+    // Only --base_url, --proxy and --content are this profile's business. Replacing the whole
+    // switch list drops --use_eden and --dial_name, and without those the container reports a
+    // successful launch and then never appears in getAppsContext at all.
+    const existing = expression.exec(xml)[2].split(/\s+/).filter(Boolean)
+        .filter((argument) => !/^--(base_url|proxy|content)=/.test(argument));
+
+    const args = [
+        `--base_url=${baseUrl}`,
+        `--proxy=${proxyUrl}`,
+        content ? `--content=${content}` : null,
+        ...existing
+    ].filter(Boolean).join(' ');
+    xml = xml.replace(expression, `$1${xmlAttribute(args)}$3`);
+    writeFileSync(path, xml);
+}
+
 function addGameMode(staging) {
     const path = join(staging, 'config.xml');
     const xml = readFileSync(path, 'utf8');
@@ -131,6 +200,7 @@ async function packageApp(certificate) {
     const started = Date.now();
     try {
         stageContents(staging);
+        addCobaltProfile(staging);
         if (wantsGameMode()) addGameMode(staging);
         if (certificate) signWith(certificate, staging, outPath);
         else await zipUnsigned(staging, outPath);

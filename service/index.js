@@ -7,10 +7,8 @@ const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
 const devbridge = require('./lib/devbridge.js');
-const dash = require('./lib/dash.js');
-const stream = require('./lib/stream.js');
 const dial = require('./lib/dial.js');
-const journal = require('./lib/journal.js');
+const forward = require('./lib/forward.js');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -20,19 +18,10 @@ const platformVersion = isTV
 
 const app = proxy.create(platformVersion);
 
-// TEMPORARY, for the Cobalt container experiment. A gold Cobalt build requires a real
-// Content-Security-Policy header on the document: without one its CSP delegate refuses to load
-// any resource at all, which reads on screen as a black screen and a network error.
-// TEMPORARY, alongside it: what the container actually asks for, so a playback that fetches no
-// media at all can be told apart from one whose fetches are refused.
-app.use((req, _, next) => {
-    const path = String(req.originalUrl || req.url || '');
-    if (path.indexOf('/__tube/oops') === -1) {
-        journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
-    }
-    next();
-});
-
+// Cobalt refuses to load a single resource from a document that arrived without a
+// Content-Security-Policy header — a release build treats its absence as "deny everything", which
+// on screen is a black rectangle and a network error rather than anything naming CSP. The page is
+// ours and already same-origin, so the policy only has to exist.
 app.use((_, res, next) => {
     res.setHeader('Content-Security-Policy', [
         "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
@@ -75,7 +64,6 @@ function describeState() {
     return {
         platformVersion,
         variant: loader.variantFor(platformVersion),
-        media: stream.holding(),
         script,
         proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
             ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
@@ -102,21 +90,41 @@ app.get('/__tube/quit', (_, res) => {
     setTimeout(() => process.exit(0), 100);
 });
 
+// Which experiment flags the page is served with, changeable while the set is running:
+//   /__tube/dev/flags                       what is set now
+//   /__tube/dev/flags?html5_onesie=false    set one (repeatable), then reload the page
+//   /__tube/dev/flags?clear=1               back to what YouTube sent
+app.get('/__tube/dev/flags', (req, res) => {
+    if (req.query.clear) proxy.flagOverrides.clear();
+
+    for (const name of Object.keys(req.query)) {
+        if (name === 'clear') continue;
+        if (!/^[a-z0-9_]{3,64}$/.test(name)) continue;
+        proxy.flagOverrides.set(name, String(req.query[name]).slice(0, 32));
+    }
+
+    res.json({ flags: Object.fromEntries(proxy.flagOverrides) });
+});
+
+// Which Origin the service presents to Google. /__tube/dev/upstream?origin=pass|drop|<url>
+app.get('/__tube/dev/upstream', (req, res) => {
+    const asked = req.query.origin;
+    if (asked) proxy.upstream.origin = String(asked).slice(0, 128);
+    if (req.query.abr) proxy.upstream.abrThroughService = req.query.abr === 'service';
+    if (req.query.onesie) {
+        const asked = String(req.query.onesie);
+        proxy.upstream.onesie = ['off', 'fail'].indexOf(asked) === -1 ? 'auto' : asked;
+    }
+    if (req.query.patches) proxy.upstream.nativeProxyPatches = req.query.patches !== 'off';
+    res.json({
+        origin: proxy.upstream.origin,
+        abr: proxy.upstream.abrThroughService ? 'service' : 'direct',
+        onesie: proxy.upstream.onesie,
+        patches: proxy.upstream.nativeProxyPatches ? 'on' : 'off'
+    });
+});
+
 devbridge.attach(app);
-
-// TEMPORARY, for the Cobalt container experiment: the journal only records once the page asks for
-// diagnostics, and the container never does — so the proxy's own view of a failing playback is
-// invisible. Opening it here makes /log readable without a cooperating page.
-devbridge.start();
-
-// Registered last so it cannot shadow the endpoints above.
-dash.attach(app);
-
-stream.clean();
-
-// Not every runtime this service starts on has `unref`.
-const sweeping = setInterval(() => stream.sweep(), stream.SWEEP_INTERVAL);
-if (sweeping && typeof sweeping.unref === 'function') sweeping.unref();
 
 proxy.attachFallback(app);
 
@@ -150,18 +158,28 @@ function announceReady() {
     }
 }
 
-// TEMPORARY, for the Cobalt container experiment: packages on this set cannot reach each other's
-// loopback, so the container has to be given the television's own address on the network instead.
+// Loopback is not enough. Cobalt runs in its own package, and this television controls
+// app-to-app traffic on 127.0.0.1 by SMACK label, so nothing outside our package can reach a
+// server bound there. Binding every interface lets the container in by the set's own address.
+//
+// Loopback is not worth trying again. From another package on this set, 127.0.0.1 and 0.0.0.0
+// answer EHOSTUNREACH and ::1 and localhost answer EACCES, while the LAN address connects; a
+// dual-stack '::' bind and a --proxy naming localhost were both packaged and launched to confirm
+// it end to end. The container never connects. So the proxy switch has to name a real address.
 const BIND = '0.0.0.0';
 
-app.listen(ports.PROXY, BIND, () => {
-    console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
+const server = app.listen(ports.PROXY, BIND, () => {
+    console.log(`tube service on ${BIND}:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
     if (!isTV) {
         console.log('Running off-TV: proxy and userscript are live; DIAL is disabled.');
     }
 
     announceReady();
 });
+
+// Cobalt's --proxy sends TLS through CONNECT; without an answer to that the container has no
+// network at all. The bytes are passed through untouched — this is a route, not a reader.
+forward.tunnel(server);
 
 if (isTV) dial.start();
 

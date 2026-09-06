@@ -33,7 +33,6 @@
   },
   "devDependencies": {
     "eslint": "^10.9.1",
-    "jszip": "^3.10.1",
-    "tizen": "https://github.com/reisxd/tizen.js/tarball/main"
+    "jszip": "^3.10.1"
   }
 }

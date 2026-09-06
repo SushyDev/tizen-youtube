@@ -30,9 +30,9 @@ built it installs on their set and nowhere else. Tizen Homebrew re-signs
 whatever it installs with the pair the TV itself holds, which is what makes a
 package written by somebody else installable at all.
 
-So the widget on each [release](../../releases) is **unsigned**, and Homebrew's
-**GitHub** or **Upload** tab takes it as it is. A television refuses it over
-sdb, which is the expected half of the same fact.
+So nothing here signs. The widget on each [release](../../releases) is signed by
+nobody, and Homebrew's **GitHub** or **Upload** tab takes it as it is. A
+television refuses it over sdb, which is the expected half of the same fact.
 
 Building it yourself needs **Node 20+**:
 
@@ -40,12 +40,8 @@ Building it yourself needs **Node 20+**:
 git clone https://github.com/SushyDev/tizen-youtube.git
 cd tizen-youtube
 npm install
-npm run package -- --unsigned    # release/tube.wgt, for Tizen Homebrew
+npm run package    # release/tube.wgt, for Tizen Homebrew
 ```
-
-Drop `--unsigned` to sign it for your own TV and `sdb install` it. That needs a
-certificate pair minted for the set; Tizen Homebrew mints them into
-`~/.tizen-certs`, which is where this repository looks.
 
 ---
 
@@ -56,8 +52,7 @@ certificate pair minted for the set; Tizen Homebrew mints them into
 | `npm run doctor` | Check prerequisites when something looks wrong |
 | `npm run build` | Boot screen, both userscript bundles, the service |
 | `npm test` | Lint, rewrite parity, routing, loader, update flow |
-| `npm run package` | Build and sign a `.wgt` for your own television |
-| `npm run package -- --unsigned` | The same package, signed by nobody — what a release carries |
+| `npm run package` | Build a `.wgt` — signed by nobody, which is what a release carries |
 | `npm run release` | Stage `release/origin/` — the bundles and `latest.json` |
 | `npm run dev` | The whole app in a browser, no hardware needed |
 | `npm run dev:boot` | Just the boot screen, held on screen so it can be looked at |
@@ -175,7 +170,7 @@ and fails on syntax Tizen 3 cannot parse. Route order is load bearing too:
 the catch-all shadows them and the app never launches. `service/test/routing.js`
 pins it.
 
-**Releasing.** Pushing a `v*` tag builds the unsigned widget and opens a
+**Releasing.** Pushing a `v*` tag builds the widget and opens a
 **draft** release carrying it — no secrets at all, on purpose, so it works on a
 fresh clone. Write the notes and press Publish. It has to be a draft, and the
 tag has to be what starts it: GitHub freezes a release once it is published and

@@ -3,7 +3,9 @@
 // Read at module load, so it has to be set before the proxy is required.
 process.env.TUBE_PROXY_HOST = 'tv.example';
 
-const { rewriteBody, rewriteAttestation, rewriteSetCookie, restoreCookiePrefixes } = require('../lib/proxy.js');
+const {
+    rewriteBody, rewriteAttestation, rewriteSetCookie, restoreCookiePrefixes, withOurConnections
+} = require('../lib/proxy.js');
 
 const ORIGIN = 'http://tv.example:8099';
 
@@ -78,6 +80,31 @@ check('__Secure- cookie is renamed and de-secured',
 
 check('the rename survives a round trip',
     restoreCookiePrefixes('__LocalSecure-3PSID=abc; __LocalHost-x=1') === '__Secure-3PSID=abc; __Host-x=1');
+
+// YouTube's policy, near enough: a nonce, no connect-src at all. Cobalt reads the missing
+// directive as "refuse", which is what stopped SponsorBlock reaching sponsor.ajay.app.
+const youtubePolicy = "base-uri 'self';object-src 'none';script-src 'nonce-abc' 'strict-dynamic'";
+const widened = withOurConnections(youtubePolicy);
+
+check('the policy gains a connect-src it did not have',
+    /(^|;)\s*connect-src \* data: blob: ws: wss:$/.test(widened), widened);
+check('the nonce the injected script needs is left alone',
+    widened.indexOf("'nonce-abc'") !== -1 && widened.indexOf("object-src 'none'") !== -1, widened);
+
+check('an existing connect-src is widened rather than duplicated',
+    withOurConnections("default-src 'self'; connect-src 'self' https://a.example; img-src *")
+        === "default-src 'self'; connect-src * data: blob: ws: wss:; img-src *",
+    withOurConnections("default-src 'self'; connect-src 'self' https://a.example; img-src *"));
+
+check('a response with no policy is left without one',
+    withOurConnections(undefined) === undefined && withOurConnections('') === '');
+
+// Two policies are enforced together, so widening only one of them leaves the other refusing.
+const both = withOurConnections("script-src 'nonce-a', require-trusted-types-for 'script'");
+check('every policy in a combined header is widened',
+    both.split(',').length === 2
+    && both.split(',').every((one) => /connect-src \* data: blob: ws: wss:/.test(one)),
+    both);
 
 if (failures) {
     console.log(`${failures} check${failures === 1 ? '' : 's'} failed.`);

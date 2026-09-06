@@ -63,6 +63,10 @@ const resolve = (command, context) => {
 const ROUTER_MARKER = 'ytlrActionRouter';
 const ACTION_MARKER = 'this.actionName';
 
+// A class is a function whose source mentions whatever its body mentions, so a scan for a method
+// matches the constructor too — and `.call()` on one of those throws rather than doing nothing.
+const isClass = (fn) => /^\s*class[\s{]/.test(sourceOf(fn));
+
 const findActionRunner = () => {
     const methodMentioning = (instance, marker) => {
         const prototype = Object.getPrototypeOf(instance);
@@ -70,7 +74,10 @@ const findActionRunner = () => {
 
         const name = Object.getOwnPropertyNames(prototype).find((key) => {
             try {
-                return typeof instance[key] === 'function' && sourceOf(instance[key]).indexOf(marker) !== -1;
+                const value = instance[key];
+                return typeof value === 'function'
+                    && !isClass(value)
+                    && sourceOf(value).indexOf(marker) !== -1;
             } catch (e) {
                 return false;
             }
@@ -104,9 +111,15 @@ const findActionRunner = () => {
     return (actionName) => found.run.call(found.owner, new Action(actionName));
 };
 
+// Reaches furthest into YouTube's own internals of anything in the startup sequence, so it is the
+// first thing to break on a build we have not seen. It must not take the rest of startup with it.
 const reloadGuide = () => {
-    const run = findActionRunner();
-    if (run) run('reloadGuideAction');
+    try {
+        const run = findActionRunner();
+        if (run) run('reloadGuideAction');
+    } catch (e) {
+        console.warn('Could not reload the guide.', e);
+    }
 };
 
 export {

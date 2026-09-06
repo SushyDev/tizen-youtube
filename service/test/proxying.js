@@ -52,8 +52,9 @@ upstream.listen(0, '127.0.0.1', () => {
     const server = app.listen(0, '127.0.0.1', () => {
         const port = server.address().port;
 
-        const get = (path) => new Promise((resolve, reject) => {
-            const req = http.request({ host: '127.0.0.1', port, path, timeout: 8000 }, (res) => {
+        const ask = (path, options) => new Promise((resolve, reject) => {
+            const settings = Object.assign({ host: '127.0.0.1', port, path, timeout: 8000 }, options);
+            const req = http.request(settings, (res) => {
                 const parts = [];
                 res.on('data', (chunk) => parts.push(chunk));
                 res.on('end', () => resolve({
@@ -66,7 +67,17 @@ upstream.listen(0, '127.0.0.1', () => {
             req.end();
         });
 
+        const get = (path) => ask(path);
         const bypass = (path) => get(`/cors-bypass/${target}${path}`);
+
+        // What a browser sends before a credentialed cross-origin request it is not sure about.
+        const preflight = (path, headers) => ask(path, {
+            method: 'OPTIONS',
+            headers: Object.assign({
+                origin: 'https://www.youtube.com',
+                'access-control-request-method': 'GET'
+            }, headers)
+        });
 
         const done = (code) => {
             server.close();
@@ -109,6 +120,23 @@ upstream.listen(0, '127.0.0.1', () => {
                     sent.host === `127.0.0.1:${upstream.address().port}`, sent.host);
                 check('only readable encodings are asked for',
                     sent['accept-encoding'] === 'gzip, deflate', sent['accept-encoding']);
+
+                return preflight('/complete/search', {
+                    'access-control-request-headers': 'authorization, x-goog-visitor-id'
+                });
+            })
+            .then((res) => {
+                // `*` for either of these is a rejection once the request carries credentials, and
+                // the browser then never sends the request the preflight was asking about.
+                check('a preflight names the origin rather than wildcarding it',
+                    res.headers['access-control-allow-origin'] === 'https://www.youtube.com',
+                    res.headers['access-control-allow-origin']);
+                check('a preflight allows credentials',
+                    res.headers['access-control-allow-credentials'] === 'true',
+                    res.headers['access-control-allow-credentials']);
+                check('a preflight echoes the headers that were asked for',
+                    res.headers['access-control-allow-headers'] === 'authorization, x-goog-visitor-id',
+                    res.headers['access-control-allow-headers']);
 
                 return get('/cors-bypass/http://127.0.0.1:1/dead');
             })

@@ -31,6 +31,9 @@ const guarded = (handler, value, fallback) => {
     }
 };
 
+// Reading a property off a module that is still initialising throws, and an unguarded walk ends
+// there. On the set the registry holds 3116 modules and exactly one of them carries its own JSON,
+// so a walk that stops early stops before the only one worth reaching.
 const adopt = () => {
     window.JSON.parse = JSON.parse;
     window.JSON.stringify = JSON.stringify;
@@ -39,21 +42,33 @@ const adopt = () => {
     if (!registry) return;
 
     Object.keys(registry).forEach((key) => {
-        const module = registry[key];
-        if (module && module.JSON && module.JSON.parse) {
-            module.JSON.parse = JSON.parse;
-            module.JSON.stringify = JSON.stringify;
+        try {
+            const module = registry[key];
+            if (module && module.JSON && module.JSON.parse) {
+                module.JSON.parse = JSON.parse;
+                module.JSON.stringify = JSON.stringify;
+            }
+        } catch (e) {
+            // Not ready to be patched. The next pass will find it.
         }
     });
 };
 
-const ADOPTION_WINDOW = 15000;
+// The module that parses innertube responses is not in the registry when the page starts: the app
+// is still fetching two megabytes of its own code through the proxy well past fifteen seconds, and
+// a window that closed then left every response going through YouTube's own JSON — so nothing the
+// userscript rewrites, ads or shelves or the shopping card, ever reached the screen.
+const ADOPTION_WINDOW = 60000;
 const ADOPTION_INTERVAL = 250;
 
-const keepAdopting = () => {
+// Navigating loads modules that did not exist at boot, so each one reopens a short window instead
+// of a timer being left running for the life of the page.
+const AFTER_NAVIGATION = 5000;
+
+const keepAdopting = (forMs) => {
     adopt();
 
-    const until = Date.now() + ADOPTION_WINDOW;
+    const until = Date.now() + forMs;
     const timer = setInterval(() => {
         adopt();
         if (Date.now() > until) clearInterval(timer);
@@ -85,7 +100,8 @@ const interceptJson = () => {
         return stringify.call(this, rewritten, replacer, space);
     };
 
-    keepAdopting();
+    keepAdopting(ADOPTION_WINDOW);
+    window.addEventListener('hashchange', () => keepAdopting(AFTER_NAVIGATION));
 };
 
 export { onResponse, onRequest, interceptJson };

@@ -116,6 +116,25 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
+// Cobalt asks its CSP delegate before it will so much as open an XMLHttpRequest, and a directive
+// the policy does not name is refused rather than allowed. YouTube's policy names no connect-src,
+// so under it every request the userscript makes — SponsorBlock's segments, DeArrow's titles —
+// failed with SecurityError without reaching the network. Everything else in the policy is kept:
+// our injected script is admitted by the nonce in it.
+const REACHABLE = 'connect-src * data: blob: ws: wss:';
+
+const CONNECT_SRC = /(^|;)(\s*)connect-src[^;]*/i;
+
+// YouTube sends two policies and they are enforced together, so widening one leaves the other
+// refusing. A comma separates policies in a combined header, so each side of it is one policy.
+const withOurConnections = (policy) => {
+    if (!policy) return policy;
+
+    return String(policy).split(',').map((one) => (CONNECT_SRC.test(one)
+        ? one.replace(CONNECT_SRC, `$1$2${REACHABLE}`)
+        : `${one}; ${REACHABLE}`)).join(',');
+};
+
 const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
@@ -188,13 +207,26 @@ const create = () => {
         return next();
     });
 
+    // A preflight decides whether the real request happens at all, and a credentialed one refuses
+    // `*` as the origin and reads `*` as a header named `*` — so a wildcard answer is a rejection,
+    // and the request behind it is never sent. This stands in for Google's own answer on every host
+    // we intercept, and Google's names the origin, allows credentials and lists the headers asked
+    // for. Answering the search-suggest preflight any other way is what silenced autocomplete.
     app.use((req, res, next) => {
-        allowOrigin(req, res);
+        const asked = req.get('origin');
+
+        res.setHeader('Access-Control-Allow-Origin', asked || '*');
+        if (asked) res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+        if (req.method !== 'OPTIONS') return next();
+
+        // Echoed rather than wildcarded for the same reason: with credentials `*` matches nothing.
+        res.setHeader('Vary', 'Origin, Access-Control-Request-Headers');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
         res.setHeader('Access-Control-Allow-Headers', req.get('access-control-request-headers') || '*');
+        res.setHeader('Access-Control-Max-Age', '86400');
 
-        if (req.method === 'OPTIONS') return res.status(200).end();
-        return next();
+        return res.status(200).end();
     });
 
     app.get('/__tube/userScript.js', (_, res) => {
@@ -320,8 +352,18 @@ const copyHeaders = (req, res, response, route) => {
         const lower = key.toLowerCase();
 
         if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
-        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants.
-        if (lower === CSP_HEADER && !route.asTheRealHost) return;
+
+        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants,
+        // with the one directive added that the userscript cannot reach anything without.
+        if (lower === CSP_HEADER) {
+            if (!route.asTheRealHost) return;
+
+            // Kept as the several headers they arrived as: joining them into one changes which
+            // policies apply, and each one has to carry the directive independently anyway.
+            const policies = Array.isArray(raw[key]) ? raw[key] : [response.headers.get(key)];
+            res.setHeader(key, policies.map(withOurConnections));
+            return;
+        }
         if (route.isBypass && lower === 'access-control-allow-origin') return;
 
         // A page on the real host would reject a cookie rewritten to Domain=localhost.
@@ -414,6 +456,6 @@ const attachFallback = (app) => {
 };
 
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteAttestation,
+    create, attachFallback, rewriteBody, rewriteAttestation, withOurConnections,
     rewriteSetCookie, restoreCookiePrefixes, flagOverrides, upstream
 };

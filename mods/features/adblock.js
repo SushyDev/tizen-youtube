@@ -61,14 +61,14 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
             (elm) => !elm.adSlotRenderer
           );
 
-        for (const shelve of r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents) {
+        r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents.forEach((shelve) => {
           if (shelve.shelfRenderer && shelve.shelfRenderer.content?.horizontalListRenderer?.items) {
             shelve.shelfRenderer.content.horizontalListRenderer.items =
               shelve.shelfRenderer.content.horizontalListRenderer.items.filter(
                 (item) => !item.adSlotRenderer
               );
           }
-        }
+        });
       }
 
       processShelves(r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents);
@@ -119,32 +119,26 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
     }
 
     if (r?.contents?.tvBrowseRenderer?.content?.tvSecondaryNavRenderer?.sections) {
-      for (let i = 0; i < r.contents.tvBrowseRenderer.content.tvSecondaryNavRenderer.sections.length; i++) {
-        const section = r.contents.tvBrowseRenderer.content.tvSecondaryNavRenderer.sections[i].tvSecondaryNavSectionRenderer;
-        if (!section || !section.tabs) continue;
+      const selectedFirstThenByTitle = (a, b) => {
+        if (a.tabRenderer.selected && !b.tabRenderer.selected) return -1;
+        if (!a.tabRenderer.selected && b.tabRenderer.selected) return 1;
+        return a.tabRenderer.title.localeCompare(b.tabRenderer.title);
+      };
 
-        if (configRead('sortSubscriptionsByAlphabet')) {
-          section.tabs.sort((a, b) => {
-            if (a.tabRenderer.selected && !b.tabRenderer.selected) return -1;
-            if (!a.tabRenderer.selected && b.tabRenderer.selected) return 1;
-            return a.tabRenderer.title.localeCompare(b.tabRenderer.title);
-          });
-        }
+      const dressTab = (tab) => {
+        const content = tab.tabRenderer.content?.tvSurfaceContentRenderer?.content;
+        if (content?.sectionListRenderer?.contents) processShelves(content.sectionListRenderer.contents);
+        if (content?.gridRenderer?.items) addLongPress(content.gridRenderer.items);
+      };
 
-        for (let j = 0; j < section.tabs.length; j++) {
-          const tab = section.tabs[j];
-          const content = tab.tabRenderer.content?.tvSurfaceContentRenderer?.content;
-          if (content?.sectionListRenderer?.contents) {
-            const index = section.tabs.indexOf(tab);
-            const clone = content.sectionListRenderer.contents;
-            processShelves(clone);
-            section.tabs[index].tabRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents = clone;
-          }
-          if (content?.gridRenderer?.items) {
-            addLongPress(content.gridRenderer.items);
-          }
-        }
-      }
+      r.contents.tvBrowseRenderer.content.tvSecondaryNavRenderer.sections.forEach((entry) => {
+        const section = entry.tvSecondaryNavSectionRenderer;
+        if (!section || !section.tabs) return;
+
+        if (configRead('sortSubscriptionsByAlphabet')) section.tabs.sort(selectedFirstThenByTitle);
+
+        section.tabs.forEach(dressTab);
+      });
     }
 
     if (r?.contents?.singleColumnWatchNextResults?.pivot?.sectionListRenderer) {
@@ -185,7 +179,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       if (configRead('sponsorBlockManualSkips').length > 0) {
         const manualSkippedSegments = configRead('sponsorBlockManualSkips');
         if (window?.sponsorblock?.segments) {
-          for (const segment of window.sponsorblock.segments) {
+          window.sponsorblock.segments.forEach((segment) => {
             if (manualSkippedSegments.includes(segment.category)) {
               const timelyActionData = timelyAction(
                 `Skip ${SEGMENTS[segment.category]?.name || segment.category}`,
@@ -206,7 +200,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
               );
               overlay.timelyActionRenderers.push(timelyActionData);
             }
-          }
+          });
         }
       }
     }
@@ -255,9 +249,9 @@ function processShelves(shelves, shouldAddPreviews = true) {
   // left the second one on screen. Collect them and take them out afterwards.
   const shorts = [];
 
-  for (const shelve of shelves) {
+  shelves.forEach((shelve) => {
     if (shelve.shelfRenderer) {
-      if (!shelve.shelfRenderer.content?.horizontalListRenderer?.items) continue;
+      if (!shelve.shelfRenderer.content?.horizontalListRenderer?.items) return;
       deArrowify(shelve.shelfRenderer.content.horizontalListRenderer.items);
       hqify(shelve.shelfRenderer.content.horizontalListRenderer.items);
       addLongPress(shelve.shelfRenderer.content.horizontalListRenderer.items);
@@ -268,26 +262,26 @@ function processShelves(shelves, shouldAddPreviews = true) {
       if (!configRead('enableShorts')) {
         if (shelve.shelfRenderer.tvhtml5ShelfRendererType === 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS') {
           shorts.push(shelve);
-          continue;
+          return;
         }
         shelve.shelfRenderer.content.horizontalListRenderer.items = shelve.shelfRenderer.content.horizontalListRenderer.items.filter(item => item.tileRenderer?.tvhtml5ShelfRendererType !== 'TVHTML5_TILE_RENDERER_TYPE_SHORTS');
 
         shelve.shelfRenderer.content.horizontalListRenderer.items = shelve.shelfRenderer.content.horizontalListRenderer.items.filter(item => !item.tileRenderer?.onSelectCommand?.reelWatchEndpoint);
       }
     }
-  }
+  });
 
   shorts.forEach((shelve) => shelves.splice(shelves.indexOf(shelve), 1));
 }
 
 function addPreviews(items) {
   if (!configRead('enablePreviews')) return;
-  for (const item of items) {
+  items.forEach((item) => {
     if (item.tileRenderer) {
       const watchEndpoint = item.tileRenderer.onSelectCommand;
       const copiedEndpoint = JSON.parse(JSON.stringify(watchEndpoint));
-      if (item.tileRenderer?.onFocusCommand?.playbackEndpoint) continue;
-      if (item.tileRenderer?.onFocusCommand?.commandExecutorCommand) continue;
+      if (item.tileRenderer?.onFocusCommand?.playbackEndpoint) return;
+      if (item.tileRenderer?.onFocusCommand?.commandExecutorCommand) return;
       item.tileRenderer.onFocusCommand = {
         startInlinePlaybackCommand: {
           blockAdoption: true,
@@ -301,7 +295,7 @@ function addPreviews(items) {
         }
       };
     }
-  }
+  });
 }
 
 function deArrowify(items) {
@@ -309,8 +303,8 @@ function deArrowify(items) {
   items.filter((item) => item.adSlotRenderer)
     .forEach((advert) => items.splice(items.indexOf(advert), 1));
 
-  for (const item of items) {
-    if (!item.tileRenderer) continue;
+  items.forEach((item) => {
+    if (!item.tileRenderer) return;
     if (configRead('enableDeArrow')) {
       const videoID = item.tileRenderer.contentId;
       fetch(`https://sponsor.ajay.app/api/branding?videoID=${videoID}`).then(res => res.json()).then(data => {
@@ -333,16 +327,16 @@ function deArrowify(items) {
         }
       }).catch(() => { });
     }
-  }
+  });
 }
 
 function hqify(items) {
-  for (const item of items) {
-    if (!item.tileRenderer) continue;
-    if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') continue;
+  items.forEach((item) => {
+    if (!item.tileRenderer) return;
+    if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') return;
     if (configRead('enableHqThumbnails')) {
-      if (!item.tileRenderer.onSelectCommand?.watchEndpoint?.videoId) continue;
-      if (!item.tileRenderer.header?.tileHeaderRenderer?.thumbnail?.thumbnails?.[0]?.url) continue;
+      if (!item.tileRenderer.onSelectCommand?.watchEndpoint?.videoId) return;
+      if (!item.tileRenderer.header?.tileHeaderRenderer?.thumbnail?.thumbnails?.[0]?.url) return;
       const videoID = item.tileRenderer.onSelectCommand.watchEndpoint.videoId;
       const queryArgs = item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url.split('?')[1];
       item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails = [
@@ -353,13 +347,13 @@ function hqify(items) {
         }
       ];
     }
-  }
+  });
 }
 
 function addLongPress(items) {
-  for (const item of items) {
-    if (!item.tileRenderer) continue;
-    if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') continue;
+  items.forEach((item) => {
+    if (!item.tileRenderer) return;
+    if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') return;
     if (item.tileRenderer.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
       const copiedItem = JSON.parse(JSON.stringify(item));
       item.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer('Add to Queue', {
@@ -371,15 +365,15 @@ function addLongPress(items) {
           }
         }
       }));
-      continue;
+      return;
     }
-    if (!configRead('enableLongPress')) continue;
-    if (!item.tileRenderer?.metadata?.tileMetadataRenderer) continue;
-    if (!item.tileRenderer?.header?.tileHeaderRenderer?.thumbnail?.thumbnails) continue;
-    if (!item.tileRenderer.onSelectCommand?.watchEndpoint) continue;
+    if (!configRead('enableLongPress')) return;
+    if (!item.tileRenderer?.metadata?.tileMetadataRenderer) return;
+    if (!item.tileRenderer?.header?.tileHeaderRenderer?.thumbnail?.thumbnails) return;
+    if (!item.tileRenderer.onSelectCommand?.watchEndpoint) return;
     const copiedItem = JSON.parse(JSON.stringify(item));
     const subtitleNode = copiedItem.tileRenderer.metadata.tileMetadataRenderer.lines?.[0]?.lineRenderer?.items?.[0]?.lineItemRenderer?.text;
-    if (!subtitleNode) continue;
+    if (!subtitleNode) return;
     const subtitle = subtitleNode;
     const data = longPressData({
       videoId: copiedItem.tileRenderer.contentId,
@@ -390,7 +384,7 @@ function addLongPress(items) {
       item: copiedItem
     });
     item.tileRenderer.onLongPressCommand = data;
-  }
+  });
 }
 
 function hideVideo(items) {

@@ -15,6 +15,7 @@
 // presents just enough of node-fetch's shape for the proxy not to care which one answered.
 
 const http2 = require('http2');
+const zlib = require('zlib');
 const { PassThrough } = require('stream');
 const URL = require('url');
 
@@ -113,10 +114,30 @@ function fetchOverHttp2(target, options) {
 
             // Handed on as a stream, so a media response is not held in memory.
             const out = new PassThrough();
-            request.pipe(out);
+
+            // node-fetch decompresses for you and this does not, which is a difference that does
+            // not announce itself: the body arrives gzipped, is treated as text because the type
+            // says html, has a script injected into the middle of it and is served as plain HTML.
+            // The client gets rubbish and renders nothing — a loaded page behind a black screen.
+            const encoding = String(received['content-encoding'] || '').toLowerCase();
+            const decoder = encoding === 'gzip' ? zlib.createGunzip()
+                : (encoding === 'deflate' ? zlib.createInflate() : null);
+
+            if (decoder) {
+                decoder.on('error', (error) => out.destroy(error));
+                request.pipe(decoder).pipe(out);
+            } else {
+                request.pipe(out);
+            }
+
             request.on('error', (error) => out.destroy(error));
 
-            resolve(responseOf(status, received, out));
+            // Whatever is handed on is now identity-encoded, so the header must not claim otherwise.
+            const headers = Object.assign({}, received);
+            delete headers['content-encoding'];
+            delete headers['content-length'];
+
+            resolve(responseOf(status, headers, out));
         });
 
         if (options.body && Buffer.isBuffer(options.body)) request.end(options.body);

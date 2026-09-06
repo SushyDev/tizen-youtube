@@ -46,4 +46,4 @@ const read = (count) => (count > 0 ? state.lines.slice(-count) : state.lines)
 
 const clear = () => { state.lines.length = 0; };
 
-module.exports = { clear, fromPage, note, open, read, service, wanted };
+module.exports = { clear, fromPage, open, read, service, wanted };

@@ -39,7 +39,7 @@ const RELAUNCH_QUIET = 20000;
 
 const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.describe(detail)}`);
 
-const state = { config: undefined, prepared: null, preparing: false, lastWake: 0 };
+const state = { config: undefined, prepared: null, preparing: false, lastWake: 0, waiting: [] };
 
 const config = () => {
     if (state.config === undefined) {
@@ -246,10 +246,18 @@ const prepare = (done) => {
         if (error) note('failed', error);
         else state.prepared = result;
 
-        return done ? done(error, result) : undefined;
+        const waiting = state.waiting.splice(0, state.waiting.length);
+        return waiting.forEach((waiter) => waiter(error, result));
     };
 
-    if (state.prepared || state.preparing) return done ? done(null, state.prepared) : undefined;
+    if (done) state.waiting.push(done);
+
+    if (state.prepared) return done ? done(null, state.prepared) : undefined;
+
+    // Held rather than answered: telling a caller "finished, nothing to do" while the work is
+    // still running reports an empty result as a real one.
+    if (state.preparing) return undefined;
+
     state.preparing = true;
 
     // Reported either way and before anything else: on a set the service cannot be reached from,
@@ -314,4 +322,4 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-module.exports = { prepare, wake, material, configuredContent, container, HOSTS, MITM_DIR, STOCK };
+module.exports = { prepare, wake, material, container, MITM_DIR };

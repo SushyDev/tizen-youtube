@@ -79,8 +79,6 @@ const defaultConfig = {
   launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
   reloadHomeOnStartup: true,
 
-  focusContainerColor: '#0f0f0f',
-  routeColor: '#0f0f0f'
 };
 
 const stored = (() => {

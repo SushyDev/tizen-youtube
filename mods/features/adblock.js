@@ -178,9 +178,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
         r.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents.unshift(ShelfRenderer(
           'Queued Videos',
           queuedVideosClone,
-          queuedVideosClone.findIndex(v => v.contentId === window.queuedVideos.lastVideoId) !== -1 ?
-            queuedVideosClone.findIndex(v => v.contentId === window.queuedVideos.lastVideoId)
-            : 0
+          Math.max(queuedVideosClone.findIndex(v => v.tileRenderer?.contentId === window.queuedVideos.lastVideoId), 0)
         ));
       }
     }
@@ -264,6 +262,10 @@ onRequest('playback context', ['playbackContext'], (value) => {
 });
 
 function processShelves(shelves, shouldAddPreviews = true) {
+  // Splicing during the walk skips whatever followed each removal, so two adjacent shorts shelves
+  // left the second one on screen. Collect them and take them out afterwards.
+  const shorts = [];
+
   for (const shelve of shelves) {
     if (shelve.shelfRenderer) {
       if (!shelve.shelfRenderer.content?.horizontalListRenderer?.items) continue;
@@ -276,7 +278,7 @@ function processShelves(shelves, shouldAddPreviews = true) {
       shelve.shelfRenderer.content.horizontalListRenderer.items = hideVideo(shelve.shelfRenderer.content.horizontalListRenderer.items);
       if (!configRead('enableShorts')) {
         if (shelve.shelfRenderer.tvhtml5ShelfRendererType === 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS') {
-          shelves.splice(shelves.indexOf(shelve), 1);
+          shorts.push(shelve);
           continue;
         }
         shelve.shelfRenderer.content.horizontalListRenderer.items = shelve.shelfRenderer.content.horizontalListRenderer.items.filter(item => item.tileRenderer?.tvhtml5ShelfRendererType !== 'TVHTML5_TILE_RENDERER_TYPE_SHORTS');
@@ -285,6 +287,8 @@ function processShelves(shelves, shouldAddPreviews = true) {
       }
     }
   }
+
+  shorts.forEach((shelve) => shelves.splice(shelves.indexOf(shelve), 1));
 }
 
 function addPreviews(items) {
@@ -312,12 +316,11 @@ function addPreviews(items) {
 }
 
 function deArrowify(items) {
+  // Removed first and separately: splicing mid-walk let a second adjacent advert through.
+  items.filter((item) => item.adSlotRenderer)
+    .forEach((advert) => items.splice(items.indexOf(advert), 1));
+
   for (const item of items) {
-    if (item.adSlotRenderer) {
-      const index = items.indexOf(item);
-      items.splice(index, 1);
-      continue;
-    }
     if (!item.tileRenderer) continue;
     if (configRead('enableDeArrow')) {
       const videoID = item.tileRenderer.contentId;
@@ -406,6 +409,7 @@ function hideVideo(items) {
     if (!item.tileRenderer) return true;
     const progressBar = item.tileRenderer.header?.tileHeaderRenderer?.thumbnailOverlays?.find(overlay => overlay.thumbnailOverlayResumePlaybackRenderer)?.thumbnailOverlayResumePlaybackRenderer;
     if (!progressBar) return true;
+    if (!configRead('enableHideWatchedVideos')) return true;
     const pages = configRead('hideWatchedVideosPages');
     if (!pages.length) return true;
     const hash = location.hash.substring(1);

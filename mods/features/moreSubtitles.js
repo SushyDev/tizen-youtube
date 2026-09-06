@@ -11,7 +11,7 @@ const LANGUAGE_CODES = [
     "th", "tr", "uk", "ur", "uz", "vi", "cy", "yi", "yo", "zu"
 ];
 
-export function getComprehensiveLanguageList() {
+function getComprehensiveLanguageList() {
     try {
         const map = {};
         LANGUAGE_CODES.forEach((code) => {
@@ -33,7 +33,7 @@ export function getComprehensiveLanguageList() {
     }
 }
 
-export function getCountryLanguage(countryCode) {
+function getCountryLanguage(countryCode) {
     if (!countryCode) return null;
     try {
         const region = String(countryCode).toUpperCase();

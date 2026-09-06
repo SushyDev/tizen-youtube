@@ -428,7 +428,7 @@ const attachFallback = (app) => {
 
         return send(route.url, req, headers)
             .then((response) => {
-                res.status(req.method === 'OPTIONS' ? 200 : response.status);
+                res.status(response.status);
 
                 if (route.isBypass) journal.service('answered', `${response.status} ${route.url.slice(0, 110)}`);
 
@@ -471,7 +471,6 @@ const attachFallback = (app) => {
 };
 
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteAttestation, rerouteAbr, withoutOnesie,
-    overrideInnertubeHost, rewriteSetCookie, restoreCookiePrefixes,
-    flagOverrides, upstream
+    create, attachFallback, rewriteBody, rewriteAttestation,
+    rewriteSetCookie, restoreCookiePrefixes, flagOverrides, upstream
 };

@@ -190,13 +190,6 @@ function chunks(bytes) {
     return list;
 }
 
-function find(list, type) {
-    for (let i = 0; i < list.length; i++) {
-        if (list[i].type === type) return list[i];
-    }
-    return null;
-}
-
 function chunk(type, data) {
     const made = new Uint8Array(12 + data.length);
 
@@ -220,14 +213,14 @@ function spliced(bytes, made, at, dropping) {
 
 function transparentGround(bytes, ground) {
     const list = chunks(bytes);
-    const idat = find(list, 'IDAT');
+    const idat = list.find((entry) => entry.type === 'IDAT');
     if (!idat) return null;
 
-    const trns = find(list, 'tRNS');
+    const trns = list.find((entry) => entry.type === 'tRNS');
     let alphas = null;
 
     if (bytes[25] === 3) {
-        const plte = find(list, 'PLTE');
+        const plte = list.find((entry) => entry.type === 'PLTE');
         if (!plte) return null;
 
         const matches = [];
@@ -256,7 +249,7 @@ function transparentGround(bytes, ground) {
 
 function repaintPalette(bytes, from, to) {
     const list = chunks(bytes);
-    const plte = find(list, 'PLTE');
+    const plte = list.find((entry) => entry.type === 'PLTE');
     if (!plte) return false;
 
     let touched = false;

@@ -45,7 +45,7 @@ function addListener() {
             }
         } else if (playerStateObject.isPlaying) {
             document.getElementById('container').style.setProperty('opacity', '1', 'important');
-            if (window.queuedVideos.videos.find(v => v.contentId === videoData.video_id)) {
+            if (window.queuedVideos.videos.find(v => v.tileRenderer?.contentId === videoData.video_id)) {
                 window.queuedVideos.lastVideoId = videoData.video_id;
             }
         }

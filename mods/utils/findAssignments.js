@@ -1,6 +1,6 @@
 const ASSIGNMENT = /([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*=(?![=>])/g;
 
-export function extractAssignments(code) {
+function extractAssignments(code) {
     if (typeof code !== 'string' || !code) return [];
 
     const matches = [];

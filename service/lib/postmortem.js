@@ -8,18 +8,13 @@ const MAX_BYTES = 64 * 1024;
 
 const state = { ready: false };
 
-// mkdirSync's recursive option is newer than the runtime on some of these sets, and appending
-// into a missing directory throws inside the catch below — so the log reads as empty, which
-// looks exactly like a service that never ran.
+// Appending into a missing directory throws inside the catch below, so the log would read as
+// empty — which looks exactly like a service that never ran.
 const ensure = () => {
     if (state.ready) return;
     state.ready = true;
 
-    const parts = dirname(LOG).split('/');
-
-    for (let step = 2; step <= parts.length; step += 1) {
-        try { mkdirSync(parts.slice(0, step).join('/')); } catch (e) { /* there, or not ours */ }
-    }
+    try { mkdirSync(dirname(LOG), { recursive: true }); } catch (e) { /* there, or not ours */ }
 };
 
 // One shape for every error the service reports, so a log line always names the code.
@@ -65,4 +60,4 @@ const watch = () => {
     note('started', `pid ${process.pid}, node ${process.version}`);
 };
 
-module.exports = { LOG, describe, note, read, watch };
+module.exports = { describe, note, read, watch };

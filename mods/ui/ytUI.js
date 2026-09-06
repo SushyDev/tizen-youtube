@@ -18,26 +18,9 @@ function showToast(title, subtitle, thumbnails) {
     }
 
     if (thumbnails) {
-        toastCmd.openPopupAction.popup.overlayToastRenderer.image.thumbnails = thumbnails;
+        toastCmd.openPopupAction.popup.overlayToastRenderer.image = { thumbnails };
     }
     resolveCommand(toastCmd);
-}
-
-function OverlayPanelHeaderRenderer(title, subtitle, thumbnails) {
-    return {
-        overlayPanelHeaderRenderer: {
-            title: {
-                simpleText: title
-            },
-            subtitle: {
-                simpleText: subtitle
-            },
-            image: {
-                thumbnails: thumbnails
-            },
-            style: "OVERLAY_PANEL_HEADER_STYLE_VIDEO_THUMBNAIL"
-        }
-    }
 }
 
 function Modal(header, content, id, update) {
@@ -133,11 +116,11 @@ function buttonItem(title, icon, commands) {
         button.compactLinkRenderer.title = {
             simpleText: title.title
         }
-    }
 
-    if (title.subtitle) {
-        button.compactLinkRenderer.subtitle = {
-            simpleText: title.subtitle
+        if (title.subtitle) {
+            button.compactLinkRenderer.subtitle = {
+                simpleText: title.subtitle
+            }
         }
     }
 
@@ -289,83 +272,6 @@ function MenuNavigationItemRenderer(text, navigateEndpoint) {
     }
 }
 
-function SettingsCategory(categoryId, items, title) {
-    const category = {
-        settingCategoryCollectionRenderer: {
-            items,
-            categoryId,
-            focused: false,
-            trackingParams: "null"
-        }
-    }
-
-    if (title) {
-        category.settingCategoryCollectionRenderer.title = {
-            runs: [
-                {
-                    text: title
-                }
-            ]
-        };
-    }
-
-    return category;
-}
-
-function SettingActionRenderer(title, itemId, serviceEndpoint, summary, thumbnail) {
-    return {
-        settingActionRenderer: {
-            title: {
-                runs: [
-                    {
-                        text: title
-                    }
-                ]
-            },
-            serviceEndpoint,
-            summary: {
-                runs: [
-                    {
-                        text: summary
-                    }
-                ]
-            },
-            trackingParams: "null",
-            actionLabel: {
-                runs: [
-                    {
-                        text: title
-                    }
-                ]
-            },
-            itemId,
-            thumbnail: {
-                thumbnails: [
-                    {
-                        url: thumbnail
-                    }
-                ]
-            }
-        }
-    }
-}
-
-function scrollPaneRenderer(items) {
-    return {
-        scrollPaneRenderer: {
-            content: scrollPaneItemListRenderer(items)
-        }
-    }
-}
-
-function scrollPaneItemListRenderer(items) {
-    return {
-        scrollPaneItemListRenderer: {
-            items
-        }
-    }
-}
-
 function overlayMessageRenderer(simpleText) {
     return {
         overlayMessageRenderer: {
@@ -413,22 +319,6 @@ function TileRenderer(simpleText, onSelectCommand) {
     }
 }
 
-function QrCodeRenderer(url) {
-    return {
-        qrCodeRenderer: {
-            qrCodeImage: {
-                thumbnails: [
-                    {
-                        url
-                    }
-                ]
-            },
-            style: "QR_CODE_RENDERER_STYLE_ATA_SIDESHEET",
-            trackingParams: null
-        }
-    }
-}
-
 function ButtonRenderer(disabled, text, iconType, command) {
     return {
         isDisabled: disabled,
@@ -449,21 +339,14 @@ function ButtonRenderer(disabled, text, iconType, command) {
 
 export {
     showToast,
-    Modal,
-    OverlayPanelHeaderRenderer,
     showModal,
     buttonItem,
     overlayPanelItemListRenderer,
     overlayMessageRenderer,
     timelyAction,
-    scrollPaneRenderer,
-    scrollPaneItemListRenderer,
     longPressData,
     MenuServiceItemRenderer,
-    SettingsCategory,
-    SettingActionRenderer,
     ShelfRenderer,
     TileRenderer,
-    QrCodeRenderer,
     ButtonRenderer
 }

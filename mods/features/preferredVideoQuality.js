@@ -32,8 +32,6 @@ class PreferredQualityHandler {
     // Without this, a quality chosen from the player's own menu is overridden on the next tick.
     #settled = false;
 
-    // A deliberate restart looks like a new video from here: same id, time back at the start.
-    #keepChoice = false;
 
     constructor() {
         this.#pollForPlayer();
@@ -46,13 +44,6 @@ class PreferredQualityHandler {
         });
 
         setInterval(() => this.#tick(), CHECK_INTERVAL);
-    }
-
-    keepCurrentChoice() {
-        this.#keepChoice = true;
-        this.#settled = true;
-        this.#attempts = 0;
-        this.#target = null;
     }
 
     #pollForPlayer = () => {
@@ -114,14 +105,7 @@ class PreferredQualityHandler {
         }
 
         try {
-            if (this.#startedOver()) {
-                if (this.#keepChoice) {
-                    this.#keepChoice = false;
-                    this.#settled = true;
-                } else {
-                    this.#forget();
-                }
-            }
+            if (this.#startedOver()) this.#forget();
 
             if (this.#settled) return;
 
@@ -170,9 +154,4 @@ const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.us
 
 if (typeof window !== 'undefined' && !inCobalt) {
     window.preferredVideoQualityHandler = new PreferredQualityHandler();
-}
-
-export function keepCurrentChoice() {
-    const handler = typeof window !== 'undefined' && window.preferredVideoQualityHandler;
-    if (handler) handler.keepCurrentChoice();
 }

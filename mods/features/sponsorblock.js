@@ -6,47 +6,47 @@ const barTypes = {
   sponsor: {
     color: '#00d400',
     opacity: '0.7',
-    name: 'sponsored segment' || 'sponsored segment'
+    name: 'sponsored segment'
   },
   intro: {
     color: '#00ffff',
     opacity: '0.7',
-    name: 'intro' || 'intro'
+    name: 'intro'
   },
   outro: {
     color: '#0202ed',
     opacity: '0.7',
-    name: 'outro' || 'outro'
+    name: 'outro'
   },
   interaction: {
     color: '#cc00ff',
     opacity: '0.7',
-    name: 'interaction reminder' || 'interaction reminder'
+    name: 'interaction reminder'
   },
   selfpromo: {
     color: '#ffff00',
     opacity: '0.7',
-    name: 'self-promotion' || 'self-promotion'
+    name: 'self-promotion'
   },
   preview: {
     color: '#008fd6',
     opacity: '0.7',
-    name: 'recap or preview' || 'recap or preview'
+    name: 'recap or preview'
   },
   filler: {
     color: "#7300FF",
     opacity: "0.9",
-    name: 'tangents' || 'tangents'
+    name: 'tangents'
   },
   music_offtopic: {
     color: '#ff9900',
     opacity: '0.7',
-    name: 'non-music part' || 'non-music part'
+    name: 'non-music part'
   },
   poi_highlight: {
     color: '#9b044c',
     opacity: '0.7',
-    name: 'highlight' || 'highlight'
+    name: 'highlight'
   }
 };
 
@@ -229,11 +229,11 @@ class SponsorBlockHandler {
           }
         }
 
-        if (document.querySelector('ytlr-progress-bar').getAttribute('hybridnavfocusable') === 'false') {
-          this.segmentsoverlay.style.setProperty('display', 'none', 'important');
-        } else {
-          this.segmentsoverlay.style.setProperty('display', 'block', 'important');
-        }
+        // This runs on every subtree change, and the bar is not always mounted.
+        const bar = document.querySelector('ytlr-progress-bar');
+        const hidden = !!bar && bar.getAttribute('hybridnavfocusable') === 'false';
+
+        this.segmentsoverlay.style.setProperty('display', hidden ? 'none' : 'block', 'important');
       });
     });
 

@@ -109,9 +109,16 @@ const start = () => {
         console.log(`[devbridge] open on 0.0.0.0:${ports.DEV}; commands need token ${TOKEN}.`);
     });
 
+    // Closed, not just forgotten: dropping the handle leaks a server per failure, and the next
+    // /__tube/dev/enable builds a second app and listens on the same port again.
     state.server.on('error', (error) => {
         postmortem.note('devbridge', `could not open ${ports.DEV}: ${postmortem.describe(error)}`);
+
+        const failed = state.server;
         state.server = null;
+        journal.open(false);
+
+        if (failed) try { failed.close(); } catch (e) { /* never listened */ }
     });
 
     return state.server;
@@ -168,4 +175,4 @@ const attach = (app) => {
     });
 };
 
-module.exports = { attach, start, stop };
+module.exports = { attach };

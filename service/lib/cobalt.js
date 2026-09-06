@@ -123,12 +123,13 @@ function checkAddress() {
     const proxy = /--proxy=http:\/\/([^:\s]+)/.exec(switches() || '');
     if (!proxy) return;
 
+    // Loopback counts as this set: the proxy switch names 127.0.0.2 precisely because that is a
+    // fixed way of saying "here", and a check that called its own default misdirected would be
+    // worse than no check.
     const mine = [];
     const interfaces = os.networkInterfaces();
     Object.keys(interfaces).forEach((device) => {
-        interfaces[device].forEach((address) => {
-            if (!address.internal) mine.push(address.address);
-        });
+        interfaces[device].forEach((address) => mine.push(address.address));
     });
 
     require('dns').lookup(proxy[1], { all: true }, (error, found) => {
@@ -140,64 +141,9 @@ function checkAddress() {
         const addresses = found.map((entry) => entry.address);
         if (addresses.some((address) => mine.indexOf(address) !== -1)) return;
 
-        // Not this set — and on a network with more than one of these televisions that is the
-        // normal case rather than a mistake, because they are all called `Samsung` and the router
-        // hands the name to whichever renewed its lease last. One static string cannot resolve to
-        // three machines, so the answer is not to make the name unambiguous but to make the
-        // services interchangeable: trust the certificate authority of whichever set is serving us,
-        // and the container stops caring which one answered.
         note('misdirected', `--proxy names ${proxy[1]}, which resolves to ${addresses.join(', ')} `
-            + `— not this set (${os.hostname()} at ${mine.join(', ')}). Trusting its authority.`);
-
-        trustPeer(addresses[0]);
+            + `— not this set (${os.hostname()} at ${mine.join(', ')}).`);
     });
-}
-
-// Fetches the certificate authority of the set our container has been pointed at, and installs it
-// beside our own in the staged content directory.
-//
-// The trust this adds is exactly the trust already placed in that address: it is the machine our
-// container is about to send every request to, named by our own package metadata. It goes into the
-// copy of Cobalt's content that we staged and nowhere else — the platform's own stores are never
-// touched — so its reach is this container on this set.
-function trustPeer(address) {
-    const content = configuredContent();
-    if (!content || !address) return;
-
-    const request = require('http').get({
-        host: address,
-        port: 8099,
-        path: '/__tube/ca',
-        timeout: 8000
-    }, (response) => {
-        if (response.statusCode !== 200) {
-            response.resume();
-            return note('peer', `${address} answered ${response.statusCode} for its authority`);
-        }
-
-        let pem = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { pem += chunk; });
-        response.on('end', () => {
-            const name = /^Subject:\s*(.+)$/m.exec(pem);
-            if (pem.indexOf('BEGIN CERTIFICATE') === -1 || !name) {
-                return note('peer', `${address} did not send a usable authority`);
-            }
-
-            try {
-                installCa(path.join(content, 'ssl', 'certs'), {
-                    commonName: name[1].trim(),
-                    cert: pem.slice(pem.indexOf('-----BEGIN CERTIFICATE-----'))
-                });
-                note('peer', `now trusting the authority of ${address} as well as our own`);
-            } catch (e) {
-                note('peer', `could not install the authority of ${address}: ${e.message}`);
-            }
-        });
-    });
-
-    request.on('timeout', () => request.destroy());
-    request.on('error', (error) => note('peer', `${address} would not hand over its authority: ${error.code || error.message}`));
 }
 
 // -- staging -------------------------------------------------------------------------------------
@@ -319,15 +265,6 @@ function installCa(certs, ca) {
     if (written) note('trusted', `${ca.commonName} as ${hashes.hash}.0 and ${hashes.hashOld}.0`);
 }
 
-// Our own authority, named so a sibling can file it under the right hash. Only ever the
-// certificate: the private key stays on the set that made it and is never served.
-function authority() {
-    const existing = existingMaterial();
-    if (!existing || !existing.ca || !existing.ca.cert) return null;
-
-    return `Subject: ${existing.ca.commonName}\n${existing.ca.cert}`;
-}
-
 // -- the whole thing ---------------------------------------------------------------------------
 
 let prepared = null;
@@ -402,4 +339,4 @@ function material() {
     return { key: existing.key, cert: existing.chain };
 }
 
-module.exports = { prepare, wake, authority, material, configuredContent, container, HOSTS, MITM_DIR, STOCK };
+module.exports = { prepare, wake, material, configuredContent, container, HOSTS, MITM_DIR, STOCK };

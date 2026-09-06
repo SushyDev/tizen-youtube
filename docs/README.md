@@ -75,14 +75,16 @@ as it is, installed with `sdb` and nothing else.
 
 Getting there meant three things stop being per-set:
 
-**The address.** The container is a different package from the service, and this platform refuses
-loopback across packages — `127.0.0.1` answers `EHOSTUNREACH` and `::1` answers `EACCES`, measured
-both ways round. A LAN address would work but cannot follow DHCP and cannot be known when the
-package is built. So the switch names the set instead of numbering it: Cobalt resolves the
-television's own hostname, which is `Samsung`, and the router hands back whatever address it
-leased. When a set answers to some other name, or the name resolves to a different machine, the
-service writes `cobalt: unreachable` or `cobalt: misdirected` to `service.log` — the failure on
-screen is otherwise an unexplained "network error".
+**The address**, and the second octet is the whole trick. The container is a different package
+from the service, and this platform refuses one package's socket on `127.0.0.1` to another —
+`EHOSTUNREACH`, and `0.0.0.0` likewise. That refusal is tied to the literal address: `127.0.0.2`,
+`127.0.0.7`, `127.1.1.1` and `::ffff:127.0.0.1` all connect straight through, cross-package, and
+the service binds `0.0.0.0` so it is already listening on every one of them.
+
+So the switch says `127.0.0.2`: one fixed string that means "this television" on every television.
+No DNS, no DHCP lease to follow, no hostname to collide with the set in the next room, and nothing
+shared between sets. A LAN address cannot follow DHCP and a hostname is ambiguous the moment there
+are two of these in a house — both were tried, and this replaced them.
 
 **The content directory.** `--content` is the loader's *alternative content directory* and the name
 reads one level too high: it replaces the Evergreen content directory outright, so it must name the

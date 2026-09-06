@@ -40,18 +40,22 @@
          shareable and installs with sdb unchanged. (Note no double hyphen may appear in an XML
          comment, so the switches are named without their leading dashes below.)
 
-         The proxy switch names the set rather than numbering it. The container cannot reach the
-         service on loopback (the platform answers EHOSTUNREACH for 127.0.0.1 and EACCES for ::1
-         across packages), and a static address cannot follow DHCP, but Cobalt does resolve the
-         television's own hostname, which is `Samsung` on these sets and comes back as the address
-         the router leased it. If a set answers to something else, the service says so in
-         service.log rather than leaving a bare "network error" on screen.
+         The proxy switch says 127.0.0.2, and the second octet is the whole trick. A package on
+         this platform cannot reach another package's socket on 127.0.0.1; the kernel answers
+         EHOSTUNREACH, and 0.0.0.0 the same, which is why this needed an address at all. But the
+         refusal is tied to that literal address: 127.0.0.2, 127.0.0.7, 127.1.1.1 and
+         ::ffff:127.0.0.1 all connect straight through, cross-package, and the service binds
+         0.0.0.0 so it is already listening on every one of them.
+
+         So this is a fixed string that means "this television" on every television. No DNS, no
+         DHCP lease to follow, no hostname to collide with the set in the next room, and nothing
+         shared between sets.
 
          The content switch must be the Evergreen content directory itself, never the tree above
          it. The service stages that copy, and the authority inside it, on first run. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://Samsung:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://127.0.0.2:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
 
     <!-- Must stay true: false terminates the app on focus loss rather than hiding it, so
          Home and Back re-run the boot screen instead of returning to the video. -->

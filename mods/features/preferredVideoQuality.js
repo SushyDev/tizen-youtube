@@ -8,8 +8,12 @@ const QUALITY = 'preferredVideoQuality';
 const CHECK_INTERVAL = 3000;
 const ATTACH_EVERY = 250;
 
-// Asking restarts the stream, so a rung the player will not take is dropped after a few tries.
-const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
+// Asking restarts the stream, so a rung the player will not take is dropped rather than pressed.
+// One ask is all it takes when it works — measured in the container: the player was on hd1440 with
+// preferred=auto, a single setPlaybackQualityRange('hd2160') put it on hd2160 within five seconds,
+// and playback ran on through it. A second and third ask are what earned this feature its
+// reputation for wedging playback, and they only ever happened because the settle never landed.
+const LIMITS = { maxAttempts: 1, retryDelay: 5000 };
 
 const RESTART_JUMP = 2;
 
@@ -22,7 +26,8 @@ function watchPreferredQuality() {
         attempts: 0,
         askedAt: 0,
         // Without this, a quality chosen from the player's own menu is overridden on the next tick.
-        settled: false
+        settled: false,
+        settledOn: null
     };
 
     const forget = () => {
@@ -30,6 +35,7 @@ function watchPreferredQuality() {
         held.attempts = 0;
         held.askedAt = 0;
         held.settled = false;
+        held.settledOn = null;
     };
 
     const startedOver = (player) => {
@@ -74,7 +80,6 @@ function watchPreferredQuality() {
 
     const applyPreference = (player) => {
         if (startedOver(player)) forget();
-        if (held.settled) return;
 
         const preference = configRead(QUALITY);
         if (!preference || preference === 'auto') return;
@@ -84,11 +89,18 @@ function watchPreferredQuality() {
         const chosen = chooseQuality(preference, player.getAvailableQualityData());
         if (!chosen) return;
 
+        // The ladder is not complete the moment playback starts, so settling on what was on offer
+        // then would pin the video under a rung that appeared a second later. A different answer
+        // reopens the decision; the same answer leaves a hand-picked quality where it was put.
+        if (held.settled && held.settledOn === chosen) return;
+        held.settled = false;
+
         const current = player.getPlaybackQuality();
 
         if (current === chosen) {
             held.attempts = 0;
             held.settled = true;
+            held.settledOn = chosen;
             return;
         }
 
@@ -135,7 +147,12 @@ function watchPreferredQuality() {
     attachToPlayer();
 }
 
-// Cobalt reports the rung under a different name, so asking never settles and wedges playback.
-const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.userAgent || '');
-
-if (typeof window !== 'undefined' && !inCobalt) watchPreferredQuality();
+// This was switched off inside the container on the belief that its player does not report the rung
+// back under the name we asked for, so the retry never settled and the third ask wedged playback.
+// Measured on the set instead: it reports back exactly what it was given. On a video sitting at
+// hd1440 with preferred=auto, one ask for hd2160 came back as hd2160 within five seconds and
+// playback carried on. The retry was the fault, and it is bounded to a single ask now.
+//
+// Note the video element is no use as the check: it reads 3840x2160 while the player is on hd1440,
+// because it reports the size it presents at and not the size it decoded.
+if (typeof window !== 'undefined') watchPreferredQuality();

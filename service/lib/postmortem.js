@@ -53,17 +53,15 @@ function read() {
     }
 }
 
-// Long enough to read the log off the set, short enough that auto-restart still gets its turn.
-const LINGER = 120000;
-
 function watch() {
     process.on('uncaughtException', (error) => {
         note('uncaught', error);
 
-        // Exiting at once is what made a start-up failure unreadable: the process took the
-        // diagnostic server down with it, auto-restart brought it back, it died again, and from
-        // outside the port merely flickered. Stay up for a while so the stack can be fetched.
-        setTimeout(() => process.exit(1), LINGER).unref();
+        // Exit, and let auto-restart have its turn. Staying alive to keep a diagnostic port open
+        // was tried and is worse than the problem: the dying process goes on holding the port, so
+        // every restart lands on EADDRINUSE and the service never recovers. The log is on disk and
+        // outlives the process, which is what makes lingering unnecessary.
+        process.exit(1);
     });
 
     process.on('unhandledRejection', (error) => note('unhandled rejection', error));

@@ -1,40 +1,40 @@
 const ASSIGNMENT = /([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*=(?![=>])/g;
 
-export function extractAssignments(code) {
+// replace() as the visitor, not matchAll(): matchAll is Chrome 73 and the floor is Cobalt 3.2.1.
+// replace resets the /g cursor itself, which is what the hand-rolled while loop was really for.
+function extractAssignments(code) {
     if (typeof code !== 'string' || !code) return [];
 
-    const matches = [];
-    ASSIGNMENT.lastIndex = 0;
+    const found = [];
 
-    let match;
-    while ((match = ASSIGNMENT.exec(code)) !== null) {
-        matches.push({
-            left: `${match[1]}.${match[2]}`,
-            property: match[2],
-            start: match.index,
-            rhsStart: match.index + match[0].length
+    code.replace(ASSIGNMENT, (whole, left, property, at) => {
+        found.push({
+            left: `${left}.${property}`,
+            property,
+            start: at,
+            rhsStart: at + whole.length
         });
-    }
 
-    return matches.map((entry, index) => ({
+        return whole;
+    });
+
+    return found.map((entry, index) => ({
         left: entry.left,
         property: entry.property,
-        rhs: code.slice(entry.rhsStart, index + 1 < matches.length ? matches[index + 1].start : code.length)
+        rhs: code.slice(entry.rhsStart, index + 1 < found.length ? found[index + 1].start : code.length)
     }));
 }
 
 export function findAssignedProperty(code, predicate) {
-    const assignments = extractAssignments(code);
-
-    for (const assignment of assignments) {
-        let hit = false;
+    const matches = (assignment) => {
         try {
-            hit = predicate(assignment.rhs);
+            return !!predicate(assignment.rhs);
         } catch (e) {
-            hit = false;
+            return false;
         }
-        if (hit) return assignment.property;
-    }
+    };
 
-    return null;
+    const hit = extractAssignments(code).find(matches);
+
+    return hit ? hit.property : null;
 }

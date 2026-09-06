@@ -79,34 +79,29 @@ const findActionRunner = () => {
         return name ? instance[name] : null;
     };
 
-    let runner = null;
-    let owner = null;
+    const routerOf = (value) => {
+        if (!value || typeof value.getInstance !== 'function') return null;
 
-    entries().some(([, value]) => {
-        if (!value || typeof value.getInstance !== 'function') return false;
+        const instanceOf = (holder) => {
+            try { return holder.getInstance(); } catch (e) { return null; }
+        };
 
-        let instance;
-        try {
-            instance = value.getInstance();
-        } catch (e) {
-            return false;
-        }
-        if (!instance) return false;
+        const instance = instanceOf(value);
+
+        if (!instance) return null;
 
         const method = methodMentioning(instance, ROUTER_MARKER);
-        if (!method) return false;
+        return method ? { run: method, owner: instance } : null;
+    };
 
-        runner = method;
-        owner = instance;
-        return true;
-    });
-
-    if (!runner) return null;
+    // reduce, not map().find(): getInstance() must not be called on every entry in the registry.
+    const found = entries().reduce((got, [, value]) => got || routerOf(value), null);
+    if (!found) return null;
 
     const Action = findBySource(ACTION_MARKER);
     if (!Action) return null;
 
-    return (actionName) => runner.call(owner, new Action(actionName));
+    return (actionName) => found.run.call(found.owner, new Action(actionName));
 };
 
 const reloadGuide = () => {
@@ -114,4 +109,6 @@ const reloadGuide = () => {
     if (run) run('reloadGuideAction');
 };
 
-export { findBySource, findByPrototype, findComponent, findMap, findResolver, resolve, findActionRunner, reloadGuide, sourceOf };
+export {
+    findBySource, findByPrototype, findComponent, findMap, findResolver, resolve, reloadGuide, sourceOf
+};

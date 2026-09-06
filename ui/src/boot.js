@@ -3,18 +3,16 @@ import './boot.css';
 // Must match service/lib/ports.js, which this cannot require.
 const PORT = 8099;
 
-const platform = typeof tizen === 'undefined' ? null : tizen;
-const application = platform ? platform.application.getCurrentApplication() : null;
-const onTv = !!application;
-
-const BASE = onTv ? `http://localhost:${PORT}` : '';
-
-const GIVE_UP_AFTER = 20000;
-
+// Must match the port names in service/index.js.
 const READY_PORT = 'TUBE_BOOT';
 const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
 
+const GIVE_UP_AFTER = 20000;
 const BACKSTOP = 2500;
+const NUDGE_EVERY = 5000;
+const ASK_TIMEOUT = 8000;
+const QUIT_TIMEOUT = 1200;
+const MAX_LINES = 34;
 
 const MEDIA_KEYS = [
     'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
@@ -22,57 +20,62 @@ const MEDIA_KEYS = [
     'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue'
 ];
 
-const startedAt = (window.performance && window.performance.now)
-    ? window.performance.now()
-    : Date.now();
+const platform = typeof tizen === 'undefined' ? null : tizen;
+const application = platform ? platform.application.getCurrentApplication() : null;
+const onTv = !!application;
 
-const now = () => ((window.performance && window.performance.now)
-    ? window.performance.now()
-    : Date.now()) - startedAt;
+const BASE = onTv ? `http://localhost:${PORT}` : '';
+
+// -- the log on screen ---------------------------------------------------------------------------
+
+const clock = () => ((window.performance && window.performance.now) ? window.performance.now() : Date.now());
+
+const startedAt = clock();
+const now = () => clock() - startedAt;
 
 const logElement = document.getElementById('log');
 
-let handedOver = false;
-
-const MAX_LINES = 34;
+const shown = { handedOver: false };
 
 const say = (facility, message, tone) => {
-    if (handedOver) return;
+    if (shown.handedOver) return;
 
     const line = document.createElement('div');
 
-    const stamp = document.createElement('span');
-    stamp.className = 't';
-    stamp.textContent = `[${(now() / 1000).toFixed(6).padStart(12, ' ')}] `;
+    const part = (className, text) => {
+        const node = document.createElement('span');
+        if (className) node.className = className;
+        node.textContent = text;
+        line.appendChild(node);
+    };
 
-    const subsys = document.createElement('span');
-    subsys.className = 's';
-    subsys.textContent = `${facility}: `;
+    part('t', `[${(now() / 1000).toFixed(6).padStart(12, ' ')}] `);
+    part('s', `${facility}: `);
+    part(tone, message);
 
-    const body = document.createElement('span');
-    if (tone) body.className = tone;
-    body.textContent = message;
-
-    line.appendChild(stamp);
-    line.appendChild(subsys);
-    line.appendChild(body);
     logElement.appendChild(line);
 
-    while (logElement.childNodes.length > MAX_LINES) logElement.removeChild(logElement.firstChild);
+    Array.from(logElement.childNodes)
+        .slice(0, Math.max(0, logElement.childNodes.length - MAX_LINES))
+        .forEach((line) => logElement.removeChild(line));
 };
 
 const handOver = () => {
-    handedOver = true;
+    shown.handedOver = true;
     document.body.className = 'done';
 };
-
-const canHandOver = (state) => onTv || !!(state && state.handOver);
 
 const hold = (facility, what) => {
     say(facility, what, 'note');
     say('tube', 'held — off-TV, so nothing is handed over', 'note');
     document.body.className = 'held';
 };
+
+const canHandOver = (state) => onTv || !!(state && state.handOver);
+
+window.onerror = (message, _source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
+
+// -- talking to the service ----------------------------------------------------------------------
 
 const report = (line) => {
     if (!onTv) return;
@@ -81,37 +84,14 @@ const report = (line) => {
         const request = new XMLHttpRequest();
         request.open('GET', `${BASE}/__tube/booted?t=${encodeURIComponent(line)}`, true);
         request.send();
-    } catch (e) {
-    }
+    } catch (e) { /* the service is not up; the screen already says so */ }
 };
-
-const summarise = () => {
-    const total = now();
-
-    const line = [
-        `shell ${(shellReadyAt / 1000).toFixed(3)}s`,
-        `keys ${(keysTookMs / 1000).toFixed(3)}s`,
-        `asked at ${(firstAskAt / 1000).toFixed(3)}s`,
-        serviceUpAt ? `service ${(serviceUpAt / 1000).toFixed(3)}s` : 'service never answered',
-        `${serviceAsks} ${serviceAsks === 1 ? 'ask' : 'asks'}`,
-        `by ${foundBy}`,
-        `port ${portState}`,
-        toldAt ? `told by ${toldBy} at ${(toldAt / 1000).toFixed(3)}s` : 'never told',
-        `total ${(total / 1000).toFixed(3)}s`
-    ].join(', ');
-
-    say('tube', `startup finished in ${(total / 1000).toFixed(3)}s (${line})`,
-        serviceUpAt ? 'ok' : 'warn');
-
-    report(line);
-};
-
-window.onerror = (message, _source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
 
 const ask = (path, timeout) => new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
+
     request.open('GET', BASE + path, true);
-    request.timeout = timeout || 8000;
+    request.timeout = timeout || ASK_TIMEOUT;
 
     request.onload = () => {
         try {
@@ -123,26 +103,28 @@ const ask = (path, timeout) => new Promise((resolve, reject) => {
 
     request.onerror = () => reject(new Error('unreachable'));
     request.ontimeout = () => reject(new Error('timeout'));
+
     request.send();
 });
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// -- what this set is ----------------------------------------------------------------------------
+
 const engine = () => {
     const agent = navigator.userAgent || '';
     const chromium = /Chrome\/(\d+)/.exec(agent);
-    const tizen = /Tizen ([\d.]+)/.exec(agent);
+    const version = /Tizen ([\d.]+)/.exec(agent);
 
     return [
         chromium ? `chromium ${chromium[1]}` : 'unknown engine',
-        tizen ? `tizen ${tizen[1]}` : null
+        version ? `tizen ${version[1]}` : null
     ].filter(Boolean).join(', ');
 };
 
 const surface = () => {
     const view = { w: window.innerWidth, h: window.innerHeight };
     const panel = { w: window.screen.width, h: window.screen.height };
-
     const ratio = Math.round((window.devicePixelRatio || 1) * 100) / 100;
 
     return {
@@ -164,16 +146,16 @@ const isPlaceholder = (origin) => {
 const localProxyUrl = () => `${BASE}/tv`;
 
 const paintThen = (act) => {
-    let acted = false;
+    const once = { done: false };
 
-    const once = () => {
-        if (acted) return;
-        acted = true;
+    const go = () => {
+        if (once.done) return;
+        once.done = true;
         act();
     };
 
-    setTimeout(once, 250);
-    if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(once));
+    setTimeout(go, 250);
+    if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(go));
 };
 
 const claimMediaKeys = () => (onTv ? MEDIA_KEYS : []).reduce((result, key) => {
@@ -183,8 +165,11 @@ const claimMediaKeys = () => (onTv ? MEDIA_KEYS : []).reduce((result, key) => {
     } catch (e) {
         result.refused.push(key);
     }
+
     return result;
 }, { claimed: [], refused: [] });
+
+// -- starting the service ------------------------------------------------------------------------
 
 const launchService = () => new Promise((resolve) => {
     if (!onTv) {
@@ -193,10 +178,9 @@ const launchService = () => new Promise((resolve) => {
     }
 
     const serviceId = `${application.appInfo.packageId}.TubeService`;
-
     say('service', `launching ${serviceId}`);
 
-    platform.application.launchAppControl(
+    return platform.application.launchAppControl(
         new platform.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
         serviceId,
         () => { say('service', 'launch accepted', 'ok'); resolve(); },
@@ -208,11 +192,24 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
+// Everything the summary needs, gathered rather than scattered across the module.
+const timings = {
+    shellReady: 0,
+    serviceUp: 0,
+    keysTook: 0,
+    asks: 0,
+    firstAsk: 0,
+    foundBy: 'ask',
+    portState: 'not tried',
+    toldAt: 0,
+    toldBy: ''
+};
+
 const awaitAnnouncement = () => {
     if (!onTv) return null;
 
     if (!platform.messageport) {
-        portState = 'no tizen.messageport in the shell';
+        timings.portState = 'no tizen.messageport in the shell';
         say('state', 'this webview has no message port; asking instead', 'warn');
         return null;
     }
@@ -223,8 +220,8 @@ const awaitAnnouncement = () => {
         const listen = (label, open) => {
             try {
                 open().addMessagePortListener((data) => {
-                    toldAt = now();
-                    toldBy = label;
+                    timings.toldAt = now();
+                    timings.toldBy = label;
 
                     const carried = (data || []).filter((item) => item.key === 'state')[0];
 
@@ -245,80 +242,103 @@ const awaitAnnouncement = () => {
         listen('open', () => platform.messageport.requestLocalMessagePort(READY_PORT_OPEN));
     });
 
-    portState = registered.join('+');
+    timings.portState = registered.join('+');
     return promise;
 };
-
-let shellReadyAt = 0;
-let serviceUpAt = 0;
-let keysTookMs = 0;
-let serviceAsks = 0;
-let firstAskAt = 0;
-let foundBy = 'ask';
-let portState = 'not tried';
-let toldAt = 0;
-let toldBy = '';
 
 const reachService = async () => {
     const started = now();
     const deadline = started + GIVE_UP_AFTER;
-
     const announced = awaitAnnouncement();
 
-    let asks = 0;
-    let launched = false;
-    let announcedWait = false;
-    let nextNudge = started + 5000;
+    const tries = { asks: 0, launched: false, saidWaiting: false, nextNudge: started + NUDGE_EVERY };
 
-    for (;;) {
-        asks += 1;
-        if (asks === 1) firstAskAt = now();
+    const askOnce = async () => {
+        tries.asks += 1;
+        if (tries.asks === 1) timings.firstAsk = now();
 
-        try {
-            const left = Math.max(deadline - now(), 500);
-            const state = await ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, 8000));
+        const left = Math.max(deadline - now(), 500);
 
-            serviceUpAt = now();
-            return { state, asks, by: 'ask' };
-        } catch (failure) {
-            if (!launched) {
-                launched = true;
-                launchService();
-            }
+        return ask(`/__tube/state${onTv ? '' : window.location.search}`, Math.min(left, ASK_TIMEOUT));
+    };
 
-            if (!announcedWait) {
-                announcedWait = true;
-                say('state', announced
-                    ? `no answer yet (${failure.message}); waiting to be told it is up`
-                    : `no answer yet (${failure.message}), asking again for up to ${GIVE_UP_AFTER / 1000}s`);
-            }
+    const explainTheWait = (failure) => {
+        if (!tries.launched) {
+            tries.launched = true;
+            launchService();
         }
 
-        if (now() > nextNudge) {
-            say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
-            nextNudge = now() + 5000;
+        if (tries.saidWaiting) return;
+
+        tries.saidWaiting = true;
+        say('state', announced
+            ? `no answer yet (${failure.message}); waiting to be told it is up`
+            : `no answer yet (${failure.message}), asking again for up to ${GIVE_UP_AFTER / 1000}s`);
+    };
+
+    const nudgeIfItHasBeenAWhile = () => {
+        if (now() <= tries.nextNudge) return;
+
+        say('state', `still waiting, ${((now() - started) / 1000).toFixed(1)}s elapsed`, 'warn');
+        tries.nextNudge = now() + NUDGE_EVERY;
+    };
+
+    // Recursion rather than a loop: each attempt is one pass, and the tail is the next attempt.
+    const attempt = async () => {
+        const state = await askOnce().catch((failure) => {
+            explainTheWait(failure);
+            return null;
+        });
+
+        if (state) {
+            timings.serviceUp = now();
+            return { state, asks: tries.asks, by: 'ask' };
         }
 
-        if (now() > deadline) return { state: null, asks, by: 'gave up' };
+        nudgeIfItHasBeenAWhile();
+
+        if (now() > deadline) return { state: null, asks: tries.asks, by: 'gave up' };
 
         const backstop = wait(Math.max(Math.min(BACKSTOP, deadline - now()), 0)).then(() => null);
-
         const told = announced ? await Promise.race([announced, backstop]) : await backstop;
 
-        if (told) {
-            serviceUpAt = now();
-            return { state: told, asks, by: 'announcement' };
-        }
-    }
+        if (!told) return attempt();
+
+        timings.serviceUp = now();
+        return { state: told, asks: tries.asks, by: 'announcement' };
+    };
+
+    return attempt();
+};
+
+// -- what happened -------------------------------------------------------------------------------
+
+const summarise = () => {
+    const total = now();
+    const seconds = (ms) => (ms / 1000).toFixed(3);
+
+    const line = [
+        `shell ${seconds(timings.shellReady)}s`,
+        `keys ${seconds(timings.keysTook)}s`,
+        `asked at ${seconds(timings.firstAsk)}s`,
+        timings.serviceUp ? `service ${seconds(timings.serviceUp)}s` : 'service never answered',
+        `${timings.asks} ${timings.asks === 1 ? 'ask' : 'asks'}`,
+        `by ${timings.foundBy}`,
+        `port ${timings.portState}`,
+        timings.toldAt ? `told by ${timings.toldBy} at ${seconds(timings.toldAt)}s` : 'never told',
+        `total ${seconds(total)}s`
+    ].join(', ');
+
+    say('tube', `startup finished in ${seconds(total)}s (${line})`, timings.serviceUp ? 'ok' : 'warn');
+
+    report(line);
 };
 
 const describe = (state, asks) => {
-    say('state', `up after ${asks} ${asks === 1 ? 'ask' : 'asks'}, ` +
-                 `${(serviceUpAt / 1000).toFixed(3)}s`, 'ok');
+    say('state', `up after ${asks} ${asks === 1 ? 'ask' : 'asks'}, `
+        + `${(timings.serviceUp / 1000).toFixed(3)}s`, 'ok');
 
-    if (state.platformVersion) {
-        say('state', `tizen ${state.platformVersion}`);
-    }
+    if (state.platformVersion) say('state', `tizen ${state.platformVersion}`);
 
     if (state.script && state.script.error) {
         say('loader', `no userscript: ${state.script.error}`, 'bad');
@@ -326,66 +346,18 @@ const describe = (state, asks) => {
         return;
     }
 
-    if (state.script) {
-        say('loader', `userscript ${state.script.version}`, 'ok');
-        say('loader', `origin ${state.script.origin}`);
+    if (!state.script) return;
 
-        if (isPlaceholder(state.script.origin)) {
-            say('loader', 'that origin is the documentation placeholder', 'bad');
-            say('loader', 'set tube.origin in tizen.config.json and rebuild', 'warn');
-        }
+    say('loader', `userscript ${state.script.version}`, 'ok');
+    say('loader', `origin ${state.script.origin}`);
+
+    if (isPlaceholder(state.script.origin)) {
+        say('loader', 'that origin is the documentation placeholder', 'bad');
+        say('loader', 'set tube.origin in tizen.config.json and rebuild', 'warn');
     }
 };
 
-const boot = async () => {
-    const reaching = reachService();
-
-    const info = application ? application.appInfo : null;
-
-    say('tube', `YouTube ${(info && info.version) || 'dev'}`, 'note');
-    if (info) say('tube', `package ${info.packageId}, app ${info.id}`);
-
-    say('webview', engine());
-
-    const view = surface();
-    say('webview', view.text, view.mismatched ? 'warn' : undefined);
-    if (view.mismatched) {
-        say('webview', 'viewport is not the panel — everything sized in vw will be off', 'warn');
-    }
-
-    say('webview', `locale ${navigator.language || 'unknown'}`);
-
-    say('net', navigator.onLine === false ? 'offline' : 'online',
-        navigator.onLine === false ? 'bad' : undefined);
-
-    if (onTv) {
-        const beforeKeys = now();
-        const keys = claimMediaKeys();
-        keysTookMs = now() - beforeKeys;
-
-        say('tvinputdevice', `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered in ` +
-            `${keysTookMs.toFixed(1)}ms`,
-            keys.refused.length ? 'warn' : 'ok');
-
-        if (keys.refused.length) {
-            say('tvinputdevice', `not on this model: ${keys.refused.join(' ')}`);
-        }
-    } else {
-        say('tvinputdevice', 'no platform, keys not claimed', 'warn');
-    }
-
-    shellReadyAt = now();
-
-    const reached = await reaching;
-    serviceAsks = reached.asks;
-    foundBy = reached.by;
-
-    if (!reached.state) return giveUp();
-
-    describe(reached.state, reached.asks);
-
-    return useProxy(reached.state);
-};
+// -- handing over --------------------------------------------------------------------------------
 
 // This screen only ever runs in a build without the container metadata: a package carrying
 // nativeID never runs its own content, and the platform launches Cobalt in its place.
@@ -401,22 +373,20 @@ const useProxy = (state) => {
 
     say('tube', 'handing over to youtube');
 
-    const go = () => {
+    return paintThen(() => {
         handOver();
         window.location.href = target;
-    };
-
-    return paintThen(go);
+    });
 };
 
+// Nothing is served without the service: the proxy is the service, so navigating there only
+// replaces this log with its error page and takes the reason with it.
 const giveUp = () => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
 
     summarise();
 
-    // Nothing is served without the service: the proxy is the service, so navigating there
-    // only replaces this log with its error page and takes the reason with it.
     say('proxy', 'not navigating — the proxy is the service, and it never came up', 'warn');
     say('tube', 'held on this screen; press Back to close', 'note');
 
@@ -425,11 +395,11 @@ const giveUp = () => {
 };
 
 const stopEverything = () => {
-    let left = false;
+    const left = { yes: false };
 
     const leave = () => {
-        if (left) return;
-        left = true;
+        if (left.yes) return;
+        left.yes = true;
         application.exit();
     };
 
@@ -438,15 +408,63 @@ const stopEverything = () => {
     try {
         const request = new XMLHttpRequest();
         request.open('GET', `${BASE}/__tube/quit`, true);
-        request.timeout = 1200;
+        request.timeout = QUIT_TIMEOUT;
         request.onloadend = leave;
         request.send();
     } catch (e) {
         return leave();
     }
 
-    setTimeout(leave, 1200);
+    setTimeout(leave, QUIT_TIMEOUT);
     return undefined;
+};
+
+// -- boot ------------------------------------------------------------------------------------------
+
+const boot = async () => {
+    const reaching = reachService();
+    const info = application ? application.appInfo : null;
+
+    say('tube', `YouTube ${(info && info.version) || 'dev'}`, 'note');
+    if (info) say('tube', `package ${info.packageId}, app ${info.id}`);
+
+    say('webview', engine());
+
+    const view = surface();
+    say('webview', view.text, view.mismatched ? 'warn' : undefined);
+    if (view.mismatched) {
+        say('webview', 'viewport is not the panel — everything sized in vw will be off', 'warn');
+    }
+
+    say('webview', `locale ${navigator.language || 'unknown'}`);
+    say('net', navigator.onLine === false ? 'offline' : 'online',
+        navigator.onLine === false ? 'bad' : undefined);
+
+    if (onTv) {
+        const beforeKeys = now();
+        const keys = claimMediaKeys();
+        timings.keysTook = now() - beforeKeys;
+
+        say('tvinputdevice',
+            `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered in ${timings.keysTook.toFixed(1)}ms`,
+            keys.refused.length ? 'warn' : 'ok');
+
+        if (keys.refused.length) say('tvinputdevice', `not on this model: ${keys.refused.join(' ')}`);
+    } else {
+        say('tvinputdevice', 'no platform, keys not claimed', 'warn');
+    }
+
+    timings.shellReady = now();
+
+    const reached = await reaching;
+    timings.asks = reached.asks;
+    timings.foundBy = reached.by;
+
+    if (!reached.state) return giveUp();
+
+    describe(reached.state, reached.asks);
+
+    return useProxy(reached.state);
 };
 
 document.addEventListener('keydown', (event) => {

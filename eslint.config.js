@@ -78,6 +78,46 @@ const CORRECTNESS_RULES = {
     'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }]
 };
 
+
+// The shape the shipped code is held to: const only, no loops, no classes, and no anonymous block
+// wearing a variable's name. Nothing enforced these until 2026-09-06 and the code drifted for it.
+//
+// Four files are exempt because live sibling branches own them and a reshape here would conflict
+// on every restack. They are the follow-up, not an exception in principle.
+const SIBLING_OWNED = [
+    'mods/ui/customUI.js',
+    'mods/features/pictureInPicture.js',
+    'mods/ui/settingsModel.js',
+    'mods/youtube/commands.js'
+];
+
+const SHIPPED = ['service/**/*.js', 'mods/**/*.js', 'ui/src/**/*.js'];
+
+const NOT_SHIPPED = SIBLING_OWNED.concat([
+    'service/test/**/*.js',
+    'mods/test/**/*.js',
+    'service/build/**/*.js',
+    'service/vite.config.mjs',
+    'mods/rollup.config.js'
+]);
+
+const STYLE_RULES = {
+    'no-var': 'error',
+    'prefer-const': ['error', { destructuring: 'all' }],
+    'no-restricted-syntax': ['error',
+        { selector: "VariableDeclaration[kind='let']", message: 'const only — hold what changes in one named record' },
+        { selector: 'ForStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'ForOfStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'ForInStatement', message: 'use Object.keys' },
+        { selector: 'WhileStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'DoWhileStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'ClassDeclaration', message: 'use a factory function that closes over its state' },
+        { selector: 'ClassExpression', message: 'use a factory function that closes over its state' },
+        { selector: 'CallExpression > ArrowFunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' },
+        { selector: 'CallExpression > FunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' }
+    ]
+};
+
 module.exports = [
     {
         ignores: [
@@ -130,6 +170,11 @@ module.exports = [
         files: SHARED_ES_MODULES,
         languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
         rules: CORRECTNESS_RULES
+    },
+    {
+        files: SHIPPED,
+        ignores: NOT_SHIPPED,
+        rules: STYLE_RULES
     },
     {
         files: ['ui/**/*.js'],

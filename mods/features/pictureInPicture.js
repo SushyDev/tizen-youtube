@@ -107,7 +107,7 @@ const observerPipEnter = new MutationObserver(() => {
     if (!window.isPipPlaying) return;
     const searchBar = document.querySelector('ytlr-search-bar');
     if (searchBar) {
-        const pipButtonExists = document.querySelector('#tt-pip-button');
+        const pipButtonExists = document.querySelector('#mini-player-button');
         if (!pipButtonExists) {
             const voiceButton = searchBar.querySelector('ytlr-search-voice');
             if (voiceButton) {

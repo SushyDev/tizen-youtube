@@ -1,5 +1,6 @@
 import { configRead, configChangeEmitter } from '../config.js';
 
+import { decodeBase64, encodeBase64, repaintPalette, transparentGround } from '../utils/png.js';
 import theme from './oledTheme.css';
 import easing from './oledFade.css';
 
@@ -49,10 +50,7 @@ export function rewrites() {
 }
 const scanned = [];
 
-let ground = null;
-let curtain = null;
-let observer = null;
-let pending = null;
+const held = { ground: null, curtain: null, observer: null, pending: null };
 
 function key(value) {
     const match = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value);
@@ -72,205 +70,62 @@ function remap(value) {
     });
 }
 
+// A CSSStyleDeclaration is array-like over its property names, and each name has to be paired with
+// the value it currently holds before anything is written back.
+const declarationsOf = (style) => Array.from({ length: style.length }, (_, index) => ({
+    property: style[index],
+    original: style.getPropertyValue(style[index])
+}));
+
 function rewriteDeclarations(style) {
-    const properties = [];
-    const values = [];
-    for (let i = 0; i < style.length; i++) {
-        properties.push(style[i]);
-        values.push(style.getPropertyValue(style[i]));
-    }
+    const declarations = declarationsOf(style);
 
-    const background = properties.indexOf('background-color');
-    const plate = background !== -1 && PLATES.indexOf(key(values[background])) !== -1;
+    const background = declarations.find((one) => one.property === 'background-color');
+    const plate = !!background && PLATES.indexOf(key(background.original)) !== -1;
 
-    for (let i = 0; i < properties.length; i++) {
-        const property = properties[i];
-        const original = values[i];
+    const wanted = ({ property, original }) => (
+        plate && property === 'color' && key(original) === MUTED_LABEL ? lift(original) : remap(original)
+    );
 
-        const next = plate && property === 'color' && key(original) === MUTED_LABEL
-            ? lift(original)
-            : remap(original);
+    declarations.forEach((declaration) => {
+        const next = wanted(declaration);
+        if (next === declaration.original) return;
 
-        if (next === original) continue;
+        const priority = style.getPropertyPriority(declaration.property);
 
-        const priority = style.getPropertyPriority(property);
-        changed.push([style, property, original, priority]);
-        style.setProperty(property, next, priority);
-    }
+        changed.push([style, declaration.property, declaration.original, priority]);
+        style.setProperty(declaration.property, next, priority);
+    });
 }
 
 function walkRules(rules) {
-    for (let i = 0; i < rules.length; i++) {
-        const rule = rules[i];
+    Array.from(rules).forEach((rule) => {
         if (rule.style) rewriteDeclarations(rule.style);
-
         if (rule.cssRules && rule.cssRules.length) walkRules(rule.cssRules);
-    }
+    });
 }
 
-function rewriteSheets() {
-    const sheets = document.styleSheets;
-
-    for (let i = 0; i < sheets.length; i++) {
-        const sheet = sheets[i];
-        if (scanned.indexOf(sheet) !== -1) continue;
-
-        let rules;
-        try {
-            rules = sheet.cssRules;
-        } catch (e) {
-            scanned.push(sheet);
-            continue;
-        }
-
-        if (!rules || !rules.length) continue;
-
-        scanned.push(sheet);
-        walkRules(rules);
-    }
-}
-
-let crcTable = null;
-
-function crc32(bytes, from, to) {
-    if (!crcTable) {
-        crcTable = new Int32Array(256);
-        for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-            crcTable[n] = c;
-        }
-    }
-
-    let c = -1;
-    for (let i = from; i < to; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-    return (c ^ -1) >>> 0;
-}
-
-function readUint32(bytes, at) {
-    return ((bytes[at] << 24) | (bytes[at + 1] << 16) | (bytes[at + 2] << 8) | bytes[at + 3]) >>> 0;
-}
-
-function writeUint32(bytes, at, value) {
-    bytes[at] = (value >>> 24) & 0xff;
-    bytes[at + 1] = (value >>> 16) & 0xff;
-    bytes[at + 2] = (value >>> 8) & 0xff;
-    bytes[at + 3] = value & 0xff;
-}
-
-function decodeBase64(text) {
-    const binary = atob(text);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-}
-
-function encodeBase64(bytes) {
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 4096) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
-    }
-    return btoa(binary);
-}
-
-function chunks(bytes) {
-    const list = [];
-    let at = 8;
-
-    while (at + 12 <= bytes.length) {
-        const length = readUint32(bytes, at);
-        const type = String.fromCharCode(bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]);
-
-        list.push({ type, at, length });
-        if (type === 'IEND') break;
-
-        at += 12 + length;
-    }
-
-    return list;
-}
-
-function find(list, type) {
-    for (let i = 0; i < list.length; i++) {
-        if (list[i].type === type) return list[i];
-    }
-    return null;
-}
-
-function chunk(type, data) {
-    const made = new Uint8Array(12 + data.length);
-
-    writeUint32(made, 0, data.length);
-    for (let i = 0; i < 4; i++) made[4 + i] = type.charCodeAt(i);
-    made.set(data, 8);
-    writeUint32(made, 8 + data.length, crc32(made, 4, 8 + data.length));
-
-    return made;
-}
-
-function spliced(bytes, made, at, dropping) {
-    const out = new Uint8Array(bytes.length - dropping + made.length);
-
-    out.set(bytes.subarray(0, at), 0);
-    out.set(made, at);
-    out.set(bytes.subarray(at + dropping), at + made.length);
-
-    return out;
-}
-
-function transparentGround(bytes, ground) {
-    const list = chunks(bytes);
-    const idat = find(list, 'IDAT');
-    if (!idat) return null;
-
-    const trns = find(list, 'tRNS');
-    let alphas = null;
-
-    if (bytes[25] === 3) {
-        const plte = find(list, 'PLTE');
-        if (!plte) return null;
-
-        const matches = [];
-        for (let i = 0; i * 3 + 2 < plte.length; i++) {
-            const at = plte.at + 8 + i * 3;
-            if (bytes[at] !== ground[0] || bytes[at + 1] !== ground[1] || bytes[at + 2] !== ground[2]) continue;
-            matches.push(i);
-        }
-        if (!matches.length) return null;
-
-        alphas = new Uint8Array(matches[matches.length - 1] + 1);
-        for (let i = 0; i < alphas.length; i++) {
-            alphas[i] = trns && i < trns.length ? bytes[trns.at + 8 + i] : 255;
-        }
-        matches.forEach((i) => { alphas[i] = 0; });
-    } else if (bytes[25] === 2) {
-        alphas = new Uint8Array([0, ground[0], 0, ground[1], 0, ground[2]]);
-    } else {
+// A sheet from another origin throws on cssRules; it is marked scanned so it is never asked twice.
+const rulesOf = (sheet) => {
+    try {
+        return sheet.cssRules;
+    } catch (e) {
         return null;
     }
+};
 
-    return trns
-        ? spliced(bytes, chunk('tRNS', alphas), trns.at, 12 + trns.length)
-        : spliced(bytes, chunk('tRNS', alphas), idat.at, 0);
-}
+function rewriteSheets() {
+    Array.from(document.styleSheets)
+        .filter((sheet) => scanned.indexOf(sheet) === -1)
+        .forEach((sheet) => {
+            const rules = rulesOf(sheet);
 
-function repaintPalette(bytes, from, to) {
-    const list = chunks(bytes);
-    const plte = find(list, 'PLTE');
-    if (!plte) return false;
+            if (rules === null) return scanned.push(sheet);
+            if (!rules.length) return undefined;
 
-    let touched = false;
-    for (let i = plte.at + 8; i + 2 < plte.at + 8 + plte.length; i += 3) {
-        if (bytes[i] !== from[0] || bytes[i + 1] !== from[1] || bytes[i + 2] !== from[2]) continue;
-        bytes[i] = to[0];
-        bytes[i + 1] = to[1];
-        bytes[i + 2] = to[2];
-        touched = true;
-    }
-    if (!touched) return false;
-
-    writeUint32(bytes, plte.at + 8 + plte.length, crc32(bytes, plte.at + 4, plte.at + 8 + plte.length));
-    return true;
+            scanned.push(sheet);
+            return walkRules(rules);
+        });
 }
 
 function behind(loader) {
@@ -293,15 +148,22 @@ function blackenSplash() {
         .exec(window.getComputedStyle(loader).backgroundImage || '');
     if (!match) return;
 
-    let painted = null;
+    // Transparent if the ground behind it is already the colour we are removing, and repainted
+    // black otherwise.
+    const repainted = () => {
+        try {
+            const bytes = decodeBase64(match[1]);
+            const lifted = behind(loader) ? transparentGround(bytes, SPLASH_GROUND) : null;
 
-    try {
-        const bytes = decodeBase64(match[1]);
+            if (lifted) return lifted;
 
-        painted = behind(loader) ? transparentGround(bytes, SPLASH_GROUND) : null;
+            return repaintPalette(bytes, SPLASH_GROUND, [0, 0, 0]) ? bytes : null;
+        } catch (e) {
+            return null;
+        }
+    };
 
-        if (!painted && repaintPalette(bytes, SPLASH_GROUND, [0, 0, 0])) painted = bytes;
-    } catch (e) { }
+    const painted = repainted();
 
     loader.style.setProperty('background-image',
         painted ? 'url(data:image/png;base64,' + encodeBase64(painted) + ')' : 'none', 'important');
@@ -348,59 +210,60 @@ function fade(work) {
         return;
     }
 
-    curtain = styled(easing);
-    document.head.appendChild(curtain);
+    held.curtain = styled(easing);
+    document.head.appendChild(held.curtain);
 
     void document.documentElement.offsetWidth;
 
-    const leaving = curtain;
+    const leaving = held.curtain;
     const over = settling();
 
     try {
         work();
     } finally {
         setTimeout(() => {
-            if (leaving === curtain) curtain = null;
+            if (leaving === held.curtain) held.curtain = null;
             if (leaving.parentNode) leaving.parentNode.removeChild(leaving);
         }, over);
     }
 }
 
 function schedule() {
-    if (pending) return;
-    pending = setTimeout(() => {
-        pending = null;
+    if (held.pending) return;
+    held.pending = setTimeout(() => {
+        held.pending = null;
         if (configRead('enableOledTheme')) rewriteSheets();
     }, 100);
 }
 
 function watchForStylesheets() {
-    if (observer || typeof MutationObserver !== 'function') return;
+    if (held.observer || typeof MutationObserver !== 'function') return;
 
-    observer = new MutationObserver((records) => {
-        for (let i = 0; i < records.length; i++) {
-            const added = records[i].addedNodes;
-            for (let j = 0; j < added.length; j++) {
-                const node = added[j];
-                if (node === ground || node === curtain) continue;
-                if (node.nodeName !== 'STYLE' && node.nodeName !== 'LINK') continue;
-                if (node.nodeName === 'LINK') node.addEventListener('load', schedule);
-                schedule();
-                return;
-            }
-        }
+    const ours = (node) => node === held.ground || node === held.curtain;
+    const isStylesheet = (node) => node.nodeName === 'STYLE' || node.nodeName === 'LINK';
+
+    // The first new stylesheet is enough — the rescan is debounced and covers whatever else arrived.
+    held.observer = new MutationObserver((records) => {
+        const added = records.reduce((all, record) => all.concat(Array.from(record.addedNodes)), []);
+        const found = added.find((node) => !ours(node) && isStylesheet(node));
+
+        if (!found) return;
+
+        if (found.nodeName === 'LINK') found.addEventListener('load', schedule);
+
+        schedule();
     });
 
-    observer.observe(document.head, { childList: true });
+    held.observer.observe(document.head, { childList: true });
 }
 
 function enable() {
-    if (ground) return;
+    if (held.ground) return;
 
-    ground = styled(theme);
+    held.ground = styled(theme);
 
     fade(() => {
-        document.head.appendChild(ground);
+        document.head.appendChild(held.ground);
 
         blackenSplash();
         rewriteSheets();
@@ -410,31 +273,27 @@ function enable() {
 }
 
 function disable() {
-    if (!ground) return;
+    if (!held.ground) return;
 
-    if (observer) {
-        observer.disconnect();
-        observer = null;
-    }
-    if (pending) {
-        clearTimeout(pending);
-        pending = null;
-    }
+    if (held.observer) held.observer.disconnect();
+    held.observer = null;
+    clearTimeout(held.pending);
+    held.pending = null;
 
     fade(() => {
-        for (let i = changed.length - 1; i >= 0; i--) {
-            const entry = changed[i];
-            entry[0].setProperty(entry[1], entry[2], entry[3]);
-        }
+        // Newest first, so a property rewritten more than once ends on the value it started with.
+        changed.slice().reverse().forEach(([style, property, original, priority]) => {
+            style.setProperty(property, original, priority);
+        });
 
-        if (ground.parentNode) ground.parentNode.removeChild(ground);
+        if (held.ground.parentNode) held.ground.parentNode.removeChild(held.ground);
 
         restoreSplash();
     });
 
     changed.length = 0;
     scanned.length = 0;
-    ground = null;
+    held.ground = null;
 }
 
 function guard(work) {

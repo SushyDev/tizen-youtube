@@ -6,6 +6,7 @@ postmortem.watch();
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
+const devbridge = require('./lib/devbridge.js');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -54,6 +55,12 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
+// The postmortem log over the network. On a set with no console and no dev bridge, this is the
+// only way to find out what the service did.
+app.get('/__tube/log', (_, res) => {
+    res.type('text/plain').send(postmortem.read() || '(nothing logged)');
+});
+
 app.get('/__tube/booted', (req, res) => {
     const line = String((req.query && req.query.t) || '').replace(/[\r\n]+/g, ' ').slice(0, 300);
 
@@ -68,6 +75,7 @@ app.get('/__tube/quit', (_, res) => {
     setTimeout(() => process.exit(0), 100);
 });
 
+devbridge.attach(app);
 proxy.attachFallback(app);
 
 // Must match the port names in ui/src/boot.js.

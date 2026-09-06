@@ -1,36 +1,54 @@
 'use strict';
 
-const { appendFileSync, readFileSync, statSync, renameSync } = require('fs');
+const { appendFileSync, readFileSync, statSync, renameSync, mkdirSync } = require('fs');
+const { dirname } = require('path');
 
 const LOG = process.env.TUBE_LOG || '/home/owner/share/tube/service.log';
-
 const MAX_BYTES = 64 * 1024;
 
-function roll() {
-    try {
-        if (statSync(LOG).size > MAX_BYTES) renameSync(LOG, `${LOG}.1`);
-    } catch (e) {
-    }
-}
+const state = { ready: false };
 
-function note(what, detail) {
-    try {
-        roll();
-        const said = (detail && detail.stack) || String(detail);
-        appendFileSync(LOG, `${new Date().toISOString()}  ${what}: ${said}\n`);
-    } catch (e) {
-    }
-}
+// Appending into a missing directory throws inside the catch below, so the log would read as
+// empty — which looks exactly like a service that never ran.
+const ensure = () => {
+    if (state.ready) return;
+    state.ready = true;
 
-function read() {
+    try { mkdirSync(dirname(LOG), { recursive: true }); } catch (e) { /* there, or not ours */ }
+};
+
+// One shape for every error the service reports, so a log line always names the code.
+const describe = (detail) => {
+    if (!detail) return String(detail);
+    if (typeof detail === 'string') return detail;
+
+    const code = detail.code || detail.name || 'Error';
+
+    if (detail.stack) return `${code}: ${detail.stack}`;
+    if (detail.message) return `${code}: ${detail.message}`;
+
+    return String(detail);
+};
+
+const note = (what, detail) => {
+    try {
+        ensure();
+        try { if (statSync(LOG).size > MAX_BYTES) renameSync(LOG, `${LOG}.1`); } catch (e) { /* new */ }
+        appendFileSync(LOG, `${new Date().toISOString()}  ${what}: ${describe(detail)}\n`);
+    } catch (e) { /* logging must never be a reason to fail */ }
+};
+
+const read = () => {
     try {
         return readFileSync(LOG, 'utf8').slice(-MAX_BYTES);
     } catch (e) {
         return '';
     }
-}
+};
 
-function watch() {
+const watch = () => {
+    // Exit rather than linger: a dying process goes on holding the port, so every restart lands
+    // on EADDRINUSE and the service never recovers. The log outlives it.
     process.on('uncaughtException', (error) => {
         note('uncaught', error);
         process.exit(1);
@@ -40,6 +58,6 @@ function watch() {
     process.on('exit', (code) => { if (code) note('exit', `code ${code}`); });
 
     note('started', `pid ${process.pid}, node ${process.version}`);
-}
+};
 
-module.exports = { LOG, note, read, watch };
+module.exports = { describe, note, read, watch };

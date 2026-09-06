@@ -1,3 +1,5 @@
+import { DEV_TOOLS } from './dev/tools.js';
+
 const CONFIG_KEY = 'tube.settings';
 
 const HIDDEN_SIDEBAR_ITEMS = [
@@ -33,6 +35,7 @@ const defaultConfig = {
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
   reportPlaybackStats: false,
+  enableDevBridge: DEV_TOOLS,
   videoSpeed: 1,
   rememberPlaybackSpeed: false,
   speedSettingsIncrement: 0.25,

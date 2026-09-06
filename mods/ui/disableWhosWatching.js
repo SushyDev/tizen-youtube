@@ -1,4 +1,5 @@
 import { configChangeEmitter, configRead } from '../config.js';
+import { waitFor } from '../utils/waitFor.js';
 
 const RECURRING_ACTIONS = 'yt.leanback.default::recurring_actions';
 
@@ -73,15 +74,12 @@ configChangeEmitter.addEventListener('configChange', (event) => {
     if (event.detail.key === 'enableWhoIsWatchingMenu') disableWhosWatching(event.detail.value);
 });
 
-if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
-    const until = Date.now() + WAIT_WINDOW;
-
-    const waiting = setInterval(() => {
-        if (disableWhosWatching(configRead('enableWhoIsWatchingMenu')) || Date.now() > until) {
-            clearInterval(waiting);
-        }
-    }, WAIT_INTERVAL);
-}
+// localStorage may not carry the record yet when this module loads.
+waitFor(
+    () => disableWhosWatching(configRead('enableWhoIsWatchingMenu')),
+    () => {},
+    { every: WAIT_INTERVAL, forMs: WAIT_WINDOW }
+);
 
 // Only while the app is starting: a selector the viewer opened themselves is one they meant to
 // open. The app acts on what it believes is focused rather than on what was clicked, so the

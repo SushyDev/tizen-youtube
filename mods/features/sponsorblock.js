@@ -1,54 +1,9 @@
 import sha256 from '../tiny-sha256.js';
+import { SEGMENTS as barTypes } from './segments.js';
+import { waitFor } from '../utils/waitFor.js';
 import { configRead } from '../config.js';
 import { showToast } from '../ui/ytUI.js';
 
-const barTypes = {
-  sponsor: {
-    color: '#00d400',
-    opacity: '0.7',
-    name: 'sponsored segment'
-  },
-  intro: {
-    color: '#00ffff',
-    opacity: '0.7',
-    name: 'intro'
-  },
-  outro: {
-    color: '#0202ed',
-    opacity: '0.7',
-    name: 'outro'
-  },
-  interaction: {
-    color: '#cc00ff',
-    opacity: '0.7',
-    name: 'interaction reminder'
-  },
-  selfpromo: {
-    color: '#ffff00',
-    opacity: '0.7',
-    name: 'self-promotion'
-  },
-  preview: {
-    color: '#008fd6',
-    opacity: '0.7',
-    name: 'recap or preview'
-  },
-  filler: {
-    color: "#7300FF",
-    opacity: "0.9",
-    name: 'tangents'
-  },
-  music_offtopic: {
-    color: '#ff9900',
-    opacity: '0.7',
-    name: 'non-music part'
-  },
-  poi_highlight: {
-    color: '#9b044c',
-    opacity: '0.7',
-    name: 'highlight'
-  }
-};
 
 const sponsorblockAPI = 'https://sponsor.ajay.app/api';
 
@@ -56,7 +11,7 @@ class SponsorBlockHandler {
   video = null;
   active = true;
 
-  attachVideoTimeout = null;
+  stopWaitingForVideo = null;
   nextSkipTimeout = null;
   sliderInterval = null;
 
@@ -149,13 +104,16 @@ class SponsorBlockHandler {
   }
 
   attachVideo() {
-    clearTimeout(this.attachVideoTimeout);
-    this.attachVideoTimeout = null;
+    if (this.stopWaitingForVideo) this.stopWaitingForVideo();
+    this.stopWaitingForVideo = null;
 
     this.video = document.querySelector('video');
     if (!this.video) {
-      console.info(this.videoID, 'No video yet...');
-      this.attachVideoTimeout = setTimeout(() => this.attachVideo(), 100);
+      this.stopWaitingForVideo = waitFor(
+        () => document.querySelector('video'),
+        () => this.attachVideo(),
+        { every: 100 }
+      );
       return;
     }
 
@@ -180,7 +138,8 @@ class SponsorBlockHandler {
 
     const videoDuration = this.video.duration;
     const slider = document.querySelector('div[idomkey="slider"]');
-    if (!slider) return setTimeout(() => this.buildOverlay(), 100);
+    if (!slider) return waitFor(() => document.querySelector('div[idomkey="slider"]'),
+      () => this.buildOverlay(), { every: 100 });
 
     this.segmentsoverlay = document.createElement('div');
 
@@ -350,9 +309,9 @@ class SponsorBlockHandler {
       this.nextSkipTimeout = null;
     }
 
-    if (this.attachVideoTimeout) {
-      clearTimeout(this.attachVideoTimeout);
-      this.attachVideoTimeout = null;
+    if (this.stopWaitingForVideo) {
+      this.stopWaitingForVideo();
+      this.stopWaitingForVideo = null;
     }
 
     if (this.sliderInterval) {

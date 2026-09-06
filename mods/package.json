@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "rollup -c rollup.config.js && node ../tools/check-output.js ../dist/userScript.js cobalt3",
-    "test": "node test/playback-stats.js && node test/quality.js"
+    "test": "node test/playback-stats.js && node test/quality.js && node test/wait-for.js"
   },
   "keywords": [],
   "author": "tube contributors, derived from TizenTube and youtube-webos (GPL-3.0)",

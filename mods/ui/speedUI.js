@@ -1,5 +1,6 @@
 import { configRead } from '../config.js';
 import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
+import { waitFor } from '../utils/waitFor.js';
 
 const SPEED_KEYS = [406, 191];
 
@@ -66,13 +67,6 @@ const attach = (video) => {
     ['keydown', 'keypress', 'keyup'].forEach((type) => document.addEventListener(type, onKey, true));
 };
 
-const until = Date.now() + WAIT_WINDOW;
-
-const waiting = setInterval(() => {
-    const video = document.querySelector('video');
-
-    if (video) attach(video);
-    if (video || Date.now() > until) clearInterval(waiting);
-}, WAIT_INTERVAL);
+waitFor(() => document.querySelector('video'), attach, { every: WAIT_INTERVAL, forMs: WAIT_WINDOW });
 
 export { openSpeedOptions };

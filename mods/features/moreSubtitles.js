@@ -1,4 +1,6 @@
 import { configRead } from "../config.js";
+import { findResolver } from '../youtube/internals.js';
+import { waitFor } from '../utils/waitFor.js';
 import { displayLanguage, displayRegion } from "../languageNames.js";
 
 const LANGUAGE_CODES = [
@@ -180,22 +182,17 @@ function createSectionTitle(title) {
 function patchSubtitleMenu() {
     if (isPatched) return;
 
-    const player = document.querySelector('.html5-video-player');
-    if (!player) return setTimeout(patchSubtitleMenu, 250);
-
-    if (!window._yttv) return setTimeout(patchSubtitleMenu, 250);
-    const yttvInstance = Object.values(window._yttv).find(
-        (obj) =>
-            obj &&
-            obj.instance &&
-            typeof obj.instance.resolveCommand === "function"
+    waitFor(
+        () => document.querySelector('.html5-video-player') && window._yttv,
+        () => patchSubtitleMenuNow()
     );
+}
 
-    if (
-        !yttvInstance ||
-        yttvInstance.instance.resolveCommand.isPatchedBySubtitleLocalization
-    ) {
-        if (!yttvInstance) {
+function patchSubtitleMenuNow() {
+    const resolver = findResolver();
+
+    if (!resolver || resolver.resolveCommand.isPatchedBySubtitleLocalization) {
+        if (!resolver) {
             console.error(
                 "Subtitles: Could not find resolveCommand instance."
             );
@@ -205,9 +202,9 @@ function patchSubtitleMenu() {
         return;
     }
 
-    const originalResolveCommand = yttvInstance.instance.resolveCommand;
+    const originalResolveCommand = resolver.resolveCommand;
 
-    yttvInstance.instance.resolveCommand = function (cmd, _) {
+    resolver.resolveCommand = function (cmd, _) {
         if (
             cmd?.openPopupAction?.uniqueId ===
             "CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE"
@@ -323,17 +320,16 @@ function patchSubtitleMenu() {
         return originalResolveCommand.apply(this, arguments);
     };
 
-    yttvInstance.instance.resolveCommand.isPatchedBySubtitleLocalization = true;
+    resolver.resolveCommand.isPatchedBySubtitleLocalization = true;
     console.log("Subtitles: Patch successful!");
     isPatched = true;
 }
 
-const interval = setInterval(() => {
-    if (window._yttv && Object.keys(window._yttv).length > 0) {
-        patchSubtitleMenu();
-        clearInterval(interval);
-    }
-}, 1000);
+waitFor(
+    () => window._yttv && Object.keys(window._yttv).length > 0,
+    () => patchSubtitleMenu(),
+    { every: 1000 }
+);
 
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", patchSubtitleMenu);

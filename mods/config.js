@@ -34,7 +34,6 @@ const defaultConfig = {
 
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
-  reportPlaybackStats: false,
   enableDevBridge: DEV_TOOLS,
   videoSpeed: 1,
   rememberPlaybackSpeed: false,

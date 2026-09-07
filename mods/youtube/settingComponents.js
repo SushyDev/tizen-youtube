@@ -104,10 +104,14 @@ function claimActionRows() {
 const ROWS = [
     'ytlr-setting-boolean-renderer',
     'ytlr-setting-single-option-menu-renderer',
-    'ytlr-setting-action-renderer'
+    'ytlr-setting-action-renderer',
+    'ytlr-setting-app-version'
 ].join(',');
 
+// The constructor matches the same shape as the redraw, and calling one without `new` throws.
 const redrawsFrom = (prototype) => Object.getOwnPropertyNames(prototype).find((key) => {
+    if (key === 'constructor') return false;
+
     const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
     const method = descriptor && descriptor.value;
     if (typeof method !== 'function' || method.length !== 0) return false;

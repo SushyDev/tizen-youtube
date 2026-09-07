@@ -1,5 +1,6 @@
 'use strict';
 
+const { execFileSync } = require('child_process');
 const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');
 
@@ -39,13 +40,39 @@ function validUrl(value, field) {
     return url;
 }
 
+// Baked in so the About page can name the exact build a set is running.
+function gitStamp() {
+    const git = (args) => {
+        try {
+            return execFileSync('git', args, {
+                cwd: ROOT,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore']
+            }).trim();
+        } catch (e) {
+            return null;
+        }
+    };
+
+    const commit = git(['rev-parse', '--short=7', 'HEAD']);
+    if (!commit) return { commit: 'nogit', tree: 'unknown' };
+
+    // Untracked files count: a mod not committed yet still ends up in the bundle.
+    const changes = git(['status', '--porcelain']);
+
+    return { commit, tree: changes === null || changes === '' ? 'clean' : 'dirty' };
+}
+
 function load(options) {
     const opts = options || {};
     const file = readConfigFile();
+    const stamp = gitStamp();
 
     const config = {
         version: process.env.TUBE_VERSION || file.version,
-        origin: (process.env.TUBE_ORIGIN || file.origin || '').replace(/\/+$/, '')
+        origin: (process.env.TUBE_ORIGIN || file.origin || '').replace(/\/+$/, ''),
+        commit: stamp.commit,
+        tree: stamp.tree
     };
 
     if (!/^\d+\.\d+\.\d+$/.test(String(config.version || ''))) {

@@ -9,7 +9,7 @@ import json from '@rollup/plugin-json';
 import { load } from '../tools/config.js';
 
 const config = load();
-const version = config.version;
+const { version, commit, tree } = config;
 
 const ENGINE = 'Chrome 63';
 const ECMA = 2017;
@@ -34,7 +34,9 @@ export default {
             values: {
                 __TUBE_DEV_TOOLS__: process.env.TUBE_DEV === '1' ? 'on' : 'off',
                 __TUBE_ORIGIN__: config.origin,
-                __TUBE_VERSION__: version
+                __TUBE_VERSION__: version,
+                __TUBE_COMMIT__: commit,
+                __TUBE_TREE__: tree
             }
         }),
         getBabelOutputPlugin({

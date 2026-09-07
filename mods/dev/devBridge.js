@@ -9,8 +9,15 @@ const PLAYER = '#movie_player, .html5-video-player';
 
 const held = { report: null, listen: null, lastEval: null };
 
-// Any plain-HTTP origin with a port is the service, whether loopback or the set's own address.
-export const servedByService = () => /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
+// The proxy sets __TUBE_NATIVE_PROXY_PATCHES__ on every page it dresses, so its presence is the
+// page saying it came through the service — whatever origin it wears.
+//
+// The origin test below it was the whole of this, and it stopped being true when the container's
+// TLS began being terminated locally: the page keeps its real https://www.youtube.com origin, so
+// a plain-HTTP-with-a-port test says no and the bridge has never opened inside Cobalt since.
+// Kept for the dev server, where the page really is http://localhost:8099 and nothing injects.
+export const servedByService = () => typeof window.__TUBE_NATIVE_PROXY_PATCHES__ !== 'undefined'
+    || /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
 
 const safely = (read, fallback) => {
     try {

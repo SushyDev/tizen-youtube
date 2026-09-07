@@ -7,7 +7,6 @@
 import { DEV_TOOLS, register } from '../../framework/index.js';
 import { start as startBridge } from './devBridge.js';
 import './playerProbe.js';
-import './measure.js';
 
 if (DEV_TOOLS) {
     register('dev bridge', 'ui', startBridge);

@@ -43,10 +43,7 @@ const defaultConfig = {
   disabledSidebarContents: HIDDEN_SIDEBAR_ITEMS,
   disableChannelsOnSidebar: false,
 
-  enableOledTheme: false,
 
-  enableLongPress: true,
-  enablePreviews: true,
   enableHqThumbnails: true,
 
   hideShoppingAction: true,
@@ -75,7 +72,7 @@ const defaultConfig = {
   enableShowOtherLanguages: false,
 
   launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
-  reloadHomeOnStartup: true,
+  reloadHomeOnStartup: false,
 };
 
 function readStoredSettings() {

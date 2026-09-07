@@ -233,28 +233,6 @@ onRequest('playback context', ['playbackContext'], (value) => {
   });
 });
 
-const addPreviews = (item) => {
-  if (!configRead('enablePreviews')) return;
-  if (!item.tileRenderer) return;
-
-  const watchEndpoint = item.tileRenderer.onSelectCommand;
-  const copiedEndpoint = JSON.parse(JSON.stringify(watchEndpoint));
-  if (item.tileRenderer?.onFocusCommand?.playbackEndpoint) return;
-  if (item.tileRenderer?.onFocusCommand?.commandExecutorCommand) return;
-  item.tileRenderer.onFocusCommand = {
-    startInlinePlaybackCommand: {
-      blockAdoption: true,
-      caption: false,
-      delayMs: 3000,
-      durationMs: 40000,
-      muted: false,
-      restartPlaybackBeforeSeconds: 10,
-      resumeVideo: true,
-      playbackEndpoint: copiedEndpoint
-    }
-  };
-};
-
 // Cached per video so a held answer dresses the tile before it is drawn.
 const branding = new Map();
 const BRANDING_REMEMBERED = 512;
@@ -362,7 +340,6 @@ const addLongPress = (item) => {
     return;
   }
 
-  if (!configRead('enableLongPress')) return;
   if (!item.tileRenderer?.metadata?.tileMetadataRenderer) return;
   if (!item.tileRenderer?.header?.tileHeaderRenderer?.thumbnail?.thumbnails) return;
   if (!item.tileRenderer.onSelectCommand?.watchEndpoint) return;
@@ -411,8 +388,6 @@ const notAShortsShelf = (shelf) => {
 onTile('deArrow', [SHELF, PIVOT, TILES, GRID], deArrowify);
 onTile('hq thumbnails', [SHELF, PIVOT, TILES, GRID], hqify);
 onTile('long press', [SHELF, PIVOT, TILES, GRID], addLongPress);
-
-onTile('previews', [SHELF], addPreviews);
 
 keepTile('advert slots', [SHELF, PIVOT, TILES, GRID], (item) => !item.adSlotRenderer);
 keepTile('watched', [SHELF, PIVOT, TILES, GRID], unwatched);

@@ -7,7 +7,7 @@
 
 const http = require('http');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { DEV } = require('../service/lib/ports.js');
 
 const asJson = (text) => {

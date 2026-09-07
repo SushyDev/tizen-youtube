@@ -8,8 +8,9 @@ postmortem.watch();
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
-const devbridge = require('./lib/devbridge.js');
+const dev = require('./dev/index.js');
 const forward = require('./lib/forward.js');
+const knobs = require('./lib/knobs.js');
 
 // Guarded, and the guard is the point. Everything the container route needs is a convenience laid
 // on a proxy that has to start regardless.
@@ -114,48 +115,11 @@ app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
 
-app.get('/__tube/dev/csp', (req, res) => {
-    const asked = String((req.query && req.query.policy) || '');
-    if (Object.prototype.hasOwnProperty.call(POLICIES, asked)) state.policy = asked;
+// The routes that turn the knobs are dev-only; the knobs themselves ship, because
+// rewriteBody reads them on every page. A release build resolves ./dev to a stub.
+dev.routes(app, { policies: POLICIES, state, knobs });
 
-    res.json({ policy: state.policy, sends: POLICIES[state.policy] });
-});
-
-// Which experiment flags the page is served with, changeable while the set is running:
-//   ?html5_onesie=false   set one (repeatable), then reload    ?clear=1   back to what YouTube sent
-if (process.env.TUBE_DEV_INJECT) app.get('/__tube/dev/flags', (req, res) => {
-    if (req.query.clear) proxy.flagOverrides.clear();
-
-    Object.keys(req.query).forEach((name) => {
-        if (name === 'clear' || !/^[a-z0-9_]{3,64}$/.test(name)) return;
-
-        const value = String(req.query[name]).slice(0, 32);
-        if (/^[A-Za-z0-9_.-]*$/.test(value)) proxy.flagOverrides.set(name, value);
-    });
-
-    res.json({ flags: Object.fromEntries(proxy.flagOverrides) });
-});
-
-// /__tube/dev/upstream?origin=pass|drop|<url>&abr=service&onesie=fail&patches=off
-if (process.env.TUBE_DEV_INJECT) app.get('/__tube/dev/upstream', (req, res) => {
-    if (req.query.origin) proxy.upstream.origin = String(req.query.origin).slice(0, 128);
-    if (req.query.abr) proxy.upstream.abrThroughService = req.query.abr === 'service';
-    if (req.query.patches) proxy.upstream.nativeProxyPatches = req.query.patches !== 'off';
-
-    if (req.query.onesie) {
-        const asked = String(req.query.onesie);
-        proxy.upstream.onesie = asked === 'fail' ? asked : 'auto';
-    }
-
-    res.json({
-        origin: proxy.upstream.origin,
-        abr: proxy.upstream.abrThroughService ? 'service' : 'direct',
-        onesie: proxy.upstream.onesie,
-        patches: proxy.upstream.nativeProxyPatches ? 'on' : 'off'
-    });
-});
-
-devbridge.attach(app);
+dev.attach(app);
 proxy.attachFallback(app);
 
 // Every interface, because the container is another package and cannot reach our 127.0.0.1.

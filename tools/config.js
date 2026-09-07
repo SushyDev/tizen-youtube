@@ -69,7 +69,8 @@ function load(options) {
 
     const config = {
         version: process.env.TUBE_VERSION || file.version,
-        origin: (process.env.TUBE_ORIGIN || file.origin || '').replace(/\/+$/, '')
+        origin: (process.env.TUBE_ORIGIN || file.origin || '').replace(/\/+$/, ''),
+        ports: file.ports || { proxy: 8099, dev: 8097, matrix: 8400 }
     };
 
     if (!/^\d+\.\d+\.\d+$/.test(String(config.version || ''))) {

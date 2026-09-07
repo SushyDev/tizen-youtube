@@ -1,6 +1,5 @@
-import { DEV_TOOLS } from './tools.js';
+import { DEV_TOOLS, onRequest, onResponse } from '../../framework/index.js';
 import { note } from './journal.js';
-import { onRequest, onResponse } from '../youtube/json.js';
 
 const held = { asked: {} };
 

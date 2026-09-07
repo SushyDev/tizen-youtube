@@ -1,23 +1,26 @@
 'use strict';
 
 const { execFileSync } = require('child_process');
-const { existsSync, statSync } = require('fs');
+const { existsSync, statSync, readFileSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
+const paths = require('./paths.js');
+const { assertNoTokens } = require('./inject.js');
 
 const STEPS = [
     {
         label: 'userscript bundle',
-        workspace: 'mods',
-        outputs: ['dist/userScript.js'],
+        command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
+        after: ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt3']],
+        outputs: [paths.BUNDLE],
         summarise: (sizes) => ui.bytes(sizes[0])
     },
     {
         label: 'service bundle',
-        workspace: 'service',
-        outputs: ['service/dist/index.js'],
+        command: ['node', ['tools/build-service.js']],
+        outputs: [paths.SERVICE_BUNDLE],
         summarise: (sizes) => `${ui.bytes(sizes[0])} · floor verified`
     }
 ];
@@ -37,15 +40,19 @@ function cleanOutput(raw) {
 
 function runStep(step) {
     const started = Date.now();
+    const commands = step.workspace
+        ? [['npm', ['run', 'build', '--workspace', step.workspace]]]
+        : [step.command].concat(step.after ? [step.after] : []);
+
     try {
-        execFileSync('npm', ['run', 'build', '--workspace', step.workspace], {
+        commands.forEach(([command, args]) => execFileSync(command, args, {
             cwd: ROOT,
             stdio: 'pipe',
             encoding: 'utf8'
-        });
+        }));
     } catch (e) {
         const error = new Error(
-            `${step.workspace} failed to build.\n\n${cleanOutput(`${e.stdout || ''}${e.stderr || ''}`) || e.message}`
+            `${step.label} failed to build.\n\n${cleanOutput(`${e.stdout || ''}${e.stderr || ''}`) || e.message}`
         );
         error.isFriendly = true;
         throw error;
@@ -53,10 +60,14 @@ function runStep(step) {
 
     const missing = step.outputs.filter((path) => !existsSync(join(ROOT, path)));
     if (missing.length) {
-        const error = new Error(`${step.workspace} reported success but did not produce:\n  ${missing.join('\n  ')}`);
+        const error = new Error(`${step.label} reported success but did not produce:\n  ${missing.join('\n  ')}`);
         error.isFriendly = true;
         throw error;
     }
+
+    step.outputs
+        .filter((path) => path.endsWith('.js'))
+        .forEach((path) => assertNoTokens(readFileSync(join(ROOT, path), 'utf8'), path));
 
     const sizes = step.outputs.map((path) => statSync(join(ROOT, path)).size);
     return { ms: Date.now() - started, detail: step.summarise(sizes) };

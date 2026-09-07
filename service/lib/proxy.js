@@ -5,12 +5,12 @@ const fetch = require('node-fetch');
 const http = require('http');
 const https = require('https');
 const URL = require('url');
-const { readFileSync } = require('fs');
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
 const forward = require('./forward.js');
-const journal = require('./journal.js');
+const dev = require('../dev/index.js');
+const { flagOverrides, upstream } = require('./knobs.js');
 const postmortem = require('./postmortem.js');
 const bigheaders = require('./bigheaders.js');
 
@@ -18,9 +18,6 @@ const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000 };
 const httpsAgent = new https.Agent(AGENT_OPTIONS);
 const httpAgent = new http.Agent(AGENT_OPTIONS);
 const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
-
-const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
-const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
@@ -49,24 +46,7 @@ const proxyPrefix = () => `${localOrigin()}/cors-bypass/`;
 
 const overOurTls = (req) => !!(req.socket && req.socket.encrypted);
 
-const flagOverrides = new Map();
-
-const upstream = {
-    origin: YOUTUBE_ORIGIN,
-    abrThroughService: false,
-    onesie: 'auto',
-    nativeProxyPatches: true
-};
-
 const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
-
-const spoofUserAgent = (text) => {
-    const shim = '<script>try{Object.defineProperty(navigator,"userAgent",'
-        + `{get:function(){return ${JSON.stringify(DEV_USER_AGENT)};},configurable:true});`
-        + '}catch(e){}</script>';
-
-    return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
-};
 
 // Routes SABR's single media URL through the service so no page patch is needed to reach
 // googlevideo.
@@ -135,7 +115,7 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
     const tuned = [
-        DEV_USER_AGENT ? spoofUserAgent : null,
+        dev.spoofUserAgent,
         flagOverrides.size ? retuneFlags : null,
         upstream.nativeProxyPatches ? null : overrideInnertubeHost
     ].filter(Boolean).reduce((out, step) => step(out), text);
@@ -145,7 +125,7 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
 
     const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
         + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
-        + (DEV_INJECT_PATH ? `<script${stamp} src="${origin}/__tube/dev.js?v=${Date.now()}"></script>` : '');
+        + dev.pageScripts(origin, stamp);
 
     // Appended past </html> a browser still runs it; Cobalt's parser drops it.
     return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
@@ -183,7 +163,7 @@ const create = () => {
     });
 
     app.use((req, _, next) => {
-        const watching = journal.wanted();
+        const watching = dev.journal.wanted();
         const tracing = state.traced < TRACE_LIMIT;
         if (!watching && !tracing) return next();
 
@@ -193,7 +173,7 @@ const create = () => {
         const asked = `${req.method} ${path.slice(0, 150)}`;
 
         // Our own /__tube/ requests would drown the page's in the journal.
-        if (watching && !ours) journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
+        if (watching && !ours) dev.journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
 
         if (tracing && overOurTls(req) && !ours) {
             state.traced += 1;
@@ -232,16 +212,7 @@ const create = () => {
         }
     });
 
-    if (DEV_INJECT_PATH) {
-        app.get('/__tube/dev.js', (_, res) => {
-            try {
-                res.type('application/javascript').send(readFileSync(DEV_INJECT_PATH, 'utf8'));
-            } catch (e) {
-                res.status(500).type('application/javascript')
-                    .send(`console.error(${JSON.stringify(`tube: could not read ${DEV_INJECT_PATH} - ${e.message}`)});`);
-            }
-        });
-    }
+    dev.pageRoutes(app);
 
     return app;
 };
@@ -302,10 +273,9 @@ const headersFor = (req, route) => {
             ? restoreCookiePrefixes(req.headers[key])
             : req.headers[key]]);
 
-    return Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
-        DEV_USER_AGENT ? { 'user-agent': DEV_USER_AGENT } : {},
+    return dev.upstreamHeaders(Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
         // Brotli is not decoded here, so ask for encodings that can be read.
-        { 'accept-encoding': 'gzip, deflate' });
+        { 'accept-encoding': 'gzip, deflate' }));
 };
 
 const isRetriable = (error) => !!error
@@ -379,7 +349,7 @@ const attachFallback = (app) => {
     app.all('*', (req, res) => {
         // A failed initplayback makes the client fall back to a plain player response.
         if (upstream.onesie === 'fail' && req.url.indexOf('initplayback') !== -1) {
-            journal.service('onesie', `refused ${req.method}`);
+            dev.journal.service('onesie', `refused ${req.method}`);
             return res.status(502).end();
         }
 
@@ -394,7 +364,7 @@ const attachFallback = (app) => {
         // hung page by retrying for ever behind a network error.
         const fail = (what, error) => {
             postmortem.note('upstream', `${what} on ${route.url.slice(0, 90)}: ${postmortem.describe(error)}`);
-            journal.service('failed', `${what} ${route.url.slice(0, 110)}`);
+            dev.journal.service('failed', `${what} ${route.url.slice(0, 110)}`);
 
             if (res.headersSent) return res.destroy();
             return res.status(500).type('text/plain').send(`tube: ${what}`);
@@ -404,7 +374,7 @@ const attachFallback = (app) => {
             .then((response) => {
                 res.status(response.status);
 
-                if (route.isBypass) journal.service('answered', `${response.status} ${route.url.slice(0, 110)}`);
+                if (route.isBypass) dev.journal.service('answered', `${response.status} ${route.url.slice(0, 110)}`);
 
                 copyHeaders(req, res, response, route);
 
@@ -446,5 +416,5 @@ const attachFallback = (app) => {
 
 module.exports = {
     create, attachFallback, rewriteBody, rewriteAttestation, withOurConnections,
-    rewriteSetCookie, restoreCookiePrefixes, flagOverrides, upstream
+    rewriteSetCookie, restoreCookiePrefixes
 };

@@ -3,7 +3,7 @@
 const tls = require('tls');
 const fs = require('fs');
 
-const journal = require('./journal.js');
+const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 
 // A cobalt.js that fails to load disables interception, never the tunnel.
@@ -45,7 +45,7 @@ const interceptor = (server, record) => {
     const secureServer = (config) => {
         try {
             return tls.createServer(config, (socket) => {
-                journal.service('mitm', `secure ${socket.servername || '?'}`);
+                dev.journal.service('mitm', `secure ${socket.servername || '?'}`);
                 record('accepted', socket.servername || '?');
                 server.emit('connection', socket);
             });
@@ -64,7 +64,7 @@ const interceptor = (server, record) => {
         if (!mitm) return null;
 
         mitm.on('tlsClientError', (error, socket) => {
-            journal.service('mitm', `tls error ${error.message}`);
+            dev.journal.service('mitm', `tls error ${error.message}`);
             record('refused', error.message);
             socket.destroy();
         });

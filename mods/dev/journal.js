@@ -1,6 +1,5 @@
-import { configRead } from '../config.js';
-import { DEV_TOOLS } from './tools.js';
-import { servedByService } from '../features/devBridge.js';
+import { DEV_TOOLS, configRead } from '../../framework/index.js';
+import { servedByService } from './devBridge.js';
 
 const FLUSH_EVERY = 1000;
 const MOST_HELD = 200;

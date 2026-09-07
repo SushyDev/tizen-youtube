@@ -3,14 +3,10 @@
 const { rmSync, existsSync, statSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { ROOT } = require('./config.js');
 
-const ARTEFACTS = [
-    'dist',
-    'service/dist',
-    'release'
-];
+const ARTEFACTS = require('./paths.js').ARTEFACTS;
 
 const DEEP = ['node_modules'];
 

@@ -3,7 +3,7 @@
 const { existsSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { load, CONFIG_PATH, ROOT } = require('./config.js');
 
 const checks = [];
@@ -29,7 +29,7 @@ check('dependencies installed', () => {
     if (!existsSync(join(ROOT, 'node_modules'))) {
         throw new Error('No node_modules. Run: npm install');
     }
-    const probes = ['rollup', '@babel/core', 'vite', 'eslint'];
+    const probes = ['rollup', '@babel/core', 'vite', 'eslint', 'typescript'];
     const missing = probes.filter((name) => !existsSync(join(ROOT, 'node_modules', name)));
     if (missing.length) {
         throw new Error(`Missing ${missing.join(', ')}. Run: npm install`);

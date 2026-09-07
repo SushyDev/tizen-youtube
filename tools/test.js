@@ -2,11 +2,11 @@
 
 const { execFileSync } = require('child_process');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { ROOT } = require('./config.js');
 
 const SUITES = [
-    { name: 'mods', workspace: 'mods' },
+    { name: 'userscript', command: ['node', ['test/index.js']] },
     { name: 'service', workspace: 'service' }
 ];
 
@@ -14,29 +14,36 @@ ui.heading('test');
 
 let failures = 0;
 
-{
+const gate = (name, command, args, detail) => {
     const started = Date.now();
     try {
-        execFileSync('npx', ['eslint', '.'], { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
-        ui.ok('lint', 'no errors', Date.now() - started);
-
+        execFileSync(command, args, { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
+        ui.ok(name, detail, Date.now() - started);
+        return 0;
     } catch (e) {
-        failures++;
-        ui.fail('lint', 'correctness errors found');
+        ui.fail(name, 'errors found');
         `${e.stdout || ''}${e.stderr || ''}`.split('\n')
             .filter((line) => line.trim())
             .slice(0, 25)
             .forEach((line) => process.stdout.write(`      ${line}\n`));
+        return 1;
     }
-}
+};
+
+failures += gate('lint', 'npx', ['eslint', '.'], 'no errors');
+failures += gate('types', 'npx', ['tsc', '--noEmit'], 'no errors');
 
 SUITES.forEach((suite) => {
     const started = Date.now();
     let output = '';
     let failed = false;
 
+    const invocation = suite.workspace
+        ? ['npm', ['test', '--workspace', suite.workspace]]
+        : suite.command;
+
     try {
-        output = execFileSync('npm', ['test', '--workspace', suite.workspace], {
+        output = execFileSync(invocation[0], invocation[1], {
             cwd: ROOT,
             stdio: 'pipe',
             encoding: 'utf8'

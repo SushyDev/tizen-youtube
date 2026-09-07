@@ -5,18 +5,11 @@ const { existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSy
 const { join, dirname, relative, sep } = require('path');
 const JSZip = require('jszip');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
+const paths = require('./paths.js');
 
-const APP = {
-    output: 'release/tube.wgt',
-    include: [
-        'config.xml',
-        'icon.png',
-        'index.html',
-        'service/dist'
-    ]
-};
+const APP = { output: paths.WGT, include: paths.WIDGET };
 
 function friendly(message) {
     const error = new Error(message);
@@ -26,14 +19,14 @@ function friendly(message) {
 
 function stageContents(staging) {
     APP.include.forEach((entry) => {
-        const from = join(ROOT, entry);
+        const from = join(ROOT, entry.from);
         if (!existsSync(from)) {
             throw friendly(
-                `${entry} is missing, and it must be in the package.\n` +
+                `${entry.from} is missing, and it must be in the package.\n` +
                 '  Run `npm run build` first.'
             );
         }
-        const to = join(staging, entry);
+        const to = join(staging, entry.to);
         mkdirSync(dirname(to), { recursive: true });
         cpSync(from, to, { recursive: true });
     });
@@ -104,6 +97,22 @@ function addCobaltProfile(staging) {
     writeFileSync(path, xml.replace(expression, `$1${xmlAttribute(args)}$3`));
 }
 
+// A proxy port changed here but not there is a television that shows nothing and says nothing:
+// the container is launched pointing at a port the service is not on. Cheap to check, and the
+// failure it prevents costs an install and a reboot to diagnose.
+function checkThePortsAgree(staging, expected) {
+    const xml = readFileSync(join(staging, 'config.xml'), 'utf8');
+    const named = /--proxy=http:\/\/[^:\s"]+:(\d+)/.exec(xml);
+
+    if (!named) throw friendly('config.xml has no --proxy switch to check.');
+    if (Number(named[1]) === Number(expected)) return;
+
+    throw friendly(
+        `config.xml launches the container against port ${named[1]}, but tizen.config.json says\n` +
+        `  the proxy is on ${expected}. One of the two is wrong, and the set would show nothing.`
+    );
+}
+
 function addGameMode(staging) {
     const path = join(staging, 'config.xml');
     const xml = readFileSync(path, 'utf8');
@@ -127,18 +136,19 @@ async function writeWidget(staging, outPath) {
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-async function packageApp() {
+async function packageApp(config) {
     const staging = join(ROOT, '.package');
     const outPath = join(ROOT, APP.output);
 
     rmSync(staging, { recursive: true, force: true });
     mkdirSync(staging, { recursive: true });
-    mkdirSync(join(ROOT, 'release'), { recursive: true });
+    mkdirSync(join(ROOT, paths.RELEASE), { recursive: true });
 
     const started = Date.now();
     try {
         stageContents(staging);
         addCobaltProfile(staging);
+        checkThePortsAgree(staging, config.ports.proxy);
         if (wantsGameMode()) addGameMode(staging);
         await writeWidget(staging, outPath);
     } finally {
@@ -158,7 +168,7 @@ async function main() {
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
     ui.group('packaging');
-    const result = await packageApp();
+    const result = await packageApp(config);
     ui.ok('youtube', `${ui.bytes(result.size)} · ${result.path}`, result.ms);
 
     ui.blank();

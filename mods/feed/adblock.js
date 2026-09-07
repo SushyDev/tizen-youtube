@@ -108,23 +108,21 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
     }
 
     if (r?.contents?.tvBrowseRenderer?.content?.tvSecondaryNavRenderer?.sections) {
-      const selectedFirstThenByTitle = (a, b) => {
-        if (a.tabRenderer.selected && !b.tabRenderer.selected) return -1;
-        if (!a.tabRenderer.selected && b.tabRenderer.selected) return 1;
-        return a.tabRenderer.title.localeCompare(b.tabRenderer.title);
-      };
-
       const dressTab = (tab) => {
         const content = tab.tabRenderer.content?.tvSurfaceContentRenderer?.content;
         if (content?.sectionListRenderer?.contents) walkShelves(content.sectionListRenderer.contents, SHELF);
         if (content?.gridRenderer?.items) content.gridRenderer.items = walkTiles(content.gridRenderer.items, GRID);
       };
 
+      // The tabs are not one list. YouTube sends "All", then the channels with something new,
+      // then an "A-Z" divider carrying no endpoint and no content, then every channel in order.
+      // Sorting them together flattened the three into one: the divider went to its alphabetical
+      // place, and a channel that is legitimately in both the recent group and the full list
+      // ended up beside itself, looking like a duplicate. YouTube already sorts the part that
+      // wants sorting.
       r.contents.tvBrowseRenderer.content.tvSecondaryNavRenderer.sections.forEach((entry) => {
         const section = entry.tvSecondaryNavSectionRenderer;
         if (!section || !section.tabs) return;
-
-        if (configRead('sortSubscriptionsByAlphabet')) section.tabs.sort(selectedFirstThenByTitle);
 
         section.tabs.forEach(dressTab);
       });

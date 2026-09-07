@@ -26,12 +26,10 @@ const cobalt = cobaltIfItLoads();
 
 const isTV = typeof tizen !== 'undefined';
 
-// With the container metadata in place the platform launches Cobalt and never runs our own
-// content, so the boot screen is unreachable and nothing speaks to the routes below that only it
-// used. A package built with TUBE_COBALT_CONTAINER=off carries no such metadata and still boots
-// through the screen.
+// Which container slot this build claims. The platform launches Cobalt and never runs our own
+// content, so nothing of ours has a page: this is the whole of the app, and the value is here to
+// be reported rather than acted on.
 const containerRoute = cobalt ? cobalt.container() : null;
-const servesBootScreen = !containerRoute;
 
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
@@ -104,10 +102,7 @@ const describeState = () => {
     return {
         script: theScriptThisSetWouldRun(),
         platformVersion,
-        // Which container slot this build claims, if any. Reported for diagnosis: it is what
-        // decides whether our own content ever runs.
-        container: containerRoute,
-        proxyUrl: `http://localhost:${ports.PROXY}/tv`
+        container: containerRoute
     };
 };
 
@@ -121,20 +116,6 @@ app.get('/__tube/state', (_, res) => {
 app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
-
-if (servesBootScreen) {
-    app.get('/__tube/booted', (req, res) => {
-        postmortem.note('boot', String((req.query && req.query.t) || '').replace(/[\r\n]+/g, ' ').slice(0, 300));
-        res.json({ ok: true });
-    });
-
-    app.get('/__tube/quit', (_, res) => {
-        postmortem.note('quit', 'asked to stop by the boot screen');
-        res.json({ ok: true });
-
-        setTimeout(() => process.exit(0), 100);
-    });
-}
 
 app.get('/__tube/dev/csp', (req, res) => {
     const asked = String((req.query && req.query.policy) || '');
@@ -180,35 +161,6 @@ if (process.env.TUBE_DEV_INJECT) app.get('/__tube/dev/upstream', (req, res) => {
 devbridge.attach(app);
 proxy.attachFallback(app);
 
-// Must match the port names in ui/src/boot.js.
-const READY_PORT = 'TUBE_BOOT';
-const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
-
-const announceReady = () => {
-    if (!isTV || !servesBootScreen || !cobalt) return;
-
-    try {
-        const uiAppId = cobalt.appId();
-        const payload = [{ key: 'state', value: JSON.stringify(describeState()) }];
-
-        const send = (label, open) => {
-            try {
-                open(uiAppId).sendMessage(payload);
-                return `${label} sent`;
-            } catch (e) {
-                return `${label} ${postmortem.describe(e)}`;
-            }
-        };
-
-        postmortem.note('announce', [
-            send('trusted', (id) => tizen.messageport.requestTrustedRemoteMessagePort(id, READY_PORT)),
-            send('open', (id) => tizen.messageport.requestRemoteMessagePort(id, READY_PORT_OPEN))
-        ].join(', '));
-    } catch (e) {
-        postmortem.note('announce', e);
-    }
-};
-
 // Every interface, because the container is another package and cannot reach our 127.0.0.1.
 const BIND = '0.0.0.0';
 const RETRY_LISTEN_AFTER = 5000;
@@ -232,8 +184,6 @@ const listen = (addresses, index) => {
         postmortem.note('listening', `${address}:${ports.PROXY}`);
         console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
-
-        announceReady();
     });
 
     // Cobalt's --proxy sends TLS through CONNECT; without an answer to that the container has no

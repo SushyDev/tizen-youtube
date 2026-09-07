@@ -1,4 +1,6 @@
 # Everything that can be checked without a television.
+#
+# The build runs here because `tools/check-output.js` refuses a built-in newer than the floor.
 
 name: CI
 

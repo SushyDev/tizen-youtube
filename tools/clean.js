@@ -8,7 +8,6 @@ const { ROOT } = require('./config.js');
 
 const ARTEFACTS = [
     'dist',
-    'ui/dist',
     'service/dist',
     'release'
 ];

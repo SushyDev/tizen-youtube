@@ -4,7 +4,9 @@
     <tizen:allow-navigation href="*"/>
     <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
-    <content src="ui/dist/index.html"/>
+    <!-- Never loaded: nativeID hands the launch to the container, as the comment below says. It
+         is here because a widget will not install without a start file. -->
+    <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
     <feature name="http://tizen.org/feature/web.service"/>
     <icon src="icon.png"/>
@@ -25,7 +27,7 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://127.0.0.2:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
 
     <!-- Must stay true: false terminates the app on focus loss rather than hiding it, so
-         Home and Back re-run the boot screen instead of returning to the video. -->
+         Home and Back start it again from nothing instead of returning to the video. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
 

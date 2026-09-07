@@ -1,7 +1,8 @@
 'use strict';
 
-// The overrides exist so tests and the runtime matrix can run beside a dev server already
-// holding the default.
+// PROXY is also written into config.xml, as the --proxy switch the container is launched with;
+// nothing reads it from here. The overrides exist so tests and the runtime matrix can run beside
+// a dev service already holding the default.
 const port = (name, fallback) => Number(process.env[name]) || fallback;
 
 module.exports = {

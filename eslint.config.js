@@ -59,8 +59,6 @@ const BROWSER_GLOBALS = {
     webapis: 'readonly'
 };
 
-const SHARED_ES_MODULES = ['tools/css-support.js', 'tools/postcss-grid-gap.mjs'];
-
 const CORRECTNESS_RULES = {
     'no-undef': 'error',
     'no-dupe-keys': 'error',
@@ -85,7 +83,7 @@ const SIBLING_OWNED = [
     'mods/youtube/commands.js'
 ];
 
-const SHIPPED = ['service/**/*.js', 'mods/**/*.js', 'ui/src/**/*.js'];
+const SHIPPED = ['service/**/*.js', 'mods/**/*.js'];
 
 const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
@@ -123,7 +121,7 @@ module.exports = [
     },
     {
         files: ['tools/**/*.js', 'service/**/*.js'],
-        ignores: SHARED_ES_MODULES,
+        ignores: ['tools/dev/remote.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'commonjs',
@@ -160,41 +158,17 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        files: SHARED_ES_MODULES,
-        languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
-        rules: CORRECTNESS_RULES
-    },
-    {
         files: SHIPPED,
         ignores: UNSTYLED,
         rules: STYLE_RULES
     },
+    // Not shipped and not Node either: it is injected into the page by the dev service.
     {
-        files: ['ui/**/*.js'],
+        files: ['tools/dev/remote.js'],
         languageOptions: {
-            ecmaVersion: 2022,
-            sourceType: 'module',
-            globals: Object.assign({}, BROWSER_GLOBALS, {
-                WebSocket: 'readonly',
-                XMLHttpRequest: 'readonly',
-                HTMLElement: 'readonly',
-                FileReader: 'readonly',
-                process: 'readonly'
-            })
-        },
-        rules: CORRECTNESS_RULES
-    },
-    {
-        files: [
-            'ui/dev/**/*.js',
-            'ui/vite.config.js',
-            'ui/build.js'
-        ],
-        ignores: ['ui/dev/remote.js'],
-        languageOptions: {
-            ecmaVersion: 2022,
-            sourceType: 'module',
-            globals: NODE_GLOBALS
+            ecmaVersion: 5,
+            sourceType: 'script',
+            globals: BROWSER_GLOBALS
         },
         rules: CORRECTNESS_RULES
     }

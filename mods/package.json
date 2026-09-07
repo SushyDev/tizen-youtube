@@ -16,8 +16,7 @@
     "@rollup/plugin-babel": "^6.0.3",
     "@rollup/plugin-terser": "^0.4.3",
     "rollup": "^3.26.2",
-    "rollup-plugin-string": "^3.0.0",
-    "tiny-sha256": "^1.0.2"
+    "rollup-plugin-string": "^3.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.0",

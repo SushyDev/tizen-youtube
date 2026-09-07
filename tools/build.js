@@ -9,12 +9,6 @@ const { load, ROOT } = require('./config.js');
 
 const STEPS = [
     {
-        label: 'boot screen',
-        workspace: 'ui',
-        outputs: ['ui/dist/index.html'],
-        summarise: (sizes) => `${ui.bytes(sizes[0])} · single file`
-    },
-    {
         label: 'userscript bundle',
         workspace: 'mods',
         outputs: ['dist/userScript.js'],

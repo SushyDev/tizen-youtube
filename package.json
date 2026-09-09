@@ -24,6 +24,7 @@
     "package": "node tools/package.js",
     "release": "node tools/release.js",
     "dev": "node tools/dev.js",
+    "chii": "node tools/chii.js",
     "dev:service": "node service/index.js",
     "deploy": "./install-dev.sh",
     "clean": "node tools/clean.js",

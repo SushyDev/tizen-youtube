@@ -6,7 +6,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "build": "node ../tools/build-service.js",
-    "test": "node test/injection.js && node test/upgrade.js && node test/routing.js && node test/proxying.js && node test/x509.js && node test/forward.js && node test/bigheaders.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js"
+    "test": "node test/injection.js && node test/upgrade.js && node test/chii.js && node test/routing.js && node test/proxying.js && node test/x509.js && node test/forward.js && node test/bigheaders.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js"
   },
   "dependencies": {
     "express": "^4.21.2",

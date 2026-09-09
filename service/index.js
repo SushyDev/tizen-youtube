@@ -159,7 +159,7 @@ const listen = (addresses, index) => {
 
     // And an upgrade is not a request express ever sees, so without this every WebSocket the page
     // opens is accepted and then never answered — a hang rather than a failure.
-    upgrade.attach(server, { rewrite: dev.chiiUpgrade });
+    upgrade.attach(server, { rewrite: dev.upgradeRewrite });
 
     // Handled rather than fatal, and never advanced once the port is ours: a later error would
     // otherwise start a second server beside the one already answering.

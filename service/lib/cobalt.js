@@ -294,6 +294,46 @@ const stageOrFail = (content) => {
     }
 };
 
+// Stopping the container and starting it again, which is the only way a page picks up a new build.
+// Installing restarts *this service* but leaves the container running the bundle it already has —
+// verified on the set, where the page kept its old start_time across three installs in a row.
+//
+// The kill has to name the container's own context: our own appId is what the platform launches,
+// but what is running is com.samsung.tv.cobalt-yt, and killing the wrong one does nothing.
+const relaunch = (done) => {
+    if (typeof tizen === 'undefined') return done(new Error('not on a television'));
+
+    const me = appId();
+    if (!me) return done(new Error('no appId in the manifest'));
+
+    return tizen.application.getAppsContext((contexts) => {
+        const running = contexts.filter((context) => context.appId === CONTAINER || context.appId === me);
+
+        const start = () => {
+            // Cleared so wake()'s own quiet period cannot swallow the launch that follows.
+            state.lastWake = 0;
+            note('relaunch', `starting ${me}`);
+            tizen.application.launch(me, () => done(null, { killed: running.length }),
+                (error) => done(new Error(`launch refused: ${error.message}`)));
+        };
+
+        if (!running.length) return start();
+
+        // Killed one at a time; the launch waits for the last answer either way, because a context
+        // that refuses to die must not hold up the start.
+        const remaining = { count: running.length };
+        const finished = () => {
+            remaining.count -= 1;
+            if (remaining.count <= 0) setTimeout(start, 1200);
+        };
+
+        return running.forEach((context) => {
+            note('relaunch', `killing ${context.appId} (${context.id})`);
+            tizen.application.kill(context.id, finished, finished);
+        });
+    }, (error) => done(new Error(`could not list contexts: ${error.message}`)));
+};
+
 const prepare = (done) => {
     const finish = (error, result) => {
         state.preparing = false;
@@ -367,4 +407,4 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-module.exports = { prepare, wake, served, material, container, appId, MITM_DIR };
+module.exports = { prepare, wake, served, relaunch, material, container, appId, MITM_DIR };

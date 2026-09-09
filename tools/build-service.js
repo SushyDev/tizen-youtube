@@ -29,9 +29,13 @@ console.log('[2/4] stamping the origin and the dev token');
 const dev = process.env.TUBE_DEV === '1';
 const devToken = process.env.TUBE_DEV_TOKEN || randomBytes(8).toString('hex');
 
+// `off` rather than empty: injectTokens refuses a blank value, and the dev code compares against
+// this sentinel to decide whether a remote inspector was asked for.
+const chii = process.env.TUBE_CHII || 'off';
+
 const tokens = Object.assign(
     { __TUBE_ORIGIN__: config.origin },
-    dev ? { __TUBE_DEV_TOKEN__: devToken } : {}
+    dev ? { __TUBE_DEV_TOKEN__: devToken, __TUBE_CHII__: chii } : {}
 );
 
 const stamped = injectTokens(readFileSync(bundle, 'utf8'), tokens).code;

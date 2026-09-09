@@ -10,6 +10,7 @@
 const bridge = require('./bridge.js');
 const journal = require('./journal.js');
 const { readFileSync } = require('fs');
+const postmortem = require('../lib/postmortem.js');
 
 const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
@@ -30,12 +31,62 @@ const upstreamHeaders = (headers) => (DEV_USER_AGENT
     ? Object.assign({}, headers, { 'user-agent': DEV_USER_AGENT })
     : headers);
 
+// Baked in at build time, not read from the environment: this runs on the television, which has
+// none of the laptop's variables. `off` is the sentinel for "no inspector configured", because
+// the token substitution refuses an empty value.
+const CHII_TOKEN = '__TUBE_CHII__';
+const CHII = CHII_TOKEN === 'off' ? '' : CHII_TOKEN;
+
+const CHII_MOUNT = '/__tube/chii/';
+
+// Cobalt sends HTTP through --proxy but not WebSockets: a ws:// straight to the laptop bypasses
+// the proxy, cannot reach the LAN from inside the container, and closes 1006 — measured on the
+// set. Addressed to youtube.com it arrives over our own TLS front like everything else, and is
+// forwarded from here. That is the only route a socket out of that page has.
+const chiiUpgrade = (req) => {
+    if (!CHII) return null;
+
+    const raw = String(req.url || '');
+    const at = raw.indexOf(CHII_MOUNT);
+    if (at === -1) return null;
+
+    const [host, port] = CHII.split(':');
+
+    return {
+        host,
+        port: Number(port) || 80,
+        path: raw.slice(at + CHII_MOUNT.length - 1) || '/',
+        secure: false
+    };
+};
+
 // The extra tag the dev page carries: the remote, so a keyboard can press a TV button.
 const pageScripts = (origin, stamp) => (DEV_INJECT_PATH
     ? `<script${stamp} src="${origin}/__tube/dev.js?v=${Date.now()}"></script>`
     : '');
 
+const chiiRoutes = (app) => {
+    if (!CHII) return;
+
+    app.get('/__tube/chii/*', (req, res) => {
+        const path = req.originalUrl.replace('/__tube/chii', '') || '/';
+
+        fetch(`http://${CHII}${path}`)
+            .then((answer) => answer.text().then((body) => {
+                res.status(answer.status);
+                res.type(answer.headers.get('content-type') || 'application/javascript');
+                res.send(body);
+            }))
+            .catch((error) => {
+                postmortem.note('chii', `${path} — ${postmortem.describe(error)}`);
+                res.status(502).type('application/javascript')
+                    .send(`console.error(${JSON.stringify(`tube: chii at ${CHII} is not answering`)});`);
+            });
+    });
+};
+
 const pageRoutes = (app) => {
+    chiiRoutes(app);
     if (!DEV_INJECT_PATH) return;
 
     app.get('/__tube/dev.js', (_, res) => {
@@ -48,7 +99,22 @@ const pageRoutes = (app) => {
     });
 };
 
-const routes = (app, { policies, state, knobs }) => {
+const routes = (app, { policies, state, knobs, relaunch }) => {
+    // Stop the container and start it again. Installing restarts the service but leaves the
+    // container on the bundle it already had, so without this a new build can be installed three
+    // times over and change nothing on screen.
+    app.get('/__tube/dev/relaunch', (_, res) => {
+        if (!relaunch) return res.status(501).json({ ok: false, why: 'no container route on this set' });
+
+        // Answered before the kill lands: this connection dies with the app it is restarting.
+        res.json({ ok: true, restarting: true });
+
+        return relaunch((error, result) => {
+            if (error) postmortem.note('relaunch', postmortem.describe(error));
+            else postmortem.note('relaunch', `done, ${result.killed} context(s) killed`);
+        });
+    });
+
     app.get('/__tube/dev/csp', (req, res) => {
         const asked = String((req.query && req.query.policy) || '');
         if (Object.prototype.hasOwnProperty.call(policies, asked)) state.policy = asked;
@@ -96,6 +162,7 @@ module.exports = {
     routes,
     pageRoutes,
     pageScripts,
+    chiiUpgrade,
     spoofUserAgent,
     upstreamHeaders,
     journal

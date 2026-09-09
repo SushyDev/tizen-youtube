@@ -25,6 +25,7 @@
     "release": "node tools/release.js",
     "dev": "node tools/dev.js",
     "dev:service": "node service/index.js",
+    "deploy": "./install-dev.sh",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
     "version:check": "node tools/version.js --check",

@@ -10,6 +10,7 @@ const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
 const dev = require('./dev/index.js');
 const forward = require('./lib/forward.js');
+const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
 
 // Guarded, and the guard is the point. Everything the container route needs is a convenience laid
@@ -115,7 +116,14 @@ app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
 
-dev.routes(app, { policies: POLICIES, state, knobs });
+// `relaunch` is passed in rather than reached for, because dev/ may not know about the container
+// route — and on a set without one it is simply absent.
+dev.routes(app, {
+    policies: POLICIES,
+    state,
+    knobs,
+    relaunch: cobalt ? cobalt.relaunch : null
+});
 
 dev.attach(app);
 proxy.attachFallback(app);
@@ -148,6 +156,10 @@ const listen = (addresses, index) => {
     // Cobalt's --proxy sends TLS through CONNECT; without an answer to that the container has no
     // network at all.
     forward.tunnel(server);
+
+    // And an upgrade is not a request express ever sees, so without this every WebSocket the page
+    // opens is accepted and then never answered — a hang rather than a failure.
+    upgrade.attach(server, { rewrite: dev.chiiUpgrade });
 
     // Handled rather than fatal, and never advanced once the port is ours: a later error would
     // otherwise start a second server beside the one already answering.

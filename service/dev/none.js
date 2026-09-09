@@ -9,6 +9,7 @@ module.exports = {
     routes: nothing,
     pageRoutes: nothing,
     pageScripts: () => '',
+    chiiUpgrade: () => null,
     spoofUserAgent: (text) => text,
     upstreamHeaders: (headers) => headers,
 

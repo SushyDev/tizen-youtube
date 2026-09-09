@@ -14,7 +14,7 @@ export {
     onTile, keepTile, keepShelf, walkTiles, walkShelves
 } from './feed.js';
 
-export { onResponse, onRequest, interceptJson } from './json.js';
+export { onResponse, onRequest, interceptJson, nativeJson } from './json.js';
 export {
     findBySource, findByPrototype, findComponent,
     resolve, reloadGuide, sourceOf, whenFound

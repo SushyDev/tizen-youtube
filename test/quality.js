@@ -1,4 +1,5 @@
-import { chooseQuality, shouldAsk } from '../mods/player/quality.js';
+import { chooseQuality } from '../mods/player/qualityLadder.js';
+import { shouldAsk } from '../mods/player/askBudget.js';
 
 const results = [];
 function check(name, ok, detail) {

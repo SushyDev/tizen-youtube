@@ -11,10 +11,10 @@ export { whenPlayer, whenVideo, PLAYER } from './player.js';
 export { PASS, onCommand, claimCommands } from './commands.js';
 export {
     SHELF, PIVOT, TILES, GRID,
-    onTile, keepTile, keepShelf, walkTiles, walkShelves
+    onTile, keepTile, keepShelf, onSurface, walkTiles, walkShelves
 } from './feed.js';
 
-export { onResponse, onRequest, interceptJson, nativeJson } from './json.js';
+export { onResponse, onRequest, interceptJson, clone, nativeJson } from './json.js';
 export {
     findBySource, findByPrototype, findComponent,
     resolve, reloadGuide, sourceOf, whenFound
@@ -28,7 +28,9 @@ export { DEV_TOOLS } from './flags.js';
 // Reached by a mod, so it belongs to the surface rather than to the framework's insides.
 export { default as sha256 } from './tiny-sha256.js';
 export { findAssignedProperty } from './findAssignments.js';
+export { showToast } from './toast.js';
+export { Modal, showModal } from './modal.js';
 export {
-    showToast, showModal, buttonItem, overlayPanelItemListRenderer,
-    timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer
-} from './ytUI.js';
+    buttonItem, overlayPanelItemListRenderer, timelyAction,
+    MenuServiceItemRenderer, MenuNavigationItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer
+} from './renderers.js';

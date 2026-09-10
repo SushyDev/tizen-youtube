@@ -41,13 +41,13 @@ const defaultConfig = {
 
   enableShorts: false,
   disabledSidebarContents: HIDDEN_SIDEBAR_ITEMS,
-  disableChannelsOnSidebar: false,
 
   enableHqThumbnails: true,
 
   hideShoppingAction: true,
   enableHideEndScreenCards: false,
   enablePaidPromotionOverlay: true,
+  enableUpNextCard: true,
   enableYouThereRenderer: true,
   enableSigninReminder: false,
   enableWhoIsWatchingMenu: false,
@@ -58,11 +58,8 @@ const defaultConfig = {
   hideWatchedVideosThreshold: 80,
   hideWatchedVideosPages: [],
 
-  enablePatchingVideoPlayer: true,
   enablePreviousNextButtons: true,
-  enableSpeedControlsButton: true,
   enableMPButton: true,
-  enableSwapMPWithPIP: false,
   enableSuperThanksButton: false,
   enableAIAskButton: false,
 

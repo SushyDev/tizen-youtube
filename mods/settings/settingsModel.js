@@ -86,6 +86,18 @@ const PAGES = [
   { label: 'More', value: 'more' }
 ];
 
+// Solved from `speed = 381 / (duration + 81)`, measured on the set: a move costs its animation
+// plus about 81ms of fixed work, so these are speed multipliers rather than duration ones. Default
+// is the empty value, which leaves YouTube's own pacing alone.
+const SCROLL_SPEEDS = [
+  { label: 'Default', value: '' },
+  { label: '1.25\u00d7', value: '1.25' },
+  { label: '1.5\u00d7', value: '1.5' },
+  { label: '2\u00d7', value: '2' },
+  { label: '2.5\u00d7', value: '2.5' },
+  { label: '3\u00d7', value: '3' }
+];
+
 const START_PAGES = [
   { label: 'Home', value: '' },
   { label: 'Subscriptions', value: 'FEsubscriptions' },
@@ -193,7 +205,13 @@ const GROUPS = [
     items: [
       Switch('enableHqThumbnails', 'High-quality thumbnails',
         'Ask for the largest thumbnail rather than the one sized for a phone', LOOKING),
-      Switch('enableShorts', 'Shorts', 'Keep Shorts shelves in the feeds', SCREEN)
+      Switch('enableShorts', 'Shorts', 'Keep Shorts shelves in the feeds', SCREEN),
+      Choice('scrollSpeed', 'Scroll speed',
+        'How fast the feed moves while a direction is held', CONTROLS,
+        SCROLL_SPEEDS, 'Scroll speed'),
+      Switch('enableRapidPress', 'Rapid press',
+        'Presses made faster than the feed can move are kept rather than dropped',
+        CONTROLS)
     ]
   },
   {

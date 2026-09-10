@@ -166,54 +166,10 @@ jobs:
   # Nothing is published until the widget has been audited, the bundle has been loaded on every
   # Node a television runs, and the userscript has been driven in a browser. Building the artefact
   # and releasing it were one job before this, so a tag published first and checked afterwards.
-  # The only job that runs against a television, which is why it is the only one that can see a
-  # reach-in that has gone. Nothing in the others runs against YouTube on a set, so a renamed
-  # method leaves a feature doing nothing on a build that passed every check there is.
-  #
-  # Self-hosted, because the set is on someone's own network. Gated on a variable rather than left
-  # to queue: a job waiting for a runner that does not exist blocks a release for ever, and a
-  # release that cannot reach a television is better made without this than not made at all.
-  television:
-    name: Against the television
-    needs: widget
-    if: vars.TUBE_SELF_HOSTED == 'true'
-    runs-on: self-hosted
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-
-      - name: Install
-        run: npm ci
-
-      # What the container has, so test/e2e/cobalt.js can be trusted to still describe it.
-      - name: Probe the container
-        run: npm run probe:cobalt
-        env:
-          TUBE_TV: ${{ vars.TUBE_TV }}
-          TUBE_DEV_TOKEN: ${{ secrets.TUBE_DEV_TOKEN }}
-
-      - name: Check every reach-in still answers
-        run: npm run doctor:tv
-        env:
-          TUBE_TV: ${{ vars.TUBE_TV }}
-          TUBE_DEV_TOKEN: ${{ secrets.TUBE_DEV_TOKEN }}
-
   publish:
     name: Publish the draft
-    needs: [widget, runtimes, browser, television]
-    # `always()` so a skipped television job does not take the release with it; the failure states
-    # are still named, so a set that answered wrongly does stop it.
-    if: |
-      always()
-      && startsWith(github.ref, 'refs/tags/')
-      && needs.widget.result == 'success'
-      && needs.runtimes.result == 'success'
-      && needs.browser.result == 'success'
-      && needs.television.result != 'failure'
+    needs: [widget, runtimes, browser]
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
     steps:

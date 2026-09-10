@@ -131,3 +131,68 @@ jobs:
             playwright-report
           retention-days: 7
           if-no-files-found: ignore
+
+  # The engine that ships, rather than an approximation of it. Skipped until the image exists —
+  # .github/workflows/cobalt-image.yaml builds and publishes it, and it is a long build, so it is
+  # dispatched rather than run on a push.
+  #
+  # Advisory here for the same reason `browser` is: YouTube is a live dependency. What it can say
+  # that nothing else can is whether the content policy the set is served actually permits the
+  # requests our mods make — Cobalt refuses a directive the policy omits, and Chromium does not.
+  cobalt:
+    name: In Cobalt
+    needs: check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    # A package published from a workflow is private until someone says otherwise, so reading it
+    # needs the token even on a public repository.
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # A dev build, because the bridge is how the suite asks the page anything: it is the channel
+      # already proven inside Cobalt on a set, and it needs no debugger from the engine.
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+          TUBE_DEV: '1'
+          TUBE_DEV_TOKEN: cobalt-ci
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercased because GHCR refuses an uppercase repository name.
+      - name: Look for the image
+        id: image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/cobalt:latest"
+          if docker manifest inspect "$image" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "image=$image" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Cobalt image yet. Run the 'Cobalt image' workflow once to build it."
+          fi
+
+      - name: Test
+        if: steps.image.outputs.found == 'true'
+        run: npm run test:cobalt -- --image ${{ steps.image.outputs.image }}
+        env:
+          TUBE_DEV_TOKEN: cobalt-ci

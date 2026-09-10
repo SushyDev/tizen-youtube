@@ -1,0 +1,135 @@
+# Builds Cobalt for Linux and publishes it as an image, so the suite that uses it does not pay for
+# a source build on every run.
+#
+# The television runs Cobalt, not Chromium, and the difference is the point rather than a detail:
+# it is served `default-src 'none'`, where a directive the policy does not name is a refusal and
+# not a relaxation. That is why service/lib/rewrites.js widens connect-src and img-src, and it is
+# not testable in a browser that treats an omitted directive as permission.
+#
+# linux-x64x11 is Cobalt's own desktop port: the same engine, CSP delegate and DOM as the set, on a
+# Starboard platform layer that is X11 rather than Samsung's. Evergreen cores are published per
+# release but the loader that runs one is not, so this builds the reference port instead.
+#
+# Dispatch and a monthly refresh, never on a push: it is a long build and its output only changes
+# when the pinned ref does.
+
+name: Cobalt image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The youtube/cobalt tag to build
+        default: 25.lts.50
+  schedule:
+    - cron: '0 4 1 * *'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # The set runs Evergreen 5.30.2 on Starboard 16; this is the nearest published line.
+  COBALT_REF: ${{ inputs.ref || '25.lts.50' }}
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out Cobalt
+        uses: actions/checkout@v4
+        with:
+          repository: youtube/cobalt
+          ref: ${{ env.COBALT_REF }}
+          path: cobalt
+
+      - name: Check out ours
+        uses: actions/checkout@v4
+        with:
+          path: tube
+
+      # A Cobalt build does not fit in the space a hosted runner starts with.
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af >/dev/null
+          df -h /
+
+      # Cobalt's compose mounts the compiler cache as ${CCACHE_DIR:-container-ccache}:/root/ccache —
+      # a named Docker volume unless CCACHE_DIR is a host path, in which case it is bind-mounted
+      # there. Caching ~/.ccache instead would save an empty directory and every build would start
+      # cold against the timeout.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: cobalt-ccache-${{ env.COBALT_REF }}-${{ github.run_id }}
+          restore-keys: cobalt-ccache-${{ env.COBALT_REF }}-
+
+      # The plain `cobalt` target, run the way Cobalt's own docs run a Linux build:
+      # out/linux-x64x11_<type>/cobalt, with its content beside it.
+      #
+      # Not the compose service's own command. That passes build_with_separate_cobalt_toolchain,
+      # which makes the build modular and cobalt a library that needs loader_app — the Evergreen
+      # path, whose loader is not published. And not cobalt_install: its tree files content under
+      # usr/share/cobalt while the Linux port looks for it next to the binary, so an installed
+      # Cobalt starts and cannot find its fonts.
+      #
+      # devel rather than gold: a gold build has no console, and the console is where the page says
+      # a feature did not start. symbol_level=0 because nothing here debugs Cobalt itself, and full
+      # symbols are most of the link time and disk a hosted runner does not have — Cobalt's own
+      # compiler.gni notes that x64 still gives backtraces without them.
+      #
+      # ccache needs no argument: on Starboard builds cc_wrapper.gni sets it on any non-Windows
+      # host. What it needs is somewhere to persist, which is the mapping above.
+      - name: Build cobalt
+        working-directory: cobalt
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          cat > tube-build.sh <<'SH'
+          set -e
+          gn gen out/linux-x64x11_devel --args='target_platform="linux-x64x11" build_type="devel" symbol_level=0'
+          ninja -j "$(nproc)" -C out/linux-x64x11_devel cobalt
+          SH
+          docker compose build build-base build-linux
+          docker compose run --rm --no-deps -w /code -e IS_CI=1 linux-x64x11 sh /code/tube-build.sh
+          test -x out/linux-x64x11_devel/cobalt
+          test -d out/linux-x64x11_devel/content
+
+      # Only what running needs: the binary, its content, and any shared object the build left
+      # beside it. The object files are tens of gigabytes and none of them are.
+      - name: Stage what runs
+        run: |
+          mkdir -p cobalt/stage
+          cp cobalt/out/linux-x64x11_devel/cobalt cobalt/stage/
+          cp -r cobalt/out/linux-x64x11_devel/content cobalt/stage/
+          find cobalt/out/linux-x64x11_devel -maxdepth 1 -name '*.so*' -exec cp {} cobalt/stage/ \;
+          du -sh cobalt/stage
+
+      # GHCR refuses an uppercase repository name, and github.repository is SushyDev/tizen-youtube.
+      - name: Name the image
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/cobalt" >> "$GITHUB_ENV"
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Everything the binary needs and nothing that built it: the install tree, X11 and GL for a
+      # port that draws, and xvfb because a runner has no display.
+      - name: Publish it
+        run: |
+          cp tube/test/cobalt/Dockerfile cobalt/Dockerfile.tube
+          docker build -f cobalt/Dockerfile.tube -t "$IMAGE:$COBALT_REF" -t "$IMAGE:latest" cobalt
+          docker push "$IMAGE:$COBALT_REF"
+          docker push "$IMAGE:latest"
+
+      - name: Say where it went
+        run: echo "::notice::Published $IMAGE:$COBALT_REF — the cobalt job in CI pulls this."

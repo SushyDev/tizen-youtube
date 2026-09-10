@@ -8,7 +8,9 @@
 
 const http = require('http');
 
-const PORT = 8097;
+// The service's own override, so the Cobalt suite can run a bridge beside a set's without either
+// answering for the other.
+const PORT = Number(process.env.TUBE_DEV_PORT) || 8097;
 const TRIES = 14;
 const APART = 700;
 

@@ -50,6 +50,12 @@ jobs:
           STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && vars.TUBE_ORIGIN != '') && '--release' || '' }}
         run: npm run package -- $STRICT
 
+      # The only step that opens the artefact being published rather than the tree it came from.
+      # /eval runs arbitrary source in the page behind one header check, on a server bound to
+      # 0.0.0.0, so a dev build reaching a viewer is the failure this exists for.
+      - name: Audit the widget
+        run: npm run audit -- --release
+
       - name: Say the origin is a placeholder
         if: vars.TUBE_ORIGIN == ''
         run: |
@@ -75,20 +81,108 @@ jobs:
           mv release/tube.wgt "release/${name}"
           echo "path=release/${name}" >> "$GITHUB_OUTPUT"
 
-      - name: Open a draft release with it
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Keep the service bundle for the runtime matrix
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: ${{ steps.widget.outputs.path }}
-          fail_on_unmatched_files: true
+          name: release-service-bundle
+          path: service/dist
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Upload it as an artifact
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
           name: tizen-youtube-widget
           path: ${{ steps.widget.outputs.path }}
           if-no-files-found: error
+
+  # A tag used to skip this entirely, so a release could carry a bundle that had never been loaded
+  # on the Node a television actually runs.
+  runtimes:
+    name: node ${{ matrix.node }}
+    needs: widget
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['12.16.3', '14.21.3', '16.20.2', '18.18.2', '20.18.1', '22.12.0']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-service-bundle
+          path: service/dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Load and answer on node ${{ matrix.node }}
+        run: node service/test/smoke.js
+
+  # Blocking here, unlike on a pull request: an advisory signal is the right trade for someone
+  # else's change and the wrong one for something about to be installed by strangers. A run that
+  # YouTube walled off is re-runnable.
+  browser:
+    name: Against real YouTube
+    needs: widget
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-playwright-report
+          path: |
+            test/test-results
+            playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Nothing is published until the widget has been audited, the bundle has been loaded on every
+  # Node a television runs, and the userscript has been driven in a browser. Building the artefact
+  # and releasing it were one job before this, so a tag published first and checked afterwards.
+  publish:
+    name: Publish the draft
+    needs: [widget, runtimes, browser]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tizen-youtube-widget
+          path: release
+
+      - name: Open a draft release with it
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release/*.wgt
+          fail_on_unmatched_files: true

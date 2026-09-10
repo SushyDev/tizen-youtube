@@ -32,10 +32,12 @@
     "version:check": "node tools/version.js --check",
     "version:set": "node tools/version.js --set",
     "typecheck": "tsc --noEmit",
-    "deploy": "./install-dev.sh"
+    "test:e2e": "playwright test --config test/e2e/playwright.config.js",
+    "audit": "node tools/audit.js"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.22.9",
+    "@playwright/test": "^1.49.0",
     "@rollup/plugin-babel": "^6.0.3",
     "@rollup/plugin-commonjs": "^29.0.0",
     "@rollup/plugin-json": "^6.1.0",

@@ -2,6 +2,13 @@
 #
 # The build runs here because `tools/check-output.js` refuses a built-in newer than the floor, and
 # `npm test` gates on eslint, `tsc --noEmit`, the userscript suites and the service suites.
+#
+# `browser` drives the real userscript against real YouTube through the proxy, which is the app
+# minus the television. It does not gate a merge: YouTube is a live dependency and a wall it puts
+# up on a datacenter address is not a fault in the change being reviewed. Read it, do not trust it
+# to be red only when something is wrong — and note that Chromium is not Cobalt, so the class of
+# bug that hurts most here (no History API, key events re-dispatched without `repeat`, module
+# chunks arriving after our script) is exactly the class it cannot see.
 
 name: CI
 
@@ -39,6 +46,14 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Packaged on every change, not only on a tag: the widget is where staging, the manifest and
+      # the bundles meet, and none of the checks above opens one.
+      - name: Package
+        run: npm run package
+
+      - name: Audit the widget
+        run: npm run audit
 
       # The bundle is self-contained, so it is the whole of what the matrix below needs.
       - uses: actions/upload-artifact@v4
@@ -78,3 +93,41 @@ jobs:
 
       - name: Load and answer on node ${{ matrix.node }}
         run: node service/test/smoke.js
+
+  browser:
+    name: Against real YouTube
+    needs: check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            test/e2e/test-results
+            playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

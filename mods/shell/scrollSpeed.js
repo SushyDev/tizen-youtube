@@ -1,4 +1,4 @@
-import { configRead } from '../../framework/index.js';
+import { answerSwitch, configRead } from '../../framework/index.js';
 
 // How fast the feed moves when a direction is held.
 //
@@ -20,11 +20,9 @@ import { configRead } from '../../framework/index.js';
 // render, and a dense page costs more. Measured on the home feed the floor is around 165ms, so the
 // last two rungs are worth less there than on a lighter page. They are ceilings, not promises.
 //
-// The switches are answered by a getter rather than written to, and that is the point: `_.E` asks
-// for the value when it builds the style for a move, so what it gets is whatever the setting says
-// at that moment. Writing a number in once meant the setting only took hold at the next launch —
-// and then needed a change listener, a record of the values to put back, and a latch saying
-// whether it had armed, each of which was its own way to be wrong. A getter needs none of them.
+// The switches are answered rather than written to, which is what makes the setting take hold on
+// the next press rather than the next launch — see framework/switches.js for why that distinction
+// is the whole of it.
 
 const SPEEDS = {
     '1.25': { vertical: 224, horizontal: 144 },
@@ -41,59 +39,10 @@ const SWITCHES = [
 
 const chosen = () => SPEEDS[configRead('scrollSpeed')] || null;
 
-// YouTube's own numbers, kept the first time they are seen and never taken again. Once from the
-// first object rather than per object: when the app overrides a switch of its own it copies the
-// ones already there, which by then would be reading back as ours.
-const held = { theirs: null };
-
-const remember = (switches) => {
-    if (held.theirs) return;
-
-    held.theirs = SWITCHES.reduce((all, one) =>
-        Object.assign(all, { [one.rung]: switches[one.name] }), {});
-};
-
-const answer = (switches) => {
-    if (!switches || typeof switches !== 'object') return;
-
-    remember(switches);
-
-    SWITCHES.forEach((one) => Object.defineProperty(switches, one.name, {
-        configurable: true,
-        enumerable: true,
-        get: () => {
-            const speed = chosen();
-            return speed ? speed[one.rung] : held.theirs[one.rung];
-        }
-    }));
-};
-
-// A property that reports what was last written to it and says when that happens. The value
-// already there is offered too, so this works whether it arrives before or after us.
-const watch = (owner, name, onSet) => {
-    const kept = { value: owner[name] };
-
-    Object.defineProperty(owner, name, {
-        configurable: true,
-        enumerable: true,
-        get: () => kept.value,
-        set: (value) => { kept.value = value; onSet(value); }
-    });
-
-    if (kept.value !== undefined) onSet(kept.value);
-};
-
-// Both halves are watched, and both have to be. tectonicConfig does not exist yet when this runs —
-// it is built from /tv_config, which is fetched after kabuki's own script — and featureSwitches is
-// replaced wholesale rather than mutated when the app overrides a switch of its own
-// (`_.qg("tectonicConfig.featureSwitches", …)`), so a getter defined once would end up on an
-// object nothing reads any more.
-const start = () => {
-    watch(window, 'tectonicConfig', (config) => {
-        if (!config || typeof config !== 'object') return;
-
-        watch(config, 'featureSwitches', answer);
-    });
-};
+// Undefined for Default, which leaves YouTube's own pacing exactly as it was.
+const start = () => SWITCHES.forEach((one) => answerSwitch(one.name, () => {
+    const speed = chosen();
+    return speed ? speed[one.rung] : undefined;
+}));
 
 export { start, SPEEDS };

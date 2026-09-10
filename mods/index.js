@@ -7,6 +7,7 @@ import { start as startShell } from './shell/startup.js';
 import { start as startPage } from './shell/startPage.js';
 import { start as startScrollSpeed } from './shell/scrollSpeed.js';
 import { start as startRapidPress } from './shell/rapidPress.js';
+import { start as startSmoothNavigation } from './shell/smoothNavigation.js';
 import { start as startSpeed } from './player/speed.js';
 
 import './feed/index.js';
@@ -35,6 +36,7 @@ register('start page', 'ui', startPage);
 // Before /tv_config lands, which is what the property watch is for.
 register('scroll speed', 'ui', startScrollSpeed);
 register('rapid press', 'ui', startRapidPress);
+register('smooth navigation', 'ui', startSmoothNavigation);
 register('playback speed', 'ui', startSpeed);
 
 // Taking over JSON.parse seals registration, so it is a phase rather than a last line.

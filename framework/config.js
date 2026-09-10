@@ -72,6 +72,7 @@ const defaultConfig = {
   // A key in scrollSpeed.js's table, empty for YouTube's own pacing.
   scrollSpeed: '',
   enableRapidPress: true,
+  enableSmoothNavigation: true,
 };
 
 function readStoredSettings() {

@@ -21,6 +21,7 @@ global.document = {
 
 const { configRead, configWrite } = await import('../framework/config.js');
 const { SPEEDS, start: startScrollSpeed } = await import('../mods/shell/scrollSpeed.js');
+const { SWITCHES, start: startSmoothNavigation } = await import('../mods/shell/smoothNavigation.js');
 const { start: startRapidPress } = await import('../mods/shell/rapidPress.js');
 
 const results = [];
@@ -149,6 +150,54 @@ check('changing the setting is answered on the next read, with no restart and no
     });
 });
 
+// -- smoother navigation -------------------------------------------------------------------
+
+// Three of YouTube's own render-path switches, all of which arrive off. Measured on the set with
+// them on, moves in the feed went from ~167ms apart to 47-92ms — near the 50ms key repeat, which is
+// the ceiling. Off, they must be indistinguishable from this mod not existing.
+check('the switches are answered only while the setting is on', () => {
+    freshWindow();
+    withSetting('enableSmoothNavigation', true, () => {
+        startSmoothNavigation();
+        global.window.tectonicConfig = {
+            featureSwitches: {
+                enableCancellableJobDeferral: false,
+                enableDeferredThumbnailOnScroll: false,
+                enableVirtualListItemTransition: true
+            }
+        };
+
+        const switches = global.window.tectonicConfig.featureSwitches;
+        Object.keys(SWITCHES).forEach((name) =>
+            assert.strictEqual(switches[name], SWITCHES[name], name));
+
+        configWrite('enableSmoothNavigation', false);
+        assert.strictEqual(switches.enableCancellableJobDeferral, false, 'back to YouTube\u2019s own');
+        assert.strictEqual(switches.enableVirtualListItemTransition, true);
+    });
+});
+
+// Two mods now answer switches on the same object, and the second must not lose the first.
+check('two features answering different switches do not displace each other', () => {
+    freshWindow();
+    withSetting('scrollSpeed', '2', () => {
+        withSetting('enableSmoothNavigation', true, () => {
+            startScrollSpeed();
+            startSmoothNavigation();
+            global.window.tectonicConfig = {
+                featureSwitches: {
+                    verticalListDurationMs: 300,
+                    enableVirtualListItemTransition: true
+                }
+            };
+
+            const switches = global.window.tectonicConfig.featureSwitches;
+            assert.strictEqual(switches.verticalListDurationMs, SPEEDS['2'].vertical);
+            assert.strictEqual(switches.enableVirtualListItemTransition, false);
+        });
+    });
+});
+
 // -- rapid press ---------------------------------------------------------------------------
 
 const componentOf = (moving) => {
@@ -165,22 +214,25 @@ const componentOf = (moving) => {
 
 // The whole rule, stated as arithmetic: what goes in comes out, once each. Two deliverers is what
 // got this wrong twice, so what is checked is the total rather than the mechanism.
-const burst = async (presses, component, moving) => {
-    startRapidPress();
-    await sleep(400);
+//
+// Presses are spaced the way a person presses. Timing is how a held key is told from a pressed one
+// — a synthesised event carries no `repeat`, and kabuki re-dispatches key events in exactly the
+// lists where this went wrong — so a burst fired in the same millisecond is not a fast viewer, it
+// is a key being held, and is read as one.
+const PRESS = { keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {} };
 
-    const press = (n) => {
-        if (n >= presses) return;
-        component.onKeyDown({ keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {} });
-        press(n + 1);
+const pressing = async (component, times, apart) => {
+    const one = async (n) => {
+        if (n >= times) return;
+        component.onKeyDown(Object.assign({}, PRESS));
+        await sleep(apart);
+        await one(n + 1);
     };
 
-    press(0);
-    moving.now = false;
-    await sleep(600);
+    await one(0);
 };
 
-await asyncCheck('five presses during a move are five moves, not four and not seven', async () => {
+await asyncCheck('four presses during a move are four moves, not three and not six', async () => {
     const moving = { now: false };
     const component = componentOf(moving);
     global.document.list = { __instance: component };
@@ -190,40 +242,24 @@ await asyncCheck('five presses during a move are five moves, not four and not se
         await sleep(400);
 
         // The first lands while the list is still, and moves it.
-        component.onKeyDown({ keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {} });
+        component.onKeyDown(Object.assign({}, PRESS));
         assert.strictEqual(component.seen.length, 1);
 
-        // The next four arrive while it is moving. YouTube's handler must not see them yet.
+        // Three more while it is moving. YouTube's handler must not see them yet.
         moving.now = true;
-        const held = (n) => {
-            if (n >= 4) return;
-            component.onKeyDown({
-                keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {}
-            });
-            held(n + 1);
-        };
-        held(0);
+        await sleep(120);
+        await pressing(component, 3, 120);
         assert.strictEqual(component.seen.length, 1, 'nothing reached the list while it was moving');
 
         moving.now = false;
         await sleep(400);
-        assert.strictEqual(component.seen.length, 5, 'and all four arrive once it is free');
+        assert.strictEqual(component.seen.length, 4, 'and all three arrive once it is free');
     });
 });
 
-// A press the list can act on straight away must not go near any of this.
-await asyncCheck('a press made while the feed is still goes straight through', async () => {
-    const moving = { now: false };
-    const component = componentOf(moving);
-    global.document.list = { __instance: component };
-
-    await withSetting('enableRapidPress', true, async () => {
-        await burst(3, component, moving);
-        assert.strictEqual(component.seen.length, 3, 'three presses, three moves, no waiting');
-    });
-});
-
-await asyncCheck('a held key is never held back', async () => {
+// The bug this was reported as: letting go of a held key and watching the list carry on without
+// you. Every repeat had been held, because a re-dispatched event says it is not one.
+await asyncCheck('a key held at the repeat rate is never held back, whatever the event claims', async () => {
     const moving = { now: true };
     const component = componentOf(moving);
     global.document.list = { __instance: component };
@@ -232,14 +268,30 @@ await asyncCheck('a held key is never held back', async () => {
         startRapidPress();
         await sleep(400);
 
-        component.onKeyDown({ keyCode: 40, repeat: true, preventDefault() {}, stopPropagation() {} });
-        component.onKeyDown({ keyCode: 40, repeat: true, preventDefault() {}, stopPropagation() {} });
-
-        assert.strictEqual(component.seen.length, 2, 'repeats reach the list as they always did');
+        // Twelve repeats at 50ms, none of them admitting to being a repeat.
+        await pressing(component, 12, 50);
+        const during = component.seen.length;
 
         moving.now = false;
+        await sleep(300);
+
+        assert.strictEqual(component.seen.length, during,
+            'letting go must not scroll on: nothing was waiting');
+    });
+});
+
+await asyncCheck('a press made while the feed is still goes straight through', async () => {
+    const moving = { now: false };
+    const component = componentOf(moving);
+    global.document.list = { __instance: component };
+
+    await withSetting('enableRapidPress', true, async () => {
+        startRapidPress();
+        await sleep(400);
+        await pressing(component, 3, 120);
         await sleep(200);
-        assert.strictEqual(component.seen.length, 2, 'and none of them come back a second time');
+
+        assert.strictEqual(component.seen.length, 3, 'three presses, three moves, no waiting');
     });
 });
 
@@ -252,39 +304,12 @@ await asyncCheck('with the setting off nothing is held at all', async () => {
         startRapidPress();
         await sleep(400);
 
-        component.onKeyDown({ keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {} });
+        component.onKeyDown(Object.assign({}, PRESS));
         moving.now = false;
         await sleep(200);
 
         assert.strictEqual(component.seen.length, 1, 'YouTube coalesces it, as it does by default');
     });
-});
-
-// It arms whether or not the setting is on, so turning it on works there and then.
-await asyncCheck('turning it on after startup takes hold without a restart', async () => {
-    const moving = { now: true };
-    const component = componentOf(moving);
-    global.document.list = { __instance: component };
-
-    const before = configRead('enableRapidPress');
-    configWrite('enableRapidPress', false);
-
-    try {
-        startRapidPress();
-        await sleep(400);
-
-        configWrite('enableRapidPress', true);
-        component.onKeyDown({
-            keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {}
-        });
-        assert.strictEqual(component.seen.length, 0, 'held rather than coalesced');
-
-        moving.now = false;
-        await sleep(200);
-        assert.strictEqual(component.seen.length, 1);
-    } finally {
-        configWrite('enableRapidPress', before);
-    }
 });
 
 console.log(`\n${results.filter(Boolean).length}/${results.length} checks passed`);

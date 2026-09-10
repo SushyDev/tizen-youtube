@@ -211,7 +211,10 @@ const GROUPS = [
         SCROLL_SPEEDS, 'Scroll speed'),
       Switch('enableRapidPress', 'Rapid press',
         'Presses made faster than the feed can move are kept rather than dropped',
-        CONTROLS)
+        CONTROLS),
+      Switch('enableSmoothNavigation', 'Smoother navigation',
+        'Skip work YouTube does while you are moving. Tiles stop sliding one by one',
+        SCREEN)
     ]
   },
   {

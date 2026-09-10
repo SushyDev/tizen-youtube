@@ -24,6 +24,7 @@ export { waitFor } from './waitFor.js';
 export { configRead, configWrite, configChangeEmitter } from './config.js';
 export { VERSION, COMMIT, TREE, assetUrl } from './origin.js';
 export { DEV_TOOLS } from './flags.js';
+export { answerSwitch } from './switches.js';
 
 // Reached by a mod, so it belongs to the surface rather than to the framework's insides.
 export { default as sha256 } from './tiny-sha256.js';

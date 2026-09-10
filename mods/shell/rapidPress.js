@@ -32,11 +32,32 @@ import { configRead, every, stop, whenFound } from '../../framework/index.js';
 // anyway.
 //
 // Only presses, never a held key: a held key repeats every 50ms on this television (measured), and
-// replaying those would keep the feed moving long after the viewer let go. KeyboardEvent.repeat
-// tells the two apart and the set reports it correctly — 101 presses against 354 repeats in one
-// recording — which is exactly the line this setting is drawn along.
+// holding those back would keep the list moving long after the viewer let go.
+//
+// KeyboardEvent.repeat is not enough to tell them apart, and trusting it is a bug that only shows
+// in some lists. kabuki re-dispatches key events in several places — it builds a fresh event at the
+// focused element and keeps the original on a side property — and a synthesised event carries no
+// `repeat`. So in exactly those lists every repeat of a held key arrives looking like a fresh
+// press, all of them were held, and letting go scrolled on for up to ten more moves. Reported from
+// the subscriptions list and the settings panel, where the feed and the player were fine.
+//
+// What cannot be synthesised away is when the events arrive. A held key repeats at a fixed 50ms on
+// this television, and a viewer pressing as fast as they can manages about 8 a second — 125ms
+// apart. So anything arriving within 90ms of the last press of the same key is the key being held,
+// whatever the event says about itself, and `repeat` is kept as a second opinion where it is
+// offered. Timing also disposes of the double delivery for free: a re-dispatched copy of a press
+// arrives in the same millisecond as the press, and is read as what it is rather than as a second
+// one.
 
 const DIRECTIONS = [37, 38, 39, 40, 176, 177];
+
+// Between the 50ms a held key repeats at and the ~125ms of someone pressing as fast as they can,
+// with room on both sides.
+const REPEAT_WINDOW = 90;
+
+// When each direction was last seen, read only here — so what the component was handed is what is
+// judged, whether or not anything re-dispatched it on the way.
+const lastSeen = new Map();
 
 // A burst nobody meant, capped. Ten presses ahead is already more than a viewer can be waiting on.
 const MOST_HELD = 10;
@@ -68,6 +89,15 @@ const wanted = () => configRead('enableRapidPress');
 const isMoving = (component) => {
     const driver = component && component.j;
     return !!driver && typeof driver.isActive === 'function' && driver.isActive();
+};
+
+// The first press of a held key is a press, until the repeat after it says otherwise. By then the
+// hold's own repeats are moving the list, so one still waiting from the moment the key went down
+// would land as a move too many once the viewer let go — which is what letting go and watching the
+// list carry on actually was.
+const forget = (component, keyCode) => {
+    const one = stateOf(component);
+    one.waiting = one.waiting.filter((press) => press.keyCode !== keyCode);
 };
 
 // One per move: the handler moves the list, which makes it busy again, so the next tick to find it
@@ -103,9 +133,17 @@ const pump = () => {
     });
 };
 
-const isDirection = (event) => !!event
-    && !event.repeat
-    && DIRECTIONS.indexOf(event.keyCode) !== -1;
+const isDirection = (event) => !!event && DIRECTIONS.indexOf(event.keyCode) !== -1;
+
+// Records when the key was seen, so it must be asked exactly once per event and for every event —
+// skipping it would leave the next repeat looking like a fresh press.
+const isFreshPress = (event) => {
+    const now = Date.now();
+    const before = lastSeen.get(event.keyCode);
+    lastSeen.set(event.keyCode, now);
+
+    return !event.repeat && (before === undefined || now - before > REPEAT_WINDOW);
+};
 
 // What the handler being skipped would have done with it.
 const consume = (event) => {
@@ -121,10 +159,19 @@ const patch = (prototype) => {
     if (typeof handle !== 'function' || handle.tubeRapidPress) return;
 
     const wrapped = function onKeyDown(event) {
-        if (!wanted() || !isDirection(event) || !isMoving(this)) return handle.call(this, event);
+        if (!wanted() || !isDirection(event)) return handle.call(this, event);
+
+        if (!isFreshPress(event)) {
+            forget(this, event.keyCode);
+            return handle.call(this, event);
+        }
+
+        if (!isMoving(this)) return handle.call(this, event);
 
         const one = stateOf(this);
-        if (one.waiting.length < MOST_HELD) one.waiting.push({ handle, event });
+        if (one.waiting.length < MOST_HELD) {
+            one.waiting.push({ handle, event, keyCode: event.keyCode });
+        }
 
         consume(event);
         pump();

@@ -1,6 +1,7 @@
 // Opening the app with a given set of our settings, and the handful of questions every spec asks.
 
 import { test as base, expect } from '@playwright/test';
+import { asCobalt } from './cobalt.js';
 
 const SETTINGS_KEY = 'tube.settings';
 
@@ -17,6 +18,10 @@ const test = base.extend({
         page.on('pageerror', (error) => failures.push(String(error.message)));
 
         const open = async (settings, path) => {
+            // Before the settings script, so the page is already the cut-down browser when our
+            // bundle reads them.
+            await asCobalt(page);
+
             await page.addInitScript(([key, value]) => {
                 window.localStorage.setItem(key, value);
             }, [SETTINGS_KEY, JSON.stringify(settings || {})]);

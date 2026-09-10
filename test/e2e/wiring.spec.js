@@ -11,6 +11,46 @@ import { test, expect, APP } from './tube.js';
 // What register.js says when a feature does not start, and when one registers too late to run.
 const BROKEN = /\[.+\] did not start:|\[register\] .+ arrived after boot/;
 
+// Defaults exercise almost nothing: a mod whose start() returns early when its setting is off
+// never reaches the line that breaks. This is every switch away from the value it ships with, so
+// each feature actually runs.
+const EVERYTHING_ON = {
+    startupPage: 'FEsubscriptions',
+    scrollSpeed: '2',
+    enableRapidPress: true,
+    enableSmoothNavigation: true,
+    enableAdBlock: true,
+    enableSponsorBlock: true,
+    enableSponsorBlockToasts: true,
+    enableDeArrow: true,
+    enableDeArrowThumbnails: true,
+    enableShorts: true,
+    enableHqThumbnails: true,
+    enableHideWatchedVideos: true,
+    hideWatchedVideosPages: ['home'],
+    hideWatchedVideosThreshold: 50,
+    enableHideEndScreenCards: true,
+    hideShoppingAction: true,
+    enablePaidPromotionOverlay: false,
+    enableUpNextCard: false,
+    enableYouThereRenderer: false,
+    enableSigninReminder: true,
+    enableShowUserLanguage: true,
+    enableShowOtherLanguages: true,
+    rememberPlaybackSpeed: true,
+    videoPreferredCodec: 'vp9',
+    preferredVideoQuality: '1080p',
+    speedSettingsIncrement: 0.5,
+    enableWhoIsWatchingMenu: true,
+    permanentlyEnableWhoIsWatchingMenu: true,
+    enableWhosWatchingMenuOnAppExit: true,
+    enablePreviousNextButtons: true,
+    enableMPButton: true,
+    enableSuperThanksButton: true,
+    enableAIAskButton: true,
+    disabledSidebarContents: ['GAMING']
+};
+
 const watchConsole = (page) => {
     const said = [];
     page.on('console', (message) => {
@@ -19,9 +59,17 @@ const watchConsole = (page) => {
     return said;
 };
 
-test('no feature failed to start', async ({ page, open }) => {
+test('no feature failed to start, on the settings it ships with', async ({ page, open }) => {
     const said = watchConsole(page);
     await open({});
+
+    const broken = said.filter((line) => BROKEN.test(line));
+    expect(broken, `a feature did not start: ${broken.join(' | ')}`).toEqual([]);
+});
+
+test('nor with every setting turned away from its default', async ({ page, open }) => {
+    const said = watchConsole(page);
+    await open(EVERYTHING_ON);
 
     const broken = said.filter((line) => BROKEN.test(line));
     expect(broken, `a feature did not start: ${broken.join(' | ')}`).toEqual([]);

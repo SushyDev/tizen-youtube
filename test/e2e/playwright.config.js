@@ -16,10 +16,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.TUBE_E2E_PORT) || 8199;
 const ROOT = join(HERE, '..', '..');
 
-// What the sets actually send. Asking YouTube as a desktop Chrome returns the desktop site, and
-// none of this applies to it.
-const TV_USER_AGENT = 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 '
-    + '(KHTML, like Gecko) 94.0.4606.31/6.5 TV Safari/537.36';
+// Read off the container rather than guessed at: this is the string the set sends, and what
+// YouTube decides to serve is decided by it.
+const TV_USER_AGENT = 'Mozilla/5.0 (LINUX; Tizen/9.0/2025.20.1034877) '
+    + 'Cobalt/25.lts.30.1034943-gold (unlike Gecko) v8/8.8.278.17-jit gles Evergreen-Full';
 
 export default defineConfig({
     testDir: HERE,

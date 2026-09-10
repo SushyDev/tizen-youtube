@@ -6,7 +6,7 @@ const SUBSCRIPTION = 'tube_subscription';
 const PARENTAL = 'tube_parental';
 const HISTORY = 'SETTING_CAT_TVHTML5_HISTORY';
 const PLAYBACK = 'tube_playback';
-const INTERFACE = 'tube_interface';
+const FEED = 'tube_feed';
 
 // Matched on whichever of the three the build actually carries: the item id, the client setting
 // it writes, or the title. A row identified only by title survives a renamed id and not a
@@ -18,7 +18,7 @@ const MOVES = [
     { to: PARENTAL, setting: 'SAFETY_MODE', title: 'Restricted mode' },
     { to: PARENTAL, id: 'PARENT_CODE', title: 'Parent code' },
     { to: HISTORY, id: 'RECOMMEND', title: 'Device recommendations', first: true },
-    { to: INTERFACE, setting: 'ENABLE_PREVIEWS_WITH_SOUND', title: 'Previews' }
+    { to: FEED, setting: 'ENABLE_PREVIEWS_WITH_SOUND', title: 'Previews' }
 ];
 
 // Categories that exist only to hold what was moved, so they are added only when something

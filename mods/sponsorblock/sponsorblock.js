@@ -1,16 +1,16 @@
-import { configRead, sha256, showToast, stop, until, waitFor } from '../../framework/index.js';
-import { SEGMENTS } from './segments.js';
+import { configRead, waitFor } from '../../framework/index.js';
+import { segmentsFor } from './segmentApi.js';
+import { segmentOverlay } from './segmentOverlay.js';
+import { autoSkipper } from './autoSkip.js';
 
-const sponsorblockAPI = 'https://sponsor.ajay.app/api';
+// One video's SponsorBlock session: what it holds, and when it is torn down.
+//
+// Everything it does is somewhere else — asking the API is segmentApi.js, drawing the bars is
+// segmentOverlay.js, jumping the stretches is autoSkip.js. What is left here is the part that
+// could not be anywhere else: which video is playing, which element is playing it, and making sure
+// nothing outlives the navigation away from it.
 
-const SLIDER = 'div[idomkey="slider"]';
-const PROGRESS_BAR = 'ytlr-redux-connect-ytlr-progress-bar';
-
-// poi_highlight is asked for but never skipped: it marks a point, it does not cover a stretch.
-const ASKED_FOR = [
-    'sponsor', 'intro', 'outro', 'interaction',
-    'selfpromo', 'preview', 'filler', 'music_offtopic', 'poi_highlight'
-];
+const WAIT_EVERY = 100;
 
 const SKIPPABLE = [
     ['enableSponsorBlockSponsor', 'sponsor'],
@@ -23,188 +23,23 @@ const SKIPPABLE = [
     ['enableSponsorBlockMusicOfftopic', 'music_offtopic']
 ];
 
-const REPEAT_WINDOW = 1000;
-const SLIDER_EVERY = 500;
+const skippableCategories = () => SKIPPABLE
+    .filter(([setting]) => configRead(setting))
+    .map(([, category]) => category);
 
-// A video whose progress bar never appears stops costing anything rather than hunting for it for
-// as long as the page is open.
-const SLIDER_GIVE_UP = 30000;
-const WAIT_EVERY = 100;
-
-function sponsorBlockFor(videoID) {
-    const sliderTimer = `sponsorblock slider ${videoID}`;
-
+const sponsorBlockFor = (videoID) => {
     const held = {
         video: null,
-        active: true,
-        segments: null,
-        slider: null,
-        segmentsoverlay: null,
-        observer: null,
+        segments: [],
+        overlay: null,
+        skipper: null,
         stopWaitingForVideo: null,
-        stopWaitingForSlider: null,
-        nextSkipTimeout: null,
-        onScheduleSkip: null,
-        onDurationChange: null,
-        skippable: [],
-        manualOnly: [],
-        alreadySkipped: new Map()
+        onTick: null,
+        onDurationChange: null
     };
 
-    const skippableCategories = () => SKIPPABLE
-        .filter(([setting]) => configRead(setting))
-        .map(([, category]) => category);
-
-    const barFor = (segment) => SEGMENTS[segment.category] || { color: 'blue', opacity: 0.7 };
-
-    const segmentElement = (segment, videoDuration) => {
-        const [start, end] = segment.segment;
-        const bar = barFor(segment);
-
-        const leftPercent = videoDuration ? (100.0 * start) / videoDuration : 0;
-        const widthPercent = videoDuration ? (100.0 * (end - start)) / videoDuration : 0;
-
-        const element = document.createElement('div');
-        element.style.setProperty('background-color', bar.color, 'important');
-        element.style.setProperty('opacity', bar.opacity, 'important');
-        element.style.setProperty('height', '100%', 'important');
-        element.style.setProperty('width', `${segment.category === 'poi_highlight' ? 1 : widthPercent}%`, 'important');
-        element.style.setProperty('left', `${leftPercent}%`, 'important');
-        element.style.setProperty('position', 'absolute', 'important');
-
-        return element;
-    };
-
-    const styleOverlayLike = (slider) => {
-        const rect = slider.getBoundingClientRect();
-        if (slider.classList.contains('ytLrProgressBarSlider')) return;
-
-        Array.from(slider.classList).forEach((name) => held.segmentsoverlay.classList.add(name));
-        held.segmentsoverlay.style.setProperty('height', `${rect.height}px`, 'important');
-        held.segmentsoverlay.style.setProperty('bottom', `${rect.bottom - rect.top}px`, 'important');
-    };
-
-    const watchOverlay = () => new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            const removed = Array.from(mutation.removedNodes || []);
-            if (removed.indexOf(held.segmentsoverlay) !== -1 && held.slider) {
-                held.slider.appendChild(held.segmentsoverlay);
-            }
-
-            // This runs on every subtree change, and the bar is not always mounted.
-            const bar = document.querySelector('ytlr-progress-bar');
-            const hidden = !!bar && bar.getAttribute('hybridnavfocusable') === 'false';
-
-            held.segmentsoverlay.style.setProperty('display', hidden ? 'none' : 'block', 'important');
-        });
-    });
-
-    const buildOverlay = () => {
-        if (!held.active || held.segmentsoverlay) return undefined;
-        if (!held.video || !held.video.duration) return undefined;
-
-        const slider = document.querySelector(SLIDER);
-        if (!slider) {
-            held.stopWaitingForSlider = waitFor(
-                () => document.querySelector(SLIDER), buildOverlay, { everyMs: WAIT_EVERY }
-            );
-            return undefined;
-        }
-
-        held.segmentsoverlay = document.createElement('div');
-        held.segmentsoverlay.classList.add('ytLrProgressBarSlider', 'ytLrProgressBarSliderRectangularProgressBar');
-        held.segmentsoverlay.style.setProperty('z-index', '10', 'important');
-        held.segmentsoverlay.style.setProperty('background-color', 'rgba(0, 0, 0, 0)', 'important');
-        held.segmentsoverlay.style.setProperty('width', '72rem', 'important');
-        held.segmentsoverlay.style.setProperty('left', '4rem', 'important');
-
-        styleOverlayLike(slider);
-
-        held.segments.forEach((segment) => {
-            held.segmentsoverlay.appendChild(segmentElement(segment, held.video.duration));
-        });
-
-        held.observer = watchOverlay();
-
-        // Ran until it found the bar, and so ran for ever on a page where the bar never appeared.
-        until(sliderTimer, SLIDER_EVERY, () => {
-            held.slider = document.querySelector(PROGRESS_BAR);
-            if (!held.slider) return;
-
-            stop(sliderTimer);
-
-            held.observer.observe(held.slider, { childList: true, subtree: true });
-            held.slider.appendChild(held.segmentsoverlay);
-        }, SLIDER_GIVE_UP);
-
-        return undefined;
-    };
-
-    // A segment the viewer keeps landing back inside is one they meant to watch, so after a repeat
-    // inside a second it is announced once and then left alone.
-    const skippedTooOften = (segment, skipName) => {
-        const before = held.alreadySkipped.get(segment.UUID);
-
-        if (!before) {
-            held.alreadySkipped.set(segment.UUID, {
-                count: 1, firstSkipped: Date.now(), lastSkipped: Date.now(), hasShownToast: false
-            });
-            return false;
-        }
-
-        const seen = Object.assign({}, before, { count: before.count + 1, lastSkipped: Date.now() });
-        held.alreadySkipped.set(segment.UUID, seen);
-
-        if (seen.lastSkipped - seen.firstSkipped >= REPEAT_WINDOW) return false;
-
-        if (!seen.hasShownToast) {
-            if (configRead('enableSponsorBlockToasts')) {
-                showToast('SponsorBlock', `Not skipping ${skipName} (was skipped ${seen.count} times)`);
-            }
-
-            held.alreadySkipped.set(segment.UUID, Object.assign({}, seen, { hasShownToast: true }));
-        }
-
-        return true;
-    };
-
-    const skipOver = (segment) => {
-        const [, end] = segment.segment;
-        const skipName = SEGMENTS[segment.category]?.name || segment.category;
-
-        if (held.manualOnly.includes(segment.category)) return;
-        if (skippedTooOften(segment, skipName)) return;
-
-        if (configRead('enableSponsorBlockToasts')) showToast('SponsorBlock', `Skipping ${skipName}`);
-
-        held.video.currentTime = held.video.duration - end < 1 ? end - 1 : end;
-        scheduleSkip();
-    };
-
-    function scheduleSkip() {
-        clearTimeout(held.nextSkipTimeout);
-        held.nextSkipTimeout = null;
-
-        if (!held.active || held.video.paused) return;
-
-        const ahead = held.segments
-            .filter((seg) => seg.segment[0] > held.video.currentTime - 0.3
-                && seg.segment[1] > held.video.currentTime - 0.3)
-            .sort((one, two) => one.segment[0] - two.segment[0]);
-
-        if (!ahead.length) return;
-
-        const [segment] = ahead;
-        const [start] = segment.segment;
-
-        held.nextSkipTimeout = setTimeout(() => {
-            if (held.video.paused) return;
-            if (!held.skippable.includes(segment.category)) return;
-
-            skipOver(segment);
-        }, (start - held.video.currentTime) * 1000);
-    }
-
+    // The video element is replaced across navigations, so this is re-entrant: it cancels its own
+    // outstanding wait before starting another.
     function attachVideo() {
         if (held.stopWaitingForVideo) held.stopWaitingForVideo();
         held.stopWaitingForVideo = null;
@@ -218,88 +53,88 @@ function sponsorBlockFor(videoID) {
             return;
         }
 
-        held.video.addEventListener('play', held.onScheduleSkip);
-        held.video.addEventListener('pause', held.onScheduleSkip);
-        held.video.addEventListener('timeupdate', held.onScheduleSkip);
+        held.overlay.watch(held.video);
+        held.skipper.watch(held.video);
+
+        held.video.addEventListener('play', held.onTick);
+        held.video.addEventListener('pause', held.onTick);
+        held.video.addEventListener('timeupdate', held.onTick);
         held.video.addEventListener('durationchange', held.onDurationChange);
     }
 
     const init = async () => {
-        const videoHash = sha256(videoID).substring(0, 4);
-        const asked = encodeURIComponent(JSON.stringify(ASKED_FOR));
-        const response = await fetch(`${sponsorblockAPI}/skipSegments/${videoHash}?categories=${asked}`);
-        const results = await response.json();
-        if (!held.active) return;
+        const segments = await segmentsFor(videoID);
+        if (!segments.length) return;
 
-        const result = results.find((entry) => entry.videoID === videoID);
-        if (!result || !result.segments || !result.segments.length) return;
+        held.segments = segments;
+        held.overlay = segmentOverlay(segments);
+        held.skipper = autoSkipper(segments, skippableCategories(), configRead('sponsorBlockManualSkips'));
 
-        held.segments = result.segments;
-        held.manualOnly = configRead('sponsorBlockManualSkips');
-        held.skippable = skippableCategories();
+        // The overlay positions itself inside the bar now, so there is nothing to follow.
+        held.onTick = () => held.skipper.schedule();
 
-        // The overlay sits on the progress bar, which the old layout positions differently.
-        held.onScheduleSkip = () => {
-            const sliderRect = document.querySelector(SLIDER)?.getBoundingClientRect();
-            const isOldUI = !document.querySelector('div[idomkey="Metadata-Section"]');
-
-            if (isOldUI && sliderRect && held.segmentsoverlay) {
-                held.segmentsoverlay.style.setProperty('top', `${sliderRect.top}px`, 'important');
-            }
-
-            scheduleSkip();
-        };
-
-        held.onDurationChange = () => buildOverlay();
+        // The duration is what every bar's width is a fraction of, so it is also the moment the
+        // overlay becomes drawable — including when the video element arrived after this did.
+        held.onDurationChange = () => held.overlay.show();
 
         attachVideo();
-        buildOverlay();
+        held.overlay.show();
     };
 
     const destroy = () => {
-        held.active = false;
-
-        clearTimeout(held.nextSkipTimeout);
-        held.nextSkipTimeout = null;
-
         if (held.stopWaitingForVideo) held.stopWaitingForVideo();
         held.stopWaitingForVideo = null;
 
-        if (held.stopWaitingForSlider) held.stopWaitingForSlider();
-        held.stopWaitingForSlider = null;
-
-        stop(sliderTimer);
-
-        if (held.observer) held.observer.disconnect();
-        held.observer = null;
-
-        if (held.segmentsoverlay) held.segmentsoverlay.remove();
-        held.segmentsoverlay = null;
+        if (held.skipper) held.skipper.finish();
+        if (held.overlay) held.overlay.remove();
 
         if (held.video) {
-            held.video.removeEventListener('play', held.onScheduleSkip);
-            held.video.removeEventListener('pause', held.onScheduleSkip);
-            held.video.removeEventListener('timeupdate', held.onScheduleSkip);
+            held.video.removeEventListener('play', held.onTick);
+            held.video.removeEventListener('pause', held.onTick);
+            held.video.removeEventListener('timeupdate', held.onTick);
             held.video.removeEventListener('durationchange', held.onDurationChange);
         }
 
-        held.alreadySkipped.clear();
+        held.video = null;
     };
 
-    // segments is read from adblock.js and is filled in after the fetch, so it has to stay live.
+    // A getter, because the segments arrive after the session does and the parts of SponsorBlock
+    // that dress the player ask for them whenever the player asks them for a button.
     return {
         videoID,
         get segments() { return held.segments; },
         init,
         destroy
     };
-}
+};
 
 window.sponsorblock = null;
 
+// Asked for by name rather than by trimming a prefix off the query. `search.replace('?v=', '')`
+// left every other query untouched and returned it whole, so navigating to the Library opened a
+// SponsorBlock session for the video "?c=FElibrary" — a request to the API and a skipper attached
+// to whatever video element happened to be on the page.
+//
+// Split by hand, because Cobalt's URL carries `search` and nothing else: `url.searchParams` is
+// undefined and `URLSearchParams` does not exist at all. Measured on the set, after reaching for
+// it here stopped SponsorBlock starting on any video whatsoever.
+const videoIdIn = (hash) => {
+    const at = String(hash || '').indexOf('?');
+    if (at === -1) return null;
+
+    const found = /(?:^|&)v=([^&]*)/.exec(hash.slice(at + 1));
+
+    try {
+        return found ? decodeURIComponent(found[1]) : null;
+    } catch (e) {
+        return found ? found[1] : null;
+    }
+};
+
+const videoOnScreen = () => videoIdIn(location.hash);
+
 window.addEventListener('hashchange', () => {
-    const newURL = new URL(location.hash.substring(1), location.href);
-    const videoID = newURL.search.replace('?v=', '').split('&')[0];
+    const videoID = videoOnScreen();
 
     if (!videoID) return;
     if (window.sponsorblock && window.sponsorblock.videoID === videoID) return;
@@ -319,3 +154,10 @@ window.addEventListener('hashchange', () => {
     window.sponsorblock = sponsorBlockFor(videoID);
     window.sponsorblock.init();
 }, false);
+
+// What the current video's segments are, for the parts of SponsorBlock that dress the player.
+// They used to reach into window.sponsorblock from another mod's file; this keeps the session
+// where it is and gives them a way to ask for it.
+const segmentsForVideo = () => (window.sponsorblock && window.sponsorblock.segments) || [];
+
+export { segmentsForVideo, videoIdIn };

@@ -19,6 +19,7 @@ const NODE_GLOBALS = {
     URLSearchParams: 'readonly',
     TextDecoder: 'readonly',
     TextEncoder: 'readonly',
+    AbortController: 'readonly',
     global: 'readonly'
 };
 

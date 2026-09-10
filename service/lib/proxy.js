@@ -13,7 +13,7 @@ const postmortem = require('./postmortem.js');
 const { upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js');
-const { send } = require('./sending.js');
+const { readText, send } = require('./sending.js');
 const { nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants } = require('./rewrites.js');
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
@@ -181,7 +181,7 @@ const attachFallback = (app) => {
                     return response.body.pipe(res);
                 }
 
-                return response.text().then((text) => {
+                return readText(response, route.url, req, headers).then((text) => {
                     const injectionOrigin = route.asTheRealHost && req.headers.host
                         ? `https://${req.headers.host}`
                         : null;

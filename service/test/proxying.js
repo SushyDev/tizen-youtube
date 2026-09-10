@@ -15,7 +15,25 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
+// Answers the first ask with a body that stops half way and a socket that dies with it — the
+// shape a wedged pooled socket produced on the set, where it reached the page as a 500 and put an
+// empty account list on screen. The second ask answers properly.
+const truncation = { asked: 0 };
+
 const upstream = http.createServer((req, res) => {
+    if (req.url === '/truncated') {
+        truncation.asked += 1;
+
+        if (truncation.asked > 1) {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            return res.end('{"whole":true}');
+        }
+
+        res.writeHead(200, { 'content-type': 'application/json', 'content-length': '40' });
+        res.write('{"half":');
+        return res.destroy();
+    }
+
     if (req.url === '/json') {
         res.writeHead(200, {
             'content-type': 'application/json',
@@ -133,6 +151,15 @@ upstream.listen(0, '127.0.0.1', () => {
                 check('a preflight echoes the headers that were asked for',
                     res.headers['access-control-allow-headers'] === 'authorization, x-goog-visitor-id',
                     res.headers['access-control-allow-headers']);
+
+                return bypass('/truncated');
+            })
+            .then((res) => {
+                check('a body that dies mid-read is asked for again rather than becoming a 500',
+                    res.status === 200 && res.body.toString() === '{"whole":true}',
+                    `${res.status} ${res.body.toString().slice(0, 60)}`);
+                check('asking again means exactly one more request, not a loop',
+                    truncation.asked === 2, String(truncation.asked));
 
                 return get('/cors-bypass/http://127.0.0.1:1/dead');
             })

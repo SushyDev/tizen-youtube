@@ -11,17 +11,16 @@
 //
 // Needs a debug build running on the set: the bridge is the page's own eval, on port 8097.
 
-const http = require('http');
-
 const ui = require('./report.js');
+
+const { evaluate, settings } = require('./bridge.js');
 
 const at = (flag, fallback) => {
     const found = process.argv.indexOf(flag);
     return found === -1 ? fallback : process.argv[found + 1];
 };
 
-const TV = at('--tv', process.env.TUBE_TV || '192.168.1.29');
-const TOKEN = process.env.TUBE_DEV_TOKEN || 'tvdebug2026';
+const WHERE = { tv: at('--tv', settings().tv), token: settings().token };
 
 // Everything test/e2e/cobalt.js might want to take away, plus what identifies the build.
 const ASKED = [
@@ -57,62 +56,11 @@ const source = `(function(){
     return JSON.stringify(out);
 })()`;
 
-const ask = (options, body) => new Promise((resolve, reject) => {
-    const request = http.request({ host: TV, port: 8097, timeout: 10000, ...options }, (response) => {
-        const parts = [];
-        response.on('data', (chunk) => parts.push(chunk));
-        response.on('end', () => {
-            try {
-                resolve(JSON.parse(parts.join('')));
-            } catch (e) {
-                resolve(parts.join(''));
-            }
-        });
-    });
-
-    request.on('error', reject);
-    request.on('timeout', () => { request.destroy(); reject(new Error(`${TV}:8097 did not answer`)); });
-    if (body) request.write(JSON.stringify(body));
-    request.end();
-});
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// The page runs it on its next tick and carries the answer out in the reading, so it is asked for
-// and then read back rather than returned.
-const answer = async () => {
-    await ask({
-        method: 'POST',
-        path: '/command',
-        headers: { 'content-type': 'application/json', 'x-tube-token': TOKEN }
-    }, { action: 'eval', source });
-
-    const tries = Array.from({ length: 14 }, (unused, i) => i);
-
-    return tries.reduce(async (found, unused) => {
-        const already = await found;
-        if (already) return already;
-
-        await wait(700);
-        const stats = await ask({ method: 'GET', path: '/stats' });
-        const ran = stats && stats.reading && stats.reading.evaluated;
-
-        return ran && ran.source === source ? ran : null;
-    }, Promise.resolve(null));
-};
-
 const main = async () => {
     ui.heading('probe');
-    ui.info('set', `${TV}:8097`);
+    ui.info('set', `${WHERE.tv}:8097`);
 
-    const ran = await answer();
-    if (!ran) throw Object.assign(new Error('The page did not answer.\n'
-        + '  A debug build has to be running on the set: TUBE_DEV=1 npm run package, then install.'),
-    { isFriendly: true });
-
-    if (ran.error) throw Object.assign(new Error(ran.error), { isFriendly: true });
-
-    const found = JSON.parse(JSON.parse(ran.value));
+    const found = JSON.parse(JSON.parse(await evaluate(source, WHERE)));
     const missing = Object.keys(found).filter((name) => found[name] === false);
 
     ui.blank();

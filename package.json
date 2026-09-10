@@ -34,7 +34,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test --config test/e2e/playwright.config.js",
     "audit": "node tools/audit.js",
-    "probe:cobalt": "node tools/probe-cobalt.js"
+    "probe:cobalt": "node tools/probe-cobalt.js",
+    "doctor:tv": "node tools/doctor-tv.js"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.22.9",

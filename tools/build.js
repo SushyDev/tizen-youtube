@@ -25,17 +25,20 @@ const STEPS = [
     }
 ];
 
+// npm's own chatter and stack frames from inside node_modules say nothing about why a build
+// failed. Predicates rather than patterns because only the first is judged on a trimmed line —
+// the second is looking for the leading whitespace of a stack frame.
+const NOISE = [
+    (line) => /^npm (error|notice|warn)\b/.test(line.trim()),
+    (line) => /^\s+at .*[\\/]node_modules[\\/]/.test(line)
+];
+
 function cleanOutput(raw) {
-    const lines = String(raw).split('\n');
-    const kept = [];
-
-    for (const line of lines) {
-        if (/^npm (error|notice|warn)\b/.test(line.trim())) continue;
-        if (/^\s+at .*[\\/]node_modules[\\/]/.test(line)) continue;
-        kept.push(line);
-    }
-
-    return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return String(raw).split('\n')
+        .filter((line) => !NOISE.some((noise) => noise(line)))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function runStep(step) {

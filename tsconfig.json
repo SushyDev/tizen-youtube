@@ -24,7 +24,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "mods/player/customUI.js",
     "mods/player/pictureInPicture.js",
     "mods/settings/settingsModel.js",
     "mods/commands/interpreters.js"

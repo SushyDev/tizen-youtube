@@ -12,6 +12,14 @@ const { PROXY } = require('../service/lib/ports.js');
 
 const APP = { output: paths.WGT, include: paths.WIDGET };
 
+function asUrl(value) {
+    try {
+        return new URL(value);
+    } catch (e) {
+        return null;
+    }
+}
+
 function friendly(message) {
     const error = new Error(message);
     error.isFriendly = true;
@@ -65,9 +73,7 @@ function addCobaltProfile(staging) {
     }
 
     const checkUrl = (name, value, scheme) => {
-        const parsed = (() => {
-            try { return new URL(value); } catch (e) { return null; }
-        })();
+        const parsed = asUrl(value);
 
         if (!parsed) throw friendly(`${name} is not a URL: ${value}`);
         if (parsed.protocol !== scheme) throw friendly(`${name} must use ${scheme.slice(0, -1)}.`);
@@ -130,16 +136,20 @@ function addGameMode(staging) {
     writeFileSync(path, xml.replace('</widget>', `    ${GAME_MODE}\n</widget>`));
 }
 
+// Zip entry names are the staged path, always with forward slashes: a widget built on Windows
+// has to unpack the same as one built here.
+function addTree(zip, staging, directory) {
+    readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) return addTree(zip, staging, path);
+        zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
+    });
+}
+
 async function writeWidget(staging, outPath) {
     const zip = new JSZip();
 
-    (function add(directory) {
-        readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
-            const path = join(directory, entry.name);
-            if (entry.isDirectory()) return add(path);
-            zip.file(relative(staging, path).split(sep).join('/'), readFileSync(path));
-        });
-    })(staging);
+    addTree(zip, staging, staging);
 
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }

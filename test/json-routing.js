@@ -12,7 +12,7 @@ import assert from 'assert';
 global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };
 global.window.JSON = JSON;
 
-const { onResponse, onRequest, interceptJson } = await import('../framework/json.js');
+const { onResponse, onRequest, interceptJson, clone } = await import('../framework/json.js');
 
 const seen = [];
 
@@ -83,6 +83,35 @@ check('interceptJson is idempotent', () => {
     const before = JSON.parse;
     interceptJson();
     assert.strictEqual(JSON.parse, before, 'a second call wrapped the wrapper');
+});
+
+// The trap this exists to catch. A reader that deep-copies its response with
+// JSON.parse(JSON.stringify(x)) re-enters the hook, because the copy is a response as far as the
+// patched parse is concerned. Once a reader was registered for a tile-shaped root, that recursion
+// became real: dressing a tile copies it, the copy is dressed, and each round is bigger than the
+// last. clone() goes through the originals so it cannot happen.
+check('a reader that clones its response is not re-entered', () => {
+    const runs = { n: 0 };
+
+    onResponse('cloner', ['clonable'], (r) => {
+        runs.n += 1;
+        if (runs.n > 20) throw new Error('runaway');
+        clone(r);
+    });
+
+    runs.n = 0;
+    JSON.parse('{"clonable":{"a":1}}');
+
+    assert.strictEqual(runs.n, 1, `the reader ran ${runs.n} times; cloning re-entered the hook`);
+});
+
+check('clone still copies deeply', () => {
+    const source = { clonable: { deep: { list: [1, 2, 3] } } };
+    const copy = clone(source);
+
+    assert.deepStrictEqual(copy, source);
+    copy.clonable.deep.list.push(4);
+    assert.strictEqual(source.clonable.deep.list.length, 3, 'clone shares structure with its source');
 });
 
 const failed = results.filter((ok) => !ok).length;

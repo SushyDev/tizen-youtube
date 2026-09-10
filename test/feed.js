@@ -15,12 +15,13 @@ global.fetch = (url) => {
 };
 
 const { configRead, configWrite } = await import('../framework/config.js');
-const { MenuServiceItemRenderer, longPressData } = await import('../framework/ytUI.js');
+const { MenuServiceItemRenderer } = await import('../framework/renderers.js');
+const { longPressData } = await import('../mods/feed/longPressMenu.js');
 const { SHELF, PIVOT, TILES, GRID, walkTiles, walkShelves } = await import('../framework/feed.js');
 
 // Importing for its registrations, which is the whole point: the visitor table under test is the
 // one the shipped code installs, not one written for the test.
-await import('../mods/feed/adblock.js');
+await import('../mods/feed/index.js');
 
 // -- the oracle: exactly what these were before ------------------------------------------------
 
@@ -219,6 +220,16 @@ const sameShelves = (name, shelves, settings) => check(name, () => {
     });
 });
 
+// For the cases where the walk is deliberately not the oracle any more: the fixture goes through
+// the real walk and the assertion says what should have happened to it.
+const checkShelves = (name, shelves, settings, assertion) => check(name, () => {
+    withConfig(settings || {}, () => {
+        const walked = copy(shelves);
+        walkShelves(walked, SHELF);
+        assertion(walked);
+    });
+});
+
 const samePivot = (name, shelves, settings) => check(name, () => {
     withConfig(settings || {}, () => {
         const mine = copy(shelves);
@@ -287,7 +298,29 @@ sameShelves('shorts kept when the setting is on', [
 ], Object.assign({}, ON, { enableShorts: true }));
 
 sameShelves('a shelf with no items array', [{ shelfRenderer: {} }, shelf([tile('a')])], ON);
-sameShelves('an entry that is not a shelf', [{ feedNudgeRenderer: {} }, shelf([tile('a')])], ON);
+
+// An entry that is not a shelf is where the oracle and the walk now legitimately part company, so
+// this one is checked against the intended behaviour rather than against what shipped. The old
+// code reached a feed nudge and an advert section by descending to the browse surface by hand,
+// inside two different features; neither descent named the continuation the Refresh button
+// answers with, so a refreshed feed kept both. They are keepers on the walk now, which is why
+// these entries go and the oracle, which models only the walk, keeps them.
+checkShelves('a sign-in nudge is taken out wherever the walk finds it',
+    [{ feedNudgeRenderer: {} }, shelf([tile('a')])], ON,
+    (walked) => assert.strictEqual(walked.length, 1, 'the nudge survived the walk'));
+
+checkShelves('and is left alone when the viewer wants it',
+    [{ feedNudgeRenderer: {} }, shelf([tile('a')])],
+    Object.assign({}, ON, { enableSigninReminder: true }),
+    (walked) => assert.strictEqual(walked.length, 2, 'the nudge was taken out anyway'));
+
+checkShelves('an advert occupying a whole row goes with the rest of them',
+    [{ adSlotRenderer: {} }, shelf([tile('a')])], Object.assign({}, ON, { enableAdBlock: true }),
+    (walked) => assert.strictEqual(walked.length, 1, 'a section-level advert survived'));
+
+checkShelves('and stays when adverts are allowed',
+    [{ adSlotRenderer: {} }, shelf([tile('a')])], Object.assign({}, ON, { enableAdBlock: false }),
+    (walked) => assert.strictEqual(walked.length, 2, 'the setting did nothing'));
 
 sameShelves('a tile that already has a long-press menu', [shelf([menuTile('m'), tile('a')])], ON);
 
@@ -311,7 +344,24 @@ samePivot('the watch-next pivot is dressed like a shelf', [shelf([tile('a'), adv
 samePivot('the pivot still drops shorts', [shelf([tile('a')], SHORTS_SHELF), shelf([tile('b')])], ON);
 
 sameTiles('a horizontal continuation', [tile('a'), advert(), watched('w', 95)], ON);
-sameTiles('a continuation keeps shorts tiles', [tile('a'), shortTile('s'), reelTile('r')], ON);
+
+// Deliberately not the oracle. shorts.js named SHELF, PIVOT and GRID and not TILES, so scrolling
+// right along a row that mixes shorts with ordinary videos let every short through as soon as the
+// continuation loaded — the same row filtered at the start and unfiltered further along.
+// Reproduced on the set before this was changed.
+check('a continuation drops shorts tiles like every other surface', () => {
+    withConfig(ON, () => {
+        const walked = walkTiles(copy([tile('a'), shortTile('s'), reelTile('r')]), TILES);
+        assert.deepStrictEqual(walked.map((i) => i.tileRenderer.contentId), ['a']);
+    });
+});
+
+check('and keeps them when shorts are wanted', () => {
+    withConfig(Object.assign({}, ON, { enableShorts: true }), () => {
+        const walked = walkTiles(copy([tile('a'), shortTile('s'), reelTile('r')]), TILES);
+        assert.deepStrictEqual(walked.map((i) => i.tileRenderer.contentId), ['a', 's', 'r']);
+    });
+});
 
 sameGrid('a grid is filtered like a shelf', [tile('a'), shortTile('s'), advert()], ON);
 sameGrid('a grid with a menu tile', [menuTile('m'), tile('a')], ON);
@@ -349,6 +399,25 @@ check('deArrow asks once per video, however many shelves carry it', () => {
         assert.strictEqual(distinct.size, 2, 'two videos, so two distinct requests');
         assert.strictEqual(fetches.calls.length, 2,
             `asked ${fetches.calls.length} times for 2 videos across 6 tiles — the cache is not holding`);
+    });
+});
+
+// Advert removal in the shelves was never gated — it came across from deArrowify, which spliced
+// unconditionally. So switching adverts back on returned the ones before a video and left the
+// feed untouched, which is exactly what the setting claims to control.
+check('adverts are removed from a shelf when blocking is on', () => {
+    withConfig(Object.assign({}, ON, { enableAdBlock: true }), () => {
+        const items = walkTiles(copy([advert(), tile('a')]), TILES);
+        assert.strictEqual(items.length, 1, 'the advert survived with blocking on');
+    });
+});
+
+check('and left in place when blocking is off', () => {
+    withConfig(Object.assign({}, ON, { enableAdBlock: false }), () => {
+        const items = walkTiles(copy([advert(), tile('a')]), TILES);
+        assert.strictEqual(items.length, 2,
+            'the advert was still removed with blocking off, so the setting does nothing');
+        assert.ok(items[0].adSlotRenderer, 'the advert is no longer first');
     });
 });
 

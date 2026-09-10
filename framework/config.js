@@ -66,8 +66,8 @@ const defaultConfig = {
   enableShowUserLanguage: true,
   enableShowOtherLanguages: false,
 
-  launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
-  reloadHomeOnStartup: false,
+  // The browseId the app opens on, empty for wherever YouTube would have gone — which is home.
+  startupPage: '',
 };
 
 function readStoredSettings() {

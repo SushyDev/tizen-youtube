@@ -86,21 +86,20 @@ const PAGES = [
   { label: 'More', value: 'more' }
 ];
 
-const page = (browseId) => JSON.stringify({ browseEndpoint: { browseId } });
-
+// Home is the empty value on purpose: it is where the app goes when nothing is chosen, so it is
+// the off position of this setting as well as one of its answers.
 const START_PAGES = [
-  { label: 'Home', value: page('FEtopics') },
-  { label: 'Search', value: JSON.stringify({ searchEndpoint: { query: '' } }) },
-  { label: 'Subscriptions', value: page('FEsubscriptions') },
-  { label: 'Library', value: page('FElibrary') },
-  { label: 'Sports', value: page('FEtopics_sports') },
-  { label: 'News', value: page('FEtopics_news') },
-  { label: 'Music', value: page('FEtopics_music') },
-  { label: 'Podcasts', value: page('FEtopics_podcasts') },
-  { label: 'Movies & TV', value: page('FEtopics_movies') },
-  { label: 'Live', value: page('FEtopics_live') },
-  { label: 'Gaming', value: page('FEtopics_gaming') },
-  { label: 'More', value: page('FEtopics_more') }
+  { label: 'Home', value: '' },
+  { label: 'Subscriptions', value: 'FEsubscriptions' },
+  { label: 'Library', value: 'FElibrary' },
+  { label: 'Sports', value: 'FEtopics_sports' },
+  { label: 'News', value: 'FEtopics_news' },
+  { label: 'Music', value: 'FEtopics_music' },
+  { label: 'Podcasts', value: 'FEtopics_podcasts' },
+  { label: 'Movies & TV', value: 'FEtopics_movies' },
+  { label: 'Live', value: 'FEtopics_live' },
+  { label: 'Gaming', value: 'FEtopics_gaming' },
+  { label: 'More', value: 'FEtopics_more' }
 ];
 
 const GROUPS = [
@@ -258,10 +257,7 @@ const GROUPS = [
     id: 'tube_startup',
     title: 'Startup',
     items: [
-      Switch('reloadHomeOnStartup', 'Open a page on startup',
-        'Off leaves whatever was last on screen, which after a video is that video',
-        RESTART),
-      Choice('launchToOnStartup', 'Page to open', 'Where the app lands when it starts',
+      Choice('startupPage', 'Page to open', 'Where the app lands when it starts. Home is what it does anyway',
         RESTART, START_PAGES, 'Startup')
     ]
   }

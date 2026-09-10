@@ -4,6 +4,7 @@ import { boot, interceptJson, register } from '../framework/index.js';
 import { start as startNetwork } from './network/originRewrite.js';
 import { start as startSettings } from './settings/nativeSettings.js';
 import { start as startShell } from './shell/startup.js';
+import { start as startPage } from './shell/startPage.js';
 import { start as startSpeed } from './player/speed.js';
 
 import './feed/index.js';
@@ -27,6 +28,10 @@ import './dev/index.js';
 register('origin rewrite', 'network', startNetwork);
 register('native settings', 'settings', startSettings);
 register('ui shell', 'ui', startShell);
+
+// Every phase runs in the same tick as this file, which is what puts the launch parameter in the
+// URL before kabuki gets round to reading it.
+register('start page', 'ui', startPage);
 register('playback speed', 'ui', startSpeed);
 
 // Taking over JSON.parse seals registration, so it is a phase rather than a last line.

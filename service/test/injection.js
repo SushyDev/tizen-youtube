@@ -4,8 +4,8 @@
 process.env.TUBE_PROXY_HOST = 'tv.example';
 
 const {
-    rewriteBody, rewriteAttestation, rewriteSetCookie, restoreCookiePrefixes, withOurConnections
-} = require('../lib/proxy.js');
+    rewriteBody, rewriteAttestation, rewriteSetCookie, restoreCookiePrefixes, withOurGrants
+} = require('../lib/rewrites.js');
 
 const ORIGIN = 'http://tv.example:8099';
 
@@ -82,25 +82,39 @@ check('the rename survives a round trip',
     restoreCookiePrefixes('__LocalSecure-3PSID=abc; __LocalHost-x=1') === '__Secure-3PSID=abc; __Host-x=1');
 
 const youtubePolicy = "base-uri 'self';object-src 'none';script-src 'nonce-abc' 'strict-dynamic'";
-const widened = withOurConnections(youtubePolicy);
+const widened = withOurGrants(youtubePolicy);
 
 check('the policy gains a connect-src it did not have',
-    /(^|;)\s*connect-src \* data: blob: ws: wss:$/.test(widened), widened);
+    /(^|;)\s*connect-src \* data: blob: ws: wss:(;|$)/.test(widened), widened);
+check('and an img-src it did not have',
+    /(^|;)\s*img-src \* data: blob:(;|$)/.test(widened), widened);
 check('the nonce is left alone',
     widened.indexOf("'nonce-abc'") !== -1 && widened.indexOf("object-src 'none'") !== -1, widened);
 
 check('an existing connect-src is widened rather than duplicated',
-    withOurConnections("default-src 'self'; connect-src 'self' https://a.example; img-src *")
-        === "default-src 'self'; connect-src * data: blob: ws: wss:; img-src *",
-    withOurConnections("default-src 'self'; connect-src 'self' https://a.example; img-src *"));
+    withOurGrants("default-src 'self'; connect-src 'self' https://a.example; img-src *")
+        === "default-src 'self'; connect-src * data: blob: ws: wss:; img-src * data: blob:",
+    withOurGrants("default-src 'self'; connect-src 'self' https://a.example; img-src *"));
+
+// The real policy denies everything it does not name, and lists several hundred image hosts
+// without DeArrow's among them. Widening connect-src alone let the branding fetch through and
+// left the picture it named refused, which read as a data fault rather than a policy one.
+const cobaltish = "default-src 'none';connect-src 'self' *.youtube.com;img-src 'self' *.ytimg.com *.ggpht.com";
+const opened = withOurGrants(cobaltish);
+
+check('the image host DeArrow substitutes is allowed through',
+    /(^|;)\s*img-src \* data: blob:(;|$)/.test(opened) && opened.indexOf('*.ytimg.com') === -1, opened);
+check("and default-src 'none' is left exactly as it was",
+    opened.indexOf("default-src 'none'") === 0, opened);
 
 check('a response with no policy is left without one',
-    withOurConnections(undefined) === undefined && withOurConnections('') === '');
+    withOurGrants(undefined) === undefined && withOurGrants('') === '');
 
-const both = withOurConnections("script-src 'nonce-a', require-trusted-types-for 'script'");
+const both = withOurGrants("script-src 'nonce-a', require-trusted-types-for 'script'");
 check('every policy in a combined header is widened',
     both.split(',').length === 2
-    && both.split(',').every((one) => /connect-src \* data: blob: ws: wss:/.test(one)),
+    && both.split(',').every((one) => /connect-src \* data: blob: ws: wss:/.test(one))
+    && both.split(',').every((one) => /img-src \* data: blob:/.test(one)),
     both);
 
 if (failures) {

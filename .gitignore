@@ -18,3 +18,5 @@ release/
 docs-internal/
 
 TODO.md
+test-results/
+playwright-report/

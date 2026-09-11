@@ -67,14 +67,14 @@ const response = () => ({
     ]
 });
 
-check('YouTube’s Previews row is adopted into our Interface category', () => {
+check('YouTube’s Previews row is adopted into our Feed category', () => {
     const r = response();
     PatchSettings(r);
 
-    const ours = rowsIn(r.items, 'tube_interface');
-    assert.ok(ours, 'our Interface category was never injected');
+    const ours = rowsIn(r.items, 'tube_feed');
+    assert.ok(ours, 'our Feed category was never injected');
     assert.ok(ours.indexOf('Previews') !== -1,
-        `Previews did not land in Interface — it holds ${JSON.stringify(ours)}`);
+        `Previews did not land in Feed — it holds ${JSON.stringify(ours)}`);
 });
 
 check('the Previews row leaves General rather than being copied', () => {

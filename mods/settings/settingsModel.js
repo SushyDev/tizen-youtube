@@ -123,8 +123,7 @@ const GROUPS = [
         'Skip the parts of a video the community has marked, from sponsor.ajay.app',
         MONEY),
       Flags('segments', 'Segments to skip',
-        'Which of SponsorBlock\u2019s categories are skipped automatically', SKIPPING,
-        SEGMENTS),
+        'Skipped as soon as they start, with no prompt', SKIPPING, SEGMENTS),
       Set_('sponsorBlockManualSkips', 'Ask before skipping',
         'These segments offer a button instead of skipping on their own', SKIPPING,
         SEGMENTS.map((segment) => ({
@@ -147,7 +146,62 @@ const GROUPS = [
         'Replace clickbait titles with ones submitted by the community, from dearrow.ajay.app',
         LOOKING),
       Switch('enableDeArrowThumbnails', 'Thumbnails',
-        'Replace thumbnails as well. Slower to load over a thin connection', LOOKING)
+        'Thumbnails are replaced too, which loads slower over a thin connection', LOOKING)
+    ]
+  },
+  {
+    id: 'tube_startup',
+    title: 'Startup',
+    items: [
+      Choice('startupPage', 'Page to open',
+        'Opened at launch, so the home feed is never drawn first',
+        RESTART, START_PAGES, 'Startup'),
+      Switch('enableWhoIsWatchingMenu', 'Ask who\u2019s watching',
+        'YouTube\u2019s account picker, shown before the feed', PRIVACY),
+      Switch('permanentlyEnableWhoIsWatchingMenu', 'Ask every time',
+        'Asked again even when the app was only in the background', PRIVACY),
+      Switch('enableWhosWatchingMenuOnAppExit', 'Ask on the way out',
+        'Asked again when the app closes; off puts the home button back', PRIVACY)
+    ]
+  },
+  {
+    id: 'tube_feed',
+    title: 'Feed',
+    items: [
+      Switch('enableShorts', 'Shorts',
+        'Off removes them from every shelf, including rows that mix them with ordinary videos',
+        SCREEN),
+      Switch('enableHqThumbnails', 'High-quality thumbnails',
+        'Ask for the largest thumbnail rather than the one sized for a phone', LOOKING),
+      Switch('enableHideWatchedVideos', 'Hide watched videos',
+        'Drop videos you have already finished out of the shelves', WATCHED),
+      Choice('hideWatchedVideosThreshold', 'Counts as watched at',
+        'How much of a video has to be behind you before it is hidden',
+        WATCHED, PERCENTAGES, 'Watched'),
+      Set_('hideWatchedVideosPages', 'Hide them on',
+        'Left off a page, watched videos still show there', WATCHED, PAGES)
+    ]
+  },
+  {
+    id: 'tube_sidebar',
+    title: 'Sidebar',
+    items: [
+      Set_('disabledSidebarContents', 'Sections',
+        'Unchecked entries are dropped from the guide', CONTROLS, SIDEBAR, true)
+    ]
+  },
+  {
+    id: 'tube_navigation',
+    title: 'Navigation',
+    items: [
+      Choice('scrollSpeed', 'Scroll speed',
+        'How fast the feed moves while a direction is held', CONTROLS,
+        SCROLL_SPEEDS),
+      Switch('enableRapidPress', 'Rapid press',
+        'Presses made faster than the feed can move are kept rather than dropped',
+        CONTROLS),
+      Switch('enableSmoothNavigation', 'Smoother navigation',
+        'Skips work YouTube does while you move; tiles stop sliding one by one', SCREEN)
     ]
   },
   {
@@ -160,12 +214,12 @@ const GROUPS = [
       Choice('videoPreferredCodec', 'Preferred codec',
         'Some sets decode one codec in hardware and the rest in software',
         SCREEN, CODECS, 'Codec'),
+      Switch('rememberPlaybackSpeed', 'Remember playback speed',
+        'The speed you chose carries into the next video, which YouTube otherwise starts '
+        + 'at normal', SKIPPING),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
-        SKIPPING, INCREMENTS, 'Step'),
-      Switch('rememberPlaybackSpeed', 'Remember playback speed',
-        'Carry the speed you chose into the next video. YouTube starts each one at normal '
-        + 'speed', SKIPPING)
+        SKIPPING, INCREMENTS, 'Step')
     ]
   },
   {
@@ -193,84 +247,23 @@ const GROUPS = [
     ]
   },
   {
-    id: 'tube_interface',
-    title: 'Interface',
-    items: [
-      Switch('enableHqThumbnails', 'High-quality thumbnails',
-        'Ask for the largest thumbnail rather than the one sized for a phone', LOOKING),
-      Switch('enableShorts', 'Shorts', 'Keep Shorts shelves in the feeds', SCREEN),
-      Choice('scrollSpeed', 'Scroll speed',
-        'How fast the feed moves while a direction is held', CONTROLS,
-        SCROLL_SPEEDS),
-      Switch('enableRapidPress', 'Rapid press',
-        'Presses made faster than the feed can move are kept rather than dropped',
-        CONTROLS),
-      Switch('enableSmoothNavigation', 'Smoother navigation',
-        'Skip work YouTube does while you are moving. Tiles stop sliding one by one',
-        SCREEN)
-    ]
-  },
-  {
-    id: 'tube_sidebar',
-    title: 'Sidebar',
-    items: [
-      Set_('disabledSidebarContents', 'Sections',
-        'Which entries the sidebar offers', CONTROLS, SIDEBAR, true)
-    ]
-  },
-  {
-    id: 'tube_watched',
-    title: 'Watched videos',
-    items: [
-      Switch('enableHideWatchedVideos', 'Hide watched videos',
-        'Drop videos you have already finished out of the shelves', WATCHED),
-      Choice('hideWatchedVideosThreshold', 'Counts as watched at',
-        'How much of a video has to be behind you before it is hidden',
-        WATCHED, PERCENTAGES, 'Watched'),
-      Set_('hideWatchedVideosPages', 'Hide them on',
-        'The pages hiding applies to', WATCHED, PAGES)
-    ]
-  },
-  {
     id: 'tube_interruptions',
     title: 'Overlays and prompts',
     items: [
       Switch('hideShoppingAction', 'Shopping action',
-        'The merchandise card with a QR code that YouTube lays over the picture partway through a video',
+        'The QR-code merchandise card laid over the picture partway through a video',
         MONEY, false),
       Switch('enableHideEndScreenCards', 'End screen cards',
         'The tiles the uploader lays over the last seconds of a video', SCREEN, false),
       Switch('enablePaidPromotionOverlay', 'Paid promotion notice',
         'YouTube\u2019s "Includes paid promotion" badge', MONEY),
       Switch('enableUpNextCard', 'Up next card',
-        'The countdown to the next video, laid over the end of this one. Off stops it '
-        + 'playing the next video too \u2014 the card is the only warning that it is coming',
+        'Off stops the next video playing too \u2014 the card is the only warning it is coming',
         SKIPPING),
       Switch('enableYouThereRenderer', 'Are you still watching?',
         'The prompt that stops playback after a long run', PRIVACY),
       Switch('enableSigninReminder', 'Sign-in reminder',
         'The prompt shown to a signed-out viewer', PRIVACY)
-    ]
-  },
-  {
-    id: 'tube_whos_watching',
-    title: 'Who\u2019s watching',
-    items: [
-      Switch('enableWhoIsWatchingMenu', 'On startup',
-        'YouTube\u2019s account picker, shown on the way in', PRIVACY),
-      Switch('permanentlyEnableWhoIsWatchingMenu', 'Every time',
-        'Ask again even when the app was only in the background', PRIVACY),
-      Switch('enableWhosWatchingMenuOnAppExit', 'On the way out',
-        'YouTube asks again when the app closes. Off puts the home button back',
-        PRIVACY)
-    ]
-  },
-  {
-    id: 'tube_startup',
-    title: 'Startup',
-    items: [
-      Choice('startupPage', 'Page to open', 'Where the app lands when it starts. Home is what it does anyway',
-        RESTART, START_PAGES, 'Startup')
     ]
   }
 ];

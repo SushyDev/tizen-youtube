@@ -84,6 +84,29 @@ imported locales (~375KB, now fetched on demand), `esprima` + `estraverse`
 shipped for four call sites (~150KB, replaced by a marker-anchored scan), and a
 static language-name map (33KB, now `Intl.DisplayNames`).
 
+**Inside Samsung's Cobalt container.** The set ships a second YouTube runtime —
+Cobalt, in `com.samsung.tv.cobalt` — and it is the stack that plays 2160p60 VP9
+HDR properly, which the webview does not. A package can claim its slot through
+three metadata keys: `pkgid` names the container, `nativeID` names the slot, and
+`native.userdata` carries the switches it is started with. The slot carries
+`read.metadata.from.hybrid.webapp`, so it takes those switches from the webapp
+it is paired to, and `nativeID` cannot be dropped to keep our own content
+running as well — a package carrying it never runs its own content at all, which
+is why `auto-restart` and `on-boot` are what start the service.
+
+`--proxy` names `127.0.0.2`, which is a fixed way of writing "this television"
+on every television: one package cannot reach another's `127.0.0.1` on this
+platform (`EHOSTUNREACH`), while any other loopback address connects, so there
+is no DNS and nothing per-set. `--content` names a writable copy of Cobalt's own
+content directory, staged on first run — about 5.1MB, nearly all of it
+`icu/icudt68l.dat` — because the certificate authority has to go inside it and
+the stock one is read-only.
+
+Not every Tizen device has the container; a Smart Monitor is not a television.
+On one that does not, the metadata hands the launch to something absent and
+nothing ever starts. `TUBE_COBALT_CONTAINER=off npm run package` drops the three
+keys and the app is the ordinary Chromium one again, boot screen and all.
+
 **The CDN is never on the critical path.** The bundle is inside the `.wgt`.
 On launch `latest.json` is checked in the background; a newer bundle is
 SHA-256-verified against the manifest before it is written anywhere; load order

@@ -19,11 +19,7 @@ const onRequest = (name, keys, write) => {
 const isInteresting = (value, index) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
 
-    for (const key in value) {
-        if (index[key]) return true;
-    }
-
-    return false;
+    return Object.keys(value).some((key) => index[key]);
 };
 
 const guarded = (handler, value, fallback) => {

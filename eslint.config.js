@@ -78,6 +78,39 @@ const CORRECTNESS_RULES = {
     'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }]
 };
 
+
+// TODO: reshape SIBLING_OWNED files once their branches land.
+const SIBLING_OWNED = [
+    'mods/features/pictureInPicture.js',
+    'mods/youtube/commands.js'
+];
+
+const SHIPPED = ['service/**/*.js', 'mods/**/*.js', 'ui/src/**/*.js'];
+
+const UNSTYLED = SIBLING_OWNED.concat([
+    'service/test/**/*.js',
+    'mods/test/**/*.js',
+    'service/build/**/*.js',
+    'mods/rollup.config.js'
+]);
+
+const STYLE_RULES = {
+    'no-var': 'error',
+    'prefer-const': ['error', { destructuring: 'all' }],
+    'no-restricted-syntax': ['error',
+        { selector: "VariableDeclaration[kind='let']", message: 'const only — hold what changes in one named record' },
+        { selector: 'ForStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'ForOfStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'ForInStatement', message: 'use Object.keys' },
+        { selector: 'WhileStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'DoWhileStatement', message: 'use map/filter/reduce/find, or recursion' },
+        { selector: 'ClassDeclaration', message: 'use a factory function that closes over its state' },
+        { selector: 'ClassExpression', message: 'use a factory function that closes over its state' },
+        { selector: 'CallExpression > ArrowFunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' },
+        { selector: 'CallExpression > FunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' }
+    ]
+};
+
 module.exports = [
     {
         ignores: [
@@ -130,6 +163,11 @@ module.exports = [
         files: SHARED_ES_MODULES,
         languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
         rules: CORRECTNESS_RULES
+    },
+    {
+        files: SHIPPED,
+        ignores: UNSTYLED,
+        rules: STYLE_RULES
     },
     {
         files: ['ui/**/*.js'],

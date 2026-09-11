@@ -2,28 +2,30 @@ import { assetUrl } from './origin.js';
 
 const CACHE_KEY = 'tube-display-names';
 
-const hasIntl = (function () {
+function intlIsUsable() {
     try {
-        return typeof Intl !== 'undefined' &&
-            typeof Intl.DisplayNames === 'function' &&
-            !!new Intl.DisplayNames(['en'], { type: 'language' });
+        return typeof Intl !== 'undefined'
+            && typeof Intl.DisplayNames === 'function'
+            && !!new Intl.DisplayNames(['en'], { type: 'language' });
     } catch (e) {
         return false;
     }
-})();
+}
+
+const hasIntl = intlIsUsable();
 
 const intlLanguage = hasIntl ? new Intl.DisplayNames(['en'], { type: 'language' }) : null;
 const intlRegion = hasIntl ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
 
-let fallbackData = null;
+const fallback = { data: null };
 
 function primeFallback() {
-    if (hasIntl || fallbackData) return;
+    if (hasIntl || fallback.data) return;
 
     try {
         const cached = window.localStorage.getItem(CACHE_KEY);
         if (cached) {
-            fallbackData = JSON.parse(cached);
+            fallback.data = JSON.parse(cached);
             return;
         }
     } catch (e) {
@@ -33,7 +35,7 @@ function primeFallback() {
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
             if (!data) return;
-            fallbackData = data;
+            fallback.data = data;
             try {
                 window.localStorage.setItem(CACHE_KEY, JSON.stringify(data));
             } catch (e) { }
@@ -53,8 +55,8 @@ export function displayLanguage(code) {
         } catch (e) { }
     }
 
-    if (fallbackData && fallbackData.language && fallbackData.language.standard) {
-        return fallbackData.language.standard.long[code] || code;
+    if (fallback.data && fallback.data.language && fallback.data.language.standard) {
+        return fallback.data.language.standard.long[code] || code;
     }
 
     return code;
@@ -70,8 +72,8 @@ export function displayRegion(code) {
         } catch (e) { }
     }
 
-    if (fallbackData && fallbackData.region) {
-        return fallbackData.region.long[code] || code;
+    if (fallback.data && fallback.data.region) {
+        return fallback.data.region.long[code] || code;
     }
 
     return code;

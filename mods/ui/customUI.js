@@ -32,13 +32,8 @@ function applyPatches() {
             return origMethod.apply(this, args);
         }
 
-        let inst;
-        if (isClass) {
-            inst = constructAsNew(origMethod, args);
-        } else {
-            origMethod.apply(this, args);
-            inst = this;
-        }
+        if (!isClass) origMethod.apply(this, args);
+        const inst = isClass ? constructAsNew(origMethod, args) : this;
 
         const source = origMethod.toString();
 
@@ -126,9 +121,7 @@ function applyPatches() {
             const origEngagementActionButton = inst[engagementActionButton];
             inst[engagementActionButton] = function () {
                 const res = origEngagementActionButton.apply(this, arguments);
-                const superThanksFiltered = res.filter(item => item.type !== 'TRANSPORT_CONTROLS_BUTTON_TYPE_YOUCHAT_BUTTON');
-                const shoppingFiltered = superThanksFiltered.filter(item => item.type !== 'TRANSPORT_CONTROLS_BUTTON_TYPE_YOUCHAT_BUTTON');
-                return shoppingFiltered;
+                return res.filter(item => item.type !== 'TRANSPORT_CONTROLS_BUTTON_TYPE_YOUCHAT_BUTTON');
             }
         }
 

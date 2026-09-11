@@ -43,10 +43,6 @@ const defaultConfig = {
   disabledSidebarContents: HIDDEN_SIDEBAR_ITEMS,
   disableChannelsOnSidebar: false,
 
-  enableOledTheme: false,
-
-  enableLongPress: true,
-  enablePreviews: true,
   enableHqThumbnails: true,
 
   hideShoppingAction: true,
@@ -75,7 +71,7 @@ const defaultConfig = {
   enableShowOtherLanguages: false,
 
   launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
-  reloadHomeOnStartup: true,
+  reloadHomeOnStartup: false,
 };
 
 function readStoredSettings() {
@@ -100,7 +96,7 @@ export function configWrite(key, value) {
   localConfig[key] = value;
 
   const changed = {};
-  Object.keys(localConfig).forEach((name) => {
+  Object.keys(defaultConfig).forEach((name) => {
     if (localConfig[name] !== defaultConfig[name]) changed[name] = localConfig[name];
   });
 

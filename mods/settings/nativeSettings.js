@@ -88,6 +88,7 @@ const SUBSCRIPTION = 'tube_subscription';
 const PARENTAL = 'tube_parental';
 const HISTORY = 'SETTING_CAT_TVHTML5_HISTORY';
 const PLAYBACK = 'tube_playback';
+const INTERFACE = 'tube_interface';
 
 const MOVES = [
     { to: SUBSCRIPTION, id: 'PREMIUM_LANDING_PAGE', title: 'Get YouTube Premium' },
@@ -95,7 +96,8 @@ const MOVES = [
     { to: PLAYBACK, id: 'AUTONAV', title: 'Autoplay next video' },
     { to: PARENTAL, setting: 'SAFETY_MODE', title: 'Restricted mode' },
     { to: PARENTAL, id: 'PARENT_CODE', title: 'Parent code' },
-    { to: HISTORY, id: 'RECOMMEND', title: 'Device recommendations', first: true }
+    { to: HISTORY, id: 'RECOMMEND', title: 'Device recommendations', first: true },
+    { to: INTERFACE, setting: 'ENABLE_PREVIEWS_WITH_SOUND', title: 'Previews' }
 ];
 
 const ADDED = [

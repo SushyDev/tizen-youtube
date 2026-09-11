@@ -24,30 +24,6 @@ await import('../mods/feed/adblock.js');
 
 // -- the oracle: exactly what these were before ------------------------------------------------
 
-function oracleAddPreviews(items) {
-    if (!configRead('enablePreviews')) return;
-    items.forEach((item) => {
-        if (item.tileRenderer) {
-            const watchEndpoint = item.tileRenderer.onSelectCommand;
-            const copiedEndpoint = JSON.parse(JSON.stringify(watchEndpoint));
-            if (item.tileRenderer?.onFocusCommand?.playbackEndpoint) return;
-            if (item.tileRenderer?.onFocusCommand?.commandExecutorCommand) return;
-            item.tileRenderer.onFocusCommand = {
-                startInlinePlaybackCommand: {
-                    blockAdoption: true,
-                    caption: false,
-                    delayMs: 3000,
-                    durationMs: 40000,
-                    muted: false,
-                    restartPlaybackBeforeSeconds: 10,
-                    resumeVideo: true,
-                    playbackEndpoint: copiedEndpoint
-                }
-            };
-        }
-    });
-}
-
 function oracleDeArrowify(items) {
     items.filter((item) => item.adSlotRenderer)
         .forEach((advert) => items.splice(items.indexOf(advert), 1));
@@ -93,7 +69,6 @@ function oracleAddLongPress(items) {
             }));
             return;
         }
-        if (!configRead('enableLongPress')) return;
         if (!item.tileRenderer?.metadata?.tileMetadataRenderer) return;
         if (!item.tileRenderer?.header?.tileHeaderRenderer?.thumbnail?.thumbnails) return;
         if (!item.tileRenderer.onSelectCommand?.watchEndpoint) return;
@@ -127,7 +102,7 @@ function oracleHideVideo(items) {
     });
 }
 
-function oracleShelves(shelves, shouldAddPreviews = true) {
+function oracleShelves(shelves) {
     const shorts = [];
 
     shelves.forEach((shelve) => {
@@ -137,7 +112,6 @@ function oracleShelves(shelves, shouldAddPreviews = true) {
             oracleDeArrowify(list.items);
             oracleHqify(list.items);
             oracleAddLongPress(list.items);
-            if (shouldAddPreviews) oracleAddPreviews(list.items);
             list.items = oracleHideVideo(list.items);
             if (!configRead('enableShorts')) {
                 if (shelve.shelfRenderer.tvhtml5ShelfRendererType === 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS') {
@@ -199,8 +173,6 @@ const menuTile = (id) => tile(id, {
     onLongPressCommand: { showMenuCommand: { menu: { menuRenderer: { items: [{ existing: true }] } } } }
 });
 
-const focusedTile = (id) => tile(id, { onFocusCommand: { playbackEndpoint: { already: true } } });
-
 const shelf = (items, type) => ({
     shelfRenderer: Object.assign(
         { content: { horizontalListRenderer: { items } } },
@@ -242,7 +214,7 @@ const sameShelves = (name, shelves, settings) => check(name, () => {
         const mine = copy(shelves);
         const theirs = copy(shelves);
         walkShelves(mine, SHELF);
-        oracleShelves(theirs, true);
+        oracleShelves(theirs);
         assert.deepStrictEqual(mine, theirs);
     });
 });
@@ -252,7 +224,7 @@ const samePivot = (name, shelves, settings) => check(name, () => {
         const mine = copy(shelves);
         const theirs = copy(shelves);
         walkShelves(mine, PIVOT);
-        oracleShelves(theirs, false);
+        oracleShelves(theirs);
         assert.deepStrictEqual(mine, theirs);
     });
 });
@@ -265,9 +237,6 @@ const sameTiles = (name, items, settings) => check(name, () => {
     });
 });
 
-// A grid gets the same treatment a shelf does, minus previews — which are a shelf affordance.
-// Before the rewrite it got long press only, so this oracle is the intended behaviour rather
-// than a copy of the old.
 const oracleGrid = (items) => {
     oracleDeArrowify(items);
     oracleHqify(items);
@@ -288,7 +257,7 @@ const sameGrid = (name, items, settings) => check(name, () => {
     });
 });
 
-const ON = { enableLongPress: true, enableHqThumbnails: true, enablePreviews: true };
+const ON = { enableHqThumbnails: true };
 
 sameShelves('a plain shelf', [shelf([tile('a'), tile('b')])], ON);
 
@@ -320,7 +289,6 @@ sameShelves('shorts kept when the setting is on', [
 sameShelves('a shelf with no items array', [{ shelfRenderer: {} }, shelf([tile('a')])], ON);
 sameShelves('an entry that is not a shelf', [{ feedNudgeRenderer: {} }, shelf([tile('a')])], ON);
 
-sameShelves('a tile that already has a focus command', [shelf([focusedTile('f'), tile('a')])], ON);
 sameShelves('a tile that already has a long-press menu', [shelf([menuTile('m'), tile('a')])], ON);
 
 sameShelves('watched tiles either side of the threshold', [
@@ -339,7 +307,7 @@ sameShelves('watched tiles on a page that is not listed', [
     hideWatchedVideosThreshold: 80
 }));
 
-samePivot('the watch-next pivot takes no previews', [shelf([tile('a'), advert()])], ON);
+samePivot('the watch-next pivot is dressed like a shelf', [shelf([tile('a'), advert()])], ON);
 samePivot('the pivot still drops shorts', [shelf([tile('a')], SHORTS_SHELF), shelf([tile('b')])], ON);
 
 sameTiles('a horizontal continuation', [tile('a'), advert(), watched('w', 95)], ON);

@@ -16,7 +16,7 @@ export {
 
 export { onResponse, onRequest, interceptJson } from './json.js';
 export {
-    findBySource, findByPrototype, findComponent, findMap,
+    findBySource, findByPrototype, findComponent,
     resolve, reloadGuide, sourceOf, whenFound
 } from './internals.js';
 

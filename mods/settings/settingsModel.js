@@ -15,15 +15,6 @@ const PRIVACY = ART + 'privacy_and_terms.png';
 const RESTART = ART + 'reset_app.png';
 const MESSAGE = ART + 'send_feedback.png';
 
-const CONTRAST = 'data:image/svg+xml;charset=utf-8,'
-  + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">'
-    + '<circle cx="48" cy="48" r="31" fill="#0b0b0b" stroke="#25c4b0" stroke-width="7"/>'
-    + '<path d="M48 17a31 31 0 0 1 0 62z" fill="#25c4b0"/>'
-    + '<path d="M17 79c7-6 13-9 19-9" stroke="#f0555f" stroke-width="4.5" fill="none" stroke-linecap="round"/>'
-    + '<path d="M74 20l7-7M81 27l7-7" stroke="#ffd25e" stroke-width="4.5" stroke-linecap="round"/>'
-    + '</svg>');
-
 const Switch = (key, title, summary, image, on = true) =>
   ({ kind: 'switch', key, title, summary, image, on });
 
@@ -211,15 +202,6 @@ const GROUPS = [
     id: 'tube_interface',
     title: 'Interface',
     items: [
-      Switch('enableOledTheme', 'OLED black',
-        'True black instead of YouTube\u2019s near-black, so an OLED switches those pixels off. '
-        + 'Only the darkness changes \u2014 anything YouTube draws through stays as see-through '
-        + 'as it was. Worth it on an OLED, a loss on an LCD',
-        CONTRAST),
-      Switch('enableLongPress', 'Long press actions',
-        'Hold Select on a video for save, queue and playlist actions', CONTROLS),
-      Switch('enablePreviews', 'Video previews',
-        'Play a preview under the cursor after a moment', SCREEN),
       Switch('enableHqThumbnails', 'High-quality thumbnails',
         'Ask for the largest thumbnail rather than the one sized for a phone', LOOKING),
       Switch('enableShorts', 'Shorts', 'Keep Shorts shelves in the feeds', SCREEN)

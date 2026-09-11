@@ -32,7 +32,6 @@ interface Window {
     sponsorblock?: SponsorBlockState;
     isPipPlaying?: boolean;
     tubeRemote?: (code: number) => void;
-    __tube?: Record<string, any>;
     __tubeAsked?: string | null;
 }
 

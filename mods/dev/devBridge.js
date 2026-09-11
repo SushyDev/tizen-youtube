@@ -9,8 +9,9 @@ const PLAYER = '#movie_player, .html5-video-player';
 
 const held = { report: null, listen: null, lastEval: null };
 
-// Any plain-HTTP origin with a port is the service, whether loopback or the set's own address.
-export const servedByService = () => /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
+// The proxy writes __TUBE_NATIVE_PROXY_PATCHES__ into every page it serves, whatever origin the
+// page keeps.
+export const servedByService = () => typeof window.__TUBE_NATIVE_PROXY_PATCHES__ !== 'undefined';
 
 const safely = (read, fallback) => {
     try {

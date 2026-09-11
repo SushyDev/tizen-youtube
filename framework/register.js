@@ -1,7 +1,7 @@
 // Runs registered features in phase order.
 
 // network first, because it takes over fetch and XHR before anything asks the network for anything.
-const PHASES = ['network', 'paint', 'settings', 'ui', 'intercept'];
+const PHASES = ['network', 'settings', 'ui', 'intercept'];
 
 const state = { booted: false, features: [] };
 

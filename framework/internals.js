@@ -61,12 +61,6 @@ const findComponent = (tag) => {
     return match ? match[1] : null;
 };
 
-// Several settings live in Maps parked in the registry, found by a key only they carry.
-const findMap = (key) => {
-    const match = entries().find(([, value]) => value instanceof Map && value.has(key));
-    return match ? match[1] : null;
-};
-
 const findResolver = () => {
     const match = entries().find(([, value]) =>
         value && value.instance && typeof value.instance.resolveCommand === 'function');
@@ -145,6 +139,6 @@ const reloadGuide = () => {
 };
 
 export {
-    findBySource, findByPrototype, findComponent, findMap, findResolver, resolve, reloadGuide,
+    findBySource, findByPrototype, findComponent, findResolver, resolve, reloadGuide,
     sourceOf, whenFound
 };

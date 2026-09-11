@@ -60,14 +60,6 @@ if (!file || !floor) {
     process.exit(2);
 }
 
-// The boot screen is inlined into one HTML file, so the script has to come back out of it first.
-const sourceOf = (contents) => {
-    if (!/\.html?$/.test(file)) return contents;
-
-    const scripts = contents.match(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g) || [];
-    return scripts.map((tag) => tag.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '')).join('\n;\n');
-};
-
 const parse = (source) => {
     try {
         return acorn.parse(source, { ecmaVersion: floor.ecmaVersion, sourceType: 'script' });
@@ -77,7 +69,7 @@ const parse = (source) => {
     }
 };
 
-const parsed = parse(sourceOf(readFileSync(file, 'utf8')));
+const parsed = parse(readFileSync(file, 'utf8'));
 
 // Matched on the AST, and only where the name is actually *called*. Every entry above is a method
 // or a function, and these are ordinary property names too: `{ at: Date.now() }` and

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "rollup -c rollup.config.js && node ../tools/check-output.js ../dist/userScript.js cobalt3",
-    "test": "node test/playback-stats.js && node test/quality.js && node test/wait-for.js && node test/png.js"
+    "test": "node test/quality.js && node test/wait-for.js && node test/png.js"
   },
   "keywords": [],
   "author": "tube contributors, derived from TizenTube and youtube-webos (GPL-3.0)",
@@ -16,8 +16,7 @@
     "@rollup/plugin-babel": "^6.0.3",
     "@rollup/plugin-terser": "^0.4.3",
     "rollup": "^3.26.2",
-    "rollup-plugin-string": "^3.0.0",
-    "tiny-sha256": "^1.0.2"
+    "rollup-plugin-string": "^3.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.0",

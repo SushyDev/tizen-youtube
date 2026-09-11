@@ -2,6 +2,7 @@ import { configRead, configChangeEmitter } from '../config.js';
 import { GROUPS, chosenLabel, chosenSummary } from './settingsModel.js';
 import { optionsCommand, storeCommand } from './settingsOptions.js';
 import { claimBooleanRows, claimActionRows, redrawSettingRows, ROWS } from '../youtube/settingComponents.js';
+import { claimVersionPanel } from './aboutPatch.js';
 
 const BEFORE = 'SETTING_CAT_TVHTML5_LINK_PHONE';
 
@@ -196,7 +197,8 @@ const PATIENT_EVERY = 500;
 function claimRows(attempt = 0) {
     const claimed = claimBooleanRows();
     const annotated = claimActionRows();
-    if (claimed && annotated) return;
+    const stamped = claimVersionPanel();
+    if (claimed && annotated && stamped) return;
 
     const settling = attempt < SETTLING_ATTEMPTS;
     if (!settling && !document.querySelector(ROWS)) return;

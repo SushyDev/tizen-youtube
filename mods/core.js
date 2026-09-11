@@ -7,7 +7,6 @@ import './features/sponsorblock.js';
 import './features/guide.js';
 import './features/moreSubtitles.js';
 import './features/preferredVideoQuality.js';
-import './features/playbackStats.js';
 import './features/devBridge.js';
 import './dev/playerProbe.js';
 import './dev/measure.js';

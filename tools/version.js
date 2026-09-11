@@ -9,8 +9,7 @@ const { ROOT, CONFIG_PATH } = require('./config.js');
 const PACKAGE_FILES = [
     'package.json',
     'mods/package.json',
-    'service/package.json',
-    'ui/package.json'
+    'service/package.json'
 ];
 
 const LOCK_FILES = ['package-lock.json'];

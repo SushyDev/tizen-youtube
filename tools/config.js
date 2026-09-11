@@ -1,5 +1,6 @@
 'use strict';
 
+const { execFileSync } = require('child_process');
 const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');
 
@@ -39,6 +40,29 @@ function validUrl(value, field) {
     return url;
 }
 
+// Baked into the userscript so the About page can name the commit a set is running.
+function gitStamp() {
+    const git = (args) => {
+        try {
+            return execFileSync('git', args, {
+                cwd: ROOT,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore']
+            }).trim();
+        } catch (e) {
+            return null;
+        }
+    };
+
+    const commit = git(['rev-parse', '--short=7', 'HEAD']);
+    if (!commit) return { commit: 'nogit', tree: 'unknown' };
+
+    // Untracked files count: a mod not committed yet still ends up in the bundle.
+    const changes = git(['status', '--porcelain']);
+
+    return { commit, tree: changes === null ? 'unknown' : changes === '' ? 'clean' : 'dirty' };
+}
+
 function load(options) {
     const opts = options || {};
     const file = readConfigFile();
@@ -66,4 +90,4 @@ function load(options) {
     return config;
 }
 
-module.exports = { load, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };
+module.exports = { load, gitStamp, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };

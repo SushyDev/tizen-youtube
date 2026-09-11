@@ -13,8 +13,7 @@
   },
   "workspaces": [
     "mods",
-    "service",
-    "ui"
+    "service"
   ],
   "scripts": {
     "doctor": "node tools/doctor.js",
@@ -25,8 +24,7 @@
     "probe:engine": "node tools/engine-probe.js",
     "package": "node tools/package.js",
     "release": "node tools/release.js",
-    "dev": "npm run dev --workspace ui",
-    "dev:boot": "npm run dev:boot --workspace ui",
+    "dev": "node tools/dev.js",
     "dev:service": "node service/index.js",
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",

@@ -166,8 +166,6 @@ const GROUPS = [
       Choice('videoPreferredCodec', 'Preferred codec',
         'Some sets decode one codec in hardware and the rest in software',
         SCREEN, CODECS, 'Codec'),
-      Switch('reportPlaybackStats', 'Playback stats',
-        'Add the decoded frame rate and recently lost playback time to Stats for nerds', SCREEN),
       Choice('speedSettingsIncrement', 'Speed steps',
         'How far one press moves playback speed in the speed control',
         SKIPPING, INCREMENTS, 'Step'),

@@ -1,112 +1,180 @@
-"use strict";
+'use strict';
 
 const express = require('express');
 const fetch = require('node-fetch');
+const http = require('http');
+const https = require('https');
 const URL = require('url');
 const { readFileSync } = require('fs');
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
+const journal = require('./journal.js');
+const postmortem = require('./postmortem.js');
 
-const PROXY_PREFIX = `http://localhost:${ports.PROXY}/cors-bypass/`;
-const LOCAL_ORIGIN = `http://localhost:${ports.PROXY}`;
+const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000 };
+const httpsAgent = new https.Agent(AGENT_OPTIONS);
+const httpAgent = new http.Agent(AGENT_OPTIONS);
+const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
 
 const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
-
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
-
 const STRIPPED_HEADERS = [
-    'content-encoding', 'content-length', 'transfer-encoding',
-    'content-security-policy', 'alt-svc'
+    'content-encoding', 'content-length', 'transfer-encoding', 'content-security-policy', 'alt-svc'
 ];
+const BODIED = ['POST', 'PUT', 'PATCH'];
 
-function spoofUserAgent(text) {
-    const shim = '<script>try{Object.defineProperty(navigator,"userAgent",' +
-        `{get:function(){return ${JSON.stringify(DEV_USER_AGENT)};},configurable:true});` +
-        '}catch(e){}</script>';
+const YOUTUBE_HOST = 'www.youtube.com';
+const YOUTUBE_ORIGIN = `https://${YOUTUBE_HOST}`;
+
+// Node 12 hands out dead keep-alive sockets without retrying, so a bodiless request gets one retry
+// on a fresh connection.
+const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
+
+const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com|googleusercontent\.com)$/;
+
+const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
+
+const localOrigin = () => `http://${PROXY_HOST}:${ports.PROXY}`;
+const proxyPrefix = () => `${localOrigin()}/cors-bypass/`;
+
+const flagOverrides = new Map();
+
+const upstream = {
+    origin: YOUTUBE_ORIGIN,
+    abrThroughService: false,
+    onesie: 'auto',
+    nativeProxyPatches: true
+};
+
+const spoofUserAgent = (text) => {
+    const shim = '<script>try{Object.defineProperty(navigator,"userAgent",'
+        + `{get:function(){return ${JSON.stringify(DEV_USER_AGENT)};},configurable:true});`
+        + '}catch(e){}</script>';
 
     return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
-}
+};
 
-function rewriteBody(text, url) {
-    if (url.indexOf('/tv') === 0 && url.indexOf('/tv_config') === -1) {
-        if (DEV_USER_AGENT) text = spoofUserAgent(text);
-        text += `<script src="${LOCAL_ORIGIN}/__tube/userScript.js?v=${Date.now()}"></script>`;
-        if (DEV_INJECT_PATH) text += `<script src="${LOCAL_ORIGIN}/__tube/dev.js?v=${Date.now()}"></script>`;
+// Routes SABR's single media URL through the service so no page patch is needed to reach
+// googlevideo.
+const rerouteAbr = (text) => text.replace(
+    /"serverAbrStreamingUrl":"(https:\\?\/\\?\/[^"]+)"/g,
+    (whole, url) => `"serverAbrStreamingUrl":"${proxyPrefix()}${url}"`
+);
+
+// kabuki and the player both prefix every innertube call with INNERTUBE_HOST_OVERRIDE, which
+// brings that traffic here with nothing in the page patched.
+const overrideInnertubeHost = (text) => text.replace(
+    '"INNERTUBE_CONTEXT_CLIENT_NAME"',
+    `"INNERTUBE_HOST_OVERRIDE":${JSON.stringify(localOrigin())},"INNERTUBE_CONTEXT_CLIENT_NAME"`
+);
+
+// BotGuard's program URL arrives protocol-relative inside a JSON string, so its quotes and slashes
+// may be escaped.
+const WRAPPED_PROGRAM = /(\\?"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
+const PLAIN_PROGRAM = /(\\?"interpreterUrl\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
+
+const rewriteAttestation = (text, targetUrl) => {
+    const prefix = proxyPrefix();
+
+    const attested = /tv-player-[^/]+\.js/.test(targetUrl) || /player-es6/.test(targetUrl)
+        ? text.replace(/https:\/\/jnn-pa\.googleapis\.com/g, `${prefix}https://jnn-pa.googleapis.com`)
+        : text;
+
+    return attested
+        .replace(WRAPPED_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`)
+        .replace(PLAIN_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`);
+};
+
+const BLOB = /(serializedExperimentFlags\\?":\\?")((?:[^"\\]|\\u[0-9a-fA-F]{4})*)/g;
+
+const retuneFlag = (blob, [name, value]) => {
+    const flag = new RegExp(`(^|\\\\u0026|&)${name}(\\\\u003d|=)[^\\\\&]*`);
+
+    if (flag.test(blob)) {
+        return blob.replace(flag, (whole, separator, equals) => `${separator}${name}${equals}${value}`);
     }
 
-    text = text.replace(/https:\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `${PROXY_PREFIX}https://$1.googlevideo.com`);
-    text = text.replace(/https:\\\/\\\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `http:\\\/\\\/localhost:${ports.PROXY}\\\/cors-bypass\\\/https:\\\/\\\/$1.googlevideo.com`);
-    text = text.replace(/"\/\/([a-zA-Z0-9-.]+)\.googlevideo\.com/g, `"${PROXY_PREFIX}https://$1.googlevideo.com`);
+    // An absent flag reads as off, so turning one on means adding it to the front of the blob.
+    return `${name}\\u003d${value}\\u0026${blob}`;
+};
 
-    text = text.replace(/https:\/\/www\.gstatic\.com/g, `${PROXY_PREFIX}https://www.gstatic.com`);
-    text = text.replace(/http:\/\/www\.gstatic\.com/g, `${PROXY_PREFIX}https://www.gstatic.com`);
-    text = text.replace(/"\/\/www\.gstatic\.com/g, `"${PROXY_PREFIX}https://www.gstatic.com`);
-    text = text.replace(/\(\/\/www\.gstatic\.com/g, `(${PROXY_PREFIX}https://www.gstatic.com`);
+const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
+    `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
+));
 
-    text = text.replace(/https:\/\/yt3\.ggpht\.com/g, `${PROXY_PREFIX}https://yt3.ggpht.com`);
+const rewriteBody = (text, url) => {
+    if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
-    text = text.replace(/https:\/\/clients1\.google\.com/g, `${PROXY_PREFIX}https://clients1.google.com`);
-    text = text.replace(/http:\/\/clients1\.google\.com/g, `${PROXY_PREFIX}https://clients1.google.com`);
-    text = text.replace(/"\/\/clients1\.google\.com/g, `"${PROXY_PREFIX}https://clients1.google.com`);
+    const tuned = [
+        DEV_USER_AGENT ? spoofUserAgent : null,
+        flagOverrides.size ? retuneFlags : null,
+        upstream.nativeProxyPatches ? null : overrideInnertubeHost
+    ].filter(Boolean).reduce((out, step) => step(out), text);
 
-    text = text.replace('Set(["www.youtube.com","accounts.google.com"]);', 'Set(["www.youtube.com", "accounts.google.com", "localhost"]);');
+    const origin = localOrigin();
 
-    text = text.replace(/:document\.location\.toString\(\)/g, `:document.location.toString().replace("${LOCAL_ORIGIN}", "https://www.youtube.com")`);
-    text = text.replace(/euri:[^,]+,/g, `euri:document.location.toString().replace("${LOCAL_ORIGIN}", "https://www.youtube.com"),`);
+    const tag = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
+        + `<script src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
+        + (DEV_INJECT_PATH ? `<script src="${origin}/__tube/dev.js?v=${Date.now()}"></script>` : '');
 
-    text = text.replace(/https:\/\/s\.youtube\.com/g, `${PROXY_PREFIX}https://s.youtube.com`);
-    text = text.replace(/redirector.googlevideo.com/g, `${PROXY_PREFIX}https://redirector.googlevideo.com`);
+    // Appended past </html> a browser still runs it; Cobalt's parser drops it.
+    return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
+};
 
-    text = text.replace(/this.scheme="https"/, 'this.scheme="http"');
+// __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are renamed in both
+// directions and the HTTPS-only attributes dropped.
+const rewriteSetCookie = (values) => values.map((cookie) => cookie
+    .replace(/^__Secure-/i, '__LocalSecure-')
+    .replace(/^__Host-/i, '__LocalHost-')
+    .replace(/Domain=[^;]+/i, 'Domain=localhost')
+    .replace(/;\s*Secure/i, '')
+    .replace(/;\s*SameSite=None/i, '')
+    .replace(/;\s*;/g, ';')
+    .replace(/;\s*$/, ''));
 
-    text = text.replace(/https\:\/\/jnn-pa.googleapis.com/g, `${PROXY_PREFIX}https://jnn-pa.googleapis.com`);
-    text = text.replace(/https:\/\/yt3\.googleusercontent\.com/g, `${PROXY_PREFIX}https://yt3.googleusercontent.com`);
-    text = text.replace(/"\/\/yt3\.googleusercontent\.com/g, `"${PROXY_PREFIX}https://yt3.googleusercontent.com`);
+const restoreCookiePrefixes = (header) => header
+    .replace(/__LocalSecure-/g, '__Secure-')
+    .replace(/__LocalHost-/g, '__Host-');
 
-    text = text.replace(/=window\.location\.href;/, `=window.location.href.replace("${LOCAL_ORIGIN}", "https://www.youtube.com");`);
-    text = text.replace(/=document\.location\.href/, `=document.location.href.replace("${LOCAL_ORIGIN}", "https://www.youtube.com")`);
+// A wildcard is refused for a request that carries cookies, so when the page names itself the
+// answer names it back.
+const allowOrigin = (req, res) => {
+    const asked = req.get('origin');
+    res.setHeader('Access-Control-Allow-Origin', asked || '*');
+    if (asked) res.setHeader('Access-Control-Allow-Credentials', 'true');
+};
 
-    return text;
-}
-
-function rewriteSetCookie(values) {
-    return values.map((cookie) =>
-        cookie
-            .replace(/^__Secure-/i, '__LocalSecure-')
-            .replace(/^__Host-/i, '__LocalHost-')
-            .replace(/Domain=[^;]+/i, 'Domain=localhost')
-            .replace(/;\s*Secure/i, '')
-            .replace(/;\s*SameSite=None/i, '')
-            .replace(/;\s*;/g, ';')
-            .replace(/;\s*$/, '')
-    );
-}
-
-function restoreCookiePrefixes(cookieHeader) {
-    return cookieHeader
-        .replace(/__LocalSecure-/g, '__Secure-')
-        .replace(/__LocalHost-/g, '__Host-');
-}
-
-function create() {
+const create = () => {
     const app = express();
 
+    app.use((req, _, next) => {
+        if (!journal.wanted()) return next();
+
+        const path = String(req.url || req.originalUrl);
+
+        // Our own /__tube/ requests would drown the page's in the journal.
+        if (path.indexOf('/__tube/') !== 0) journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
+
+        return next();
+    });
+
     app.use((req, res, next) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        allowOrigin(req, res);
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-        res.setHeader('Access-Control-Allow-Headers', '*');
+        res.setHeader('Access-Control-Allow-Headers', req.get('access-control-request-headers') || '*');
+
         if (req.method === 'OPTIONS') return res.status(200).end();
-        next();
+        return next();
     });
 
     app.get('/__tube/userScript.js', (_, res) => {
         try {
-            const script = loader.resolve();
-            res.type('application/javascript').send(script.source);
+            res.type('application/javascript').send(loader.resolve().source);
         } catch (e) {
+            postmortem.note('userscript', e);
             res.status(500).type('application/javascript')
                 .send(`console.error(${JSON.stringify(`tube: no userscript available - ${e.message}`)});`);
         }
@@ -124,83 +192,178 @@ function create() {
     }
 
     return app;
-}
+};
 
-function attachFallback(app) {
+const routeFor = (req) => {
+    const bypassTarget = () => {
+        const raw = req.url.substring('/cors-bypass/'.length);
+        return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
+    };
+
+    const targetOf = (isBypass) => (
+        isBypass ? bypassTarget() : `${YOUTUBE_ORIGIN}${req.url}`
+    );
+
+    const hostNamedBy = (target) => {
+        try { return URL.parse(target).host || YOUTUBE_HOST; } catch (e) { return YOUTUBE_HOST; }
+    };
+
+    // The page is plain HTTP, so Google URLs it builds may carry http: and are upgraded here.
+    const upgradeScheme = (target, forGoogle) => (
+        forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target
+    );
+
+    const isBypass = req.path.indexOf('/cors-bypass/') === 0;
+
+    const target = targetOf(isBypass);
+    const host = hostNamedBy(target);
+    const forGoogle = GOOGLE.test(host.split(':')[0]);
+
+    return {
+        url: upgradeScheme(target, forGoogle),
+        host,
+        forGoogle,
+        isBypass
+    };
+};
+
+const headersFor = (req, route) => {
+    const dropped = route.forGoogle && upstream.origin === 'drop'
+        ? ['proxy-connection', 'origin', 'referer']
+        : ['proxy-connection'];
+
+    const referer = req.headers.referer ? { referer: `${upstream.origin}/tv` } : {};
+    const presented = route.forGoogle && upstream.origin !== 'drop' && upstream.origin !== 'pass'
+        ? Object.assign({ origin: upstream.origin }, referer)
+        : {};
+
+    const copied = Object.keys(req.headers)
+        .filter((key) => dropped.indexOf(key) === -1)
+        // The page carries renamed cookies, because we served it on plain HTTP.
+        .map((key) => [key, key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key]]);
+
+    return Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
+        DEV_USER_AGENT ? { 'user-agent': DEV_USER_AGENT } : {},
+        // Brotli is not decoded here, so ask for encodings that can be read.
+        { 'accept-encoding': 'gzip, deflate' });
+};
+
+const isRetriable = (error) => !!error
+    && (RETRIABLE.indexOf(error.code) !== -1 || /socket hang up|premature close/i.test(error.message || ''));
+
+const send = (url, req, headers) => {
+    const body = BODIED.indexOf(req.method) === -1 ? undefined : req;
+
+    const options = {
+        method: req.method,
+        headers,
+        body,
+        redirect: 'manual',
+        agent: agentFor(url)
+    };
+
+    return fetch(url, options).catch((error) => {
+        // A streamed body cannot be sent twice.
+        if (!isRetriable(error) || body) throw error;
+
+        postmortem.note('upstream', `${postmortem.describe(error)} on ${url.slice(0, 80)}`
+            + ' — retrying on a fresh connection');
+
+        return fetch(url, Object.assign({}, options, { agent: undefined }));
+    });
+};
+
+const copyHeaders = (req, res, response, route) => {
+    const raw = response.headers.raw();
+
+    Object.keys(raw).forEach((key) => {
+        const lower = key.toLowerCase();
+
+        if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
+        if (route.isBypass && lower === 'access-control-allow-origin') return;
+
+        if (lower === 'set-cookie' && Array.isArray(raw[key])) {
+            res.setHeader('Set-Cookie', rewriteSetCookie(raw[key]));
+            return;
+        }
+
+        res.setHeader(key, response.headers.get(key));
+    });
+
+    allowOrigin(req, res);
+
+    // SABR redirects between googlevideo hosts, so Location is pointed back through /cors-bypass/
+    // or the hop fails CORS.
+    const movedTo = response.status >= 300 && response.status < 400 && response.headers.get('location');
+    if (route.isBypass && movedTo && /^https?:\/\//.test(movedTo)) {
+        res.setHeader('Location', proxyPrefix() + movedTo);
+    }
+};
+
+// Must be called after every other route is registered.
+const attachFallback = (app) => {
     app.all('*', (req, res) => {
-        const isBypass = req.path.indexOf('/cors-bypass/') === 0;
-
-        let targetUrl;
-        if (isBypass) {
-            const raw = req.url.substring('/cors-bypass/'.length);
-            targetUrl = raw.indexOf('http') === 0 ? raw : `https://${raw}`;
-        } else {
-            targetUrl = `https://www.youtube.com${req.url}`;
+        // A failed initplayback makes the client fall back to a plain player response.
+        if (upstream.onesie === 'fail' && req.url.indexOf('initplayback') !== -1) {
+            journal.service('onesie', `refused ${req.method}`);
+            return res.status(502).end();
         }
 
-        const headers = {};
-        for (const key in req.headers) {
-            if (!Object.prototype.hasOwnProperty.call(req.headers, key)) continue;
-            headers[key] = key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key];
-        }
+        const route = routeFor(req);
+        const headers = headersFor(req, route);
 
-        try {
-            headers.host = URL.parse(targetUrl).host;
-        } catch (e) {
-            headers.host = 'www.youtube.com';
-        }
+        // An unhandled 'error' on the response socket is an uncaught exception, and the postmortem
+        // handler answers those by exiting.
+        res.on('error', () => res.destroy());
 
-        headers.origin = 'https://www.youtube.com';
-        if (headers.referer) headers.referer = 'https://www.youtube.com/tv';
-        if (DEV_USER_AGENT) headers['user-agent'] = DEV_USER_AGENT;
-        headers['accept-encoding'] = 'gzip, deflate';
+        // Never leave the client waiting on a request we have given up on: the container answers a
+        // hung page by retrying for ever behind a network error.
+        const fail = (what, error) => {
+            postmortem.note('upstream', `${what} on ${route.url.slice(0, 90)}: ${postmortem.describe(error)}`);
+            journal.service('failed', `${what} ${route.url.slice(0, 110)}`);
 
-        const hasBody = ['POST', 'PUT', 'PATCH'].indexOf(req.method) !== -1;
+            if (res.headersSent) return res.destroy();
+            return res.status(500).type('text/plain').send(`tube: ${what}`);
+        };
 
-        fetch(targetUrl, {
-            method: req.method,
-            headers,
-            body: hasBody ? req : undefined,
-            redirect: 'manual'
-        })
+        return send(route.url, req, headers)
             .then((response) => {
-                res.status(req.method === 'OPTIONS' ? 200 : response.status);
+                res.status(response.status);
 
-                const raw = response.headers.raw();
-                for (const key in raw) {
-                    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+                if (route.isBypass) journal.service('answered', `${response.status} ${route.url.slice(0, 110)}`);
 
-                    const lower = key.toLowerCase();
-                    if (STRIPPED_HEADERS.indexOf(lower) !== -1) continue;
-                    if (isBypass && lower === 'access-control-allow-origin') continue;
-
-                    if (lower === 'set-cookie' && Array.isArray(raw[key])) {
-                        res.setHeader('Set-Cookie', rewriteSetCookie(raw[key]));
-                        continue;
-                    }
-
-                    res.setHeader(key, response.headers.get(key));
-                }
-
-                res.setHeader('Access-Control-Allow-Origin', '*');
+                copyHeaders(req, res, response, route);
 
                 const contentType = response.headers.get('content-type') || '';
-                const isTextual = TEXTUAL.some((type) => contentType.indexOf(type) !== -1);
+                const textual = TEXTUAL.some((type) => contentType.indexOf(type) !== -1);
 
-                if (!isTextual) {
-                    if (response.body) return response.body.pipe(res);
-                    return res.end();
+                if (!textual) {
+                    if (!response.body) return res.end();
+
+                    // A viewer who closes the page leaves a media stream being pulled into a socket
+                    // nothing reads; and a source that breaks mid-pipe would otherwise hang the
+                    // client for ever.
+                    res.on('close', () => response.body.destroy());
+                    response.body.on('error', (error) => fail('upstream stream broke', error));
+
+                    return response.body.pipe(res);
                 }
 
-                return response.text().then((text) => res.send(rewriteBody(text, req.url)));
+                return response.text().then((text) => {
+                    const injected = rewriteAttestation(rewriteBody(text, req.url), route.url);
+
+                    const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
+
+                    res.send(abr ? rerouteAbr(injected) : injected);
+                });
             })
-            .catch((error) => {
-                console.error(`Proxy error for ${targetUrl}: ${error.message}`);
-                if (!res.headersSent) res.status(500).send('Proxy connection broken.');
-            });
+            .catch((error) => fail('upstream failed', error));
     });
 
     return app;
-}
+};
 
-module.exports = { create, attachFallback, rewriteBody, rewriteSetCookie, restoreCookiePrefixes };
+module.exports = {
+    create, attachFallback, rewriteBody, rewriteAttestation,
+    rewriteSetCookie, restoreCookiePrefixes, flagOverrides, upstream
+};

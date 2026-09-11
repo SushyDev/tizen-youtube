@@ -1,8 +1,6 @@
 'use strict';
 
-// A certificate issuer, small enough to carry. The CA that signs our interception certificate is
-// made on the television: one CA baked into a public release would put its private key in every
-// download. Node's crypto only parses certificates, so the DER is written by hand.
+// Issues a CA and leaf certificates by writing the DER directly, since Node's crypto cannot.
 
 const crypto = require('crypto');
 
@@ -73,6 +71,13 @@ const OID = {
     authorityKeyIdentifier: '2.5.29.35'
 };
 
+const KEY_USAGE = { digitalSignature: 0, keyEncipherment: 2, keyCertSign: 5, cRLSign: 6 };
+
+const CA_DAYS = 3650;
+
+// Chromium refuses a leaf valid for more than 398 days.
+const LEAF_DAYS = 397;
+
 // UTCTime, which is what every certificate before 2050 uses.
 const utcTime = (date) => {
     const pad = (n) => String(n).padStart(2, '0');
@@ -88,10 +93,8 @@ const utcTime = (date) => {
 
 const name = (commonName) => sequence(set(sequence(oid(OID.commonName), utf8(commonName))));
 
-// OpenSSL hashes the canonical encoding: values become UTF8String, ASCII folds to lower case, runs
-// of whitespace collapse, and there is no outer SEQUENCE — i2d_name_canon concatenates the RDN
-// sets and stops. Getting this wrong names the file something the container never looks for, and
-// the handshake simply fails as though the CA were absent. Pinned in service/test/x509.js.
+// OpenSSL hashes the canonical name: UTF8String values, ASCII lower-cased, whitespace collapsed,
+// RDN sets concatenated without an outer SEQUENCE.
 const canonical = (commonName) => set(sequence(
     oid(OID.commonName),
     utf8(commonName.replace(/\s+/g, ' ').trim().toLowerCase())
@@ -173,7 +176,6 @@ const generateKey = (done) => crypto.generateKeyPair('rsa', {
     publicKeyEncoding: { type: 'spki', format: 'pem' }
 }, (error, publicKey, privateKey) => done(error, error ? null : { publicKey, privateKey }));
 
-// Trusted by nothing but the copy of Cobalt's content directory we stage beside it.
 const createCa = (commonName, done) => generateKey((error, key) => {
     if (error) return done(error);
 
@@ -184,10 +186,10 @@ const createCa = (commonName, done) => generateKey((error, key) => {
         issuer: commonName,
         subjectKey: info,
         issuerKey: key.privateKey,
-        days: 3650,
+        days: CA_DAYS,
         extensions: [
             extension(OID.basicConstraints, true, sequence(boolean(true))),
-            extension(OID.keyUsage, true, keyUsage([5, 6])),   // keyCertSign, cRLSign
+            extension(OID.keyUsage, true, keyUsage([KEY_USAGE.keyCertSign, KEY_USAGE.cRLSign])),
             extension(OID.subjectKeyIdentifier, false, octets(info.identifier))
         ]
     });
@@ -195,9 +197,6 @@ const createCa = (commonName, done) => generateKey((error, key) => {
     return done(null, { key: key.privateKey, cert: cert.pem, identifier: info.identifier, commonName });
 });
 
-// 397 days, and it must stay under 398: Chromium refuses a longer-lived leaf, and Cobalt has no
-// notion of a locally added root that would be exempt — everything in the staged ssl/certs is its
-// built-in store.
 const createLeaf = (ca, commonName, altNames, done) => generateKey((error, key) => {
     if (error) return done(error);
 
@@ -208,10 +207,10 @@ const createLeaf = (ca, commonName, altNames, done) => generateKey((error, key) 
         issuer: ca.commonName,
         subjectKey: info,
         issuerKey: ca.key,
-        days: 397,
+        days: LEAF_DAYS,
         extensions: [
             extension(OID.basicConstraints, true, sequence()),
-            extension(OID.keyUsage, true, keyUsage([0, 2])),   // digitalSignature, keyEncipherment
+            extension(OID.keyUsage, true, keyUsage([KEY_USAGE.digitalSignature, KEY_USAGE.keyEncipherment])),
             extension(OID.extKeyUsage, false, sequence(oid(OID.serverAuth))),
             extension(OID.subjectAltName, false,
                 sequence(...altNames.map((host) => implicit(2, Buffer.from(host, 'ascii'))))),

@@ -71,7 +71,10 @@ proxying, no rewriting. With it off, youtube.com is proxied through
 `localhost:8099` so a plain script tag can inject instead. The page is then
 plain HTTP, so the `__Secure-` / `__Host-` cookie prefixes are renamed, and
 requests to the Google hosts that will not answer that origin go through the
-service's `/cors-bypass/` route.
+service's `/cors-bypass/` route. Used as a forward proxy instead, the service
+tunnels CONNECT and, once key material exists, terminates TLS for YouTube's and
+Google's hosts itself, so the page keeps its real origin: cookies pass untouched
+and YouTube's CSP stays, with the injected tags carrying its nonce.
 
 **One bundle.** Polyfills in a browser bundle are parsed on *every* launch, and
 the sets that needed them are gone: the floor is Chrome 63, so the ES5 downlevel,
@@ -145,6 +148,10 @@ looking at it needs a stand-in that answers and never hands over. That is
 | `service/index.js` | Routes, and the once-per-launch update check |
 | `service/lib/injector.js` | CDP injection over loopback sdb |
 | `service/lib/proxy.js` | Script injection, cookie renaming, and `/cors-bypass/` |
+| `service/lib/forward.js` | Forward-proxy requests and the CONNECT tunnel |
+| `service/lib/mitm.js` | TLS termination for YouTube's and Google's hosts |
+| `service/lib/bigheaders.js` | The HTTP/2 refetch for headers too big for HTTP/1 |
+| `service/lib/x509.js` | The certificate issuer |
 | `service/lib/loader.js` | Which bundle a TV runs, and from where |
 | `service/lib/ports.js` | 8099 proxy, 8097 dev |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |

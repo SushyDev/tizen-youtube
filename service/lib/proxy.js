@@ -47,7 +47,7 @@ const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
 const localOrigin = () => `http://${PROXY_HOST}:${ports.PROXY}`;
 const proxyPrefix = () => `${localOrigin()}/cors-bypass/`;
 
-const interceptedTls = (req) => !!(req.socket && (req.socket.__tubeMitm || req.socket.encrypted));
+const overOurTls = (req) => !!(req.socket && req.socket.encrypted);
 
 const flagOverrides = new Map();
 
@@ -58,7 +58,7 @@ const upstream = {
     nativeProxyPatches: true
 };
 
-const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+)'/.exec(policy || '') || [])[1] || null;
+const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
 
 const spoofUserAgent = (text) => {
     const shim = '<script>try{Object.defineProperty(navigator,"userAgent",'
@@ -125,14 +125,12 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
         upstream.nativeProxyPatches ? null : overrideInnertubeHost
     ].filter(Boolean).reduce((out, step) => step(out), text);
 
-    // The nonce is quoted from the page's own script-src — without it the injected tags are
-    // refused by the nonce policy YouTube serves a Cobalt client.
     const stamp = nonce ? ` nonce="${nonce}"` : '';
     const origin = injectionOrigin || localOrigin();
 
     const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
         + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
-        + (DEV_INJECT_PATH ? `<script src="${origin}/__tube/dev.js?v=${Date.now()}"></script>` : '');
+        + (DEV_INJECT_PATH ? `<script${stamp} src="${origin}/__tube/dev.js?v=${Date.now()}"></script>` : '');
 
     // Appended past </html> a browser still runs it; Cobalt's parser drops it.
     return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
@@ -164,8 +162,6 @@ const allowOrigin = (req, res) => {
 const create = () => {
     const app = express();
 
-    // When --proxy names the service itself, put the absolute request line back to a path so the
-    // routes below see what they expect.
     app.use((req, _, next) => {
         forward.normaliseSelf(req, PROXY_HOST, ports.PROXY);
         next();
@@ -179,16 +175,12 @@ const create = () => {
         // req.url, not originalUrl: the forward-proxy form has already been put back to a path.
         const path = String(req.url || req.originalUrl);
         const ours = path.indexOf('/__tube/') === 0;
-        const intercepted = interceptedTls(req);
+        const asked = `${req.method} ${path.slice(0, 150)}`;
 
         // Our own /__tube/ requests would drown the page's in the journal.
-        if (watching && !ours) journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
+        if (watching && !ours) journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
 
-        if (watching && intercepted) {
-            journal.service('mitmreq', `${req.method} ${path.slice(0, 150)} host=${req.headers.host || '?'}`);
-        }
-
-        if (tracing && intercepted && !ours) {
+        if (tracing && overOurTls(req) && !ours) {
             state.traced += 1;
             postmortem.note('req', `${req.method} ${req.headers.host || '?'}${path.slice(0, 120)}`);
         }
@@ -235,11 +227,10 @@ const routeFor = (req) => {
         return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
     };
 
-    const targetOf = (forwarded, isBypass, intercepted) => {
+    const targetOf = (forwarded, isBypass) => {
         if (forwarded) return forwarded;
         if (isBypass) return bypassTarget();
-        if (intercepted && req.path.indexOf('/__tube/') === 0) return `${localOrigin()}${req.url}`;
-        if (intercepted && req.headers.host) return `https://${req.headers.host}${req.url}`;
+        if (overOurTls(req) && req.headers.host) return `https://${req.headers.host}${req.url}`;
 
         return `${YOUTUBE_ORIGIN}${req.url}`;
     };
@@ -255,20 +246,17 @@ const routeFor = (req) => {
 
     const forwarded = forward.absoluteTarget(req.url);
     const isBypass = !forwarded && req.path.indexOf('/cors-bypass/') === 0;
-    const intercepted = interceptedTls(req);
 
-    const target = targetOf(forwarded, isBypass, intercepted);
+    const target = targetOf(forwarded, isBypass);
     const host = hostNamedBy(target);
     const forGoogle = GOOGLE.test(host.split(':')[0]);
 
-    // asOurselves: whether the answer goes back as youtube.com over our own TLS rather than as the
-    // service on plain HTTP. Cookies and the injection origin both depend on it.
     return {
         url: upgradeScheme(target, forGoogle),
         host,
         forGoogle,
         isBypass,
-        asOurselves: intercepted
+        asTheRealHost: !!forwarded || overOurTls(req)
     };
 };
 
@@ -285,7 +273,7 @@ const headersFor = (req, route) => {
     const copied = Object.keys(req.headers)
         .filter((key) => dropped.indexOf(key) === -1)
         // The page only carries renamed cookies when we served it as the service on plain HTTP.
-        .map((key) => [key, key === 'cookie' && !route.asOurselves
+        .map((key) => [key, key === 'cookie' && !route.asTheRealHost
             ? restoreCookiePrefixes(req.headers[key])
             : req.headers[key]]);
 
@@ -310,8 +298,6 @@ const send = (url, req, headers) => {
     };
 
     return fetch(url, options).catch((error) => {
-        // YouTube's header block is larger than Node's HTTP/1 parser will accept and the limit
-        // cannot be raised from in here, so the same request goes again over HTTP/2.
         if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {
             postmortem.note('upstream', `header overflow on ${url.slice(0, 80)} — retrying over http2`);
             return bigheaders.fetchOverHttp2(url, { method: req.method, headers });
@@ -334,16 +320,13 @@ const copyHeaders = (req, res, response, route) => {
         const lower = key.toLowerCase();
 
         if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
-        // YouTube's own policy names Cobalt's grammar for reaching a private address; a generic
-        // permissive one throws those grants away. It is kept when we answer as youtube.com.
-        if (lower === CSP_HEADER && !route.asOurselves) return;
+        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants.
+        if (lower === CSP_HEADER && !route.asTheRealHost) return;
         if (route.isBypass && lower === 'access-control-allow-origin') return;
 
-        // Over the MITM the page's origin really is https://www.youtube.com, and rewriting cookies
-        // there scopes every one to a domain the page is not on: the client drops the lot and
-        // refetches the page for ever behind a network error.
+        // A page on the real host would reject a cookie rewritten to Domain=localhost.
         if (lower === 'set-cookie' && Array.isArray(raw[key])) {
-            res.setHeader('Set-Cookie', route.asOurselves ? raw[key] : rewriteSetCookie(raw[key]));
+            res.setHeader('Set-Cookie', route.asTheRealHost ? raw[key] : rewriteSetCookie(raw[key]));
             return;
         }
 
@@ -410,10 +393,10 @@ const attachFallback = (app) => {
                 }
 
                 return response.text().then((text) => {
-                    const injectionOrigin = route.asOurselves && req.headers.host
+                    const injectionOrigin = route.asTheRealHost && req.headers.host
                         ? `https://${req.headers.host}`
                         : null;
-                    const nonce = route.asOurselves ? nonceOf(response.headers.get(CSP_HEADER)) : null;
+                    const nonce = route.asTheRealHost ? nonceOf(response.headers.get(CSP_HEADER)) : null;
 
                     const injected = rewriteAttestation(
                         rewriteBody(text, req.url, injectionOrigin, nonce), route.url

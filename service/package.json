@@ -6,7 +6,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "build": "node build/build.js",
-    "test": "node test/injection.js && node test/routing.js && node test/proxying.js && node test/x509.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js",
+    "test": "node test/injection.js && node test/routing.js && node test/proxying.js && node test/x509.js && node test/forward.js && node test/bigheaders.js && node test/loader.js && node test/update-flow.js && node test/update-scheduling.js",
     "check:floor": "node ../tools/check-output.js dist/index.js node12"
   },
   "dependencies": {

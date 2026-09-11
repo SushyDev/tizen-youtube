@@ -1,11 +1,6 @@
 'use strict';
 
-// An upstream fetch that survives YouTube's response headers.
-//
-// Node caps the response header block at 8KB on Node 12 and 16KB from Node 14, and cannot be
-// told otherwise from inside the process. YouTube's answer to a Cobalt client is 16.3KB, almost
-// all of it one content-security-policy carrying Cobalt's own source expressions. HTTP/2 carries
-// headers in HPACK, where the limit is an order of magnitude higher.
+// Refetches over HTTP/2 a response whose header block overflows Node's HTTP/1 parser.
 
 const http2 = require('http2');
 const zlib = require('zlib');
@@ -26,10 +21,11 @@ const sessionFor = (origin) => {
     if (existing && !existing.closed && !existing.destroyed) return existing;
 
     const session = http2.connect(origin, { settings: { maxHeaderListSize: MAX_HEADER_LIST } });
+    const forget = () => { if (sessions.get(origin) === session) sessions.delete(origin); };
 
     session.setTimeout(SESSION_IDLE, () => session.close());
-    session.on('error', () => sessions.delete(origin));
-    session.on('close', () => sessions.delete(origin));
+    session.on('error', forget);
+    session.on('close', forget);
 
     sessions.set(origin, session);
     return session;
@@ -38,18 +34,15 @@ const sessionFor = (origin) => {
 // node-fetch's Response in the shapes the proxy uses: headers.raw(), headers.get(), a readable
 // body and text().
 const responseOf = (status, received, stream) => {
-    const raw = Object.keys(received).reduce((all, name) => {
-        if (name[0] === ':') return all;                    // h2 pseudo-headers are not real headers
-
-        const value = received[name];
-        return Object.assign(all, { [name]: Array.isArray(value) ? value : [String(value)] });
-    }, {});
+    const raw = Object.fromEntries(Object.keys(received)
+        .filter((name) => name[0] !== ':')
+        .map((name) => [name, Array.isArray(received[name]) ? received[name] : [String(received[name])]]));
 
     const text = () => new Promise((resolve, reject) => {
-        const parts = [];
+        const held = { parts: [] };
 
-        stream.on('data', (chunk) => parts.push(chunk));
-        stream.on('end', () => resolve(Buffer.concat(parts).toString('utf8')));
+        stream.on('data', (chunk) => { held.parts = held.parts.concat([chunk]); });
+        stream.on('end', () => resolve(Buffer.concat(held.parts).toString('utf8')));
         stream.on('error', reject);
     });
 
@@ -68,9 +61,7 @@ const responseOf = (status, received, stream) => {
     };
 };
 
-// node-fetch decompresses and this does not, which is a difference that does not announce
-// itself: the body arrives gzipped, is treated as text because the type says html, has a script
-// injected into the middle of it and is served as a loaded page behind a black screen.
+// Decoded as node-fetch would, because the proxy treats the body as text.
 const decoded = (request, encoding) => {
     const out = new PassThrough();
     const decoder = encoding === 'gzip' ? zlib.createGunzip()
@@ -95,10 +86,8 @@ const fetchOverHttp2 = (target, options) => new Promise((resolve, reject) => {
 
     const session = sessionFor(`https://${parsed.host}`);
 
-    const headers = ILLEGAL_IN_H2.reduce((all, name) => {
-        delete all[name];
-        return all;
-    }, Object.assign({}, options.headers));
+    const headers = Object.fromEntries(Object.entries(options.headers || {})
+        .filter(([name]) => ILLEGAL_IN_H2.indexOf(name) === -1));
 
     const request = session.request(Object.assign({
         ':method': options.method || 'GET',
@@ -112,9 +101,8 @@ const fetchOverHttp2 = (target, options) => new Promise((resolve, reject) => {
 
     request.on('response', (received) => {
         // Whatever is handed on is identity-encoded now, so the headers must not claim otherwise.
-        const announced = Object.assign({}, received);
-        delete announced['content-encoding'];
-        delete announced['content-length'];
+        const announced = Object.fromEntries(Object.entries(received)
+            .filter(([name]) => name !== 'content-encoding' && name !== 'content-length'));
 
         resolve(responseOf(
             Number(received[':status']) || 502,

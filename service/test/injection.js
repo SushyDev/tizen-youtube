@@ -38,6 +38,15 @@ check('/tv is injected into exactly once', injected.split('__tube/userScript.js'
 
 check('/tv_config is not injected into', rewriteBody('<html></html>', '/tv_config').indexOf('__tube') === -1);
 
+check('/tv without a nonce stamps none', injected.indexOf('nonce=') === -1, injected);
+
+const overTls = rewriteBody('<html><body></body></html>', '/tv', 'https://www.youtube.com', 'n0nce+/=');
+const overTlsTags = overTls.match(/<script[^>]*>/g) || [];
+check('over our TLS the script comes from the page\'s own origin',
+    overTls.indexOf('https://www.youtube.com/__tube/userScript.js') !== -1 && overTls.indexOf(ORIGIN) === -1, overTls);
+check('over our TLS every injected tag carries the page\'s nonce',
+    overTlsTags.length > 0 && overTlsTags.every((tag) => tag.indexOf(' nonce="n0nce+/="') !== -1), overTlsTags.join(' '));
+
 const player = rewriteAttestation(
     'var x="https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT";',
     'https://www.youtube.com/s/player/abc/tv-player-es6-tcl.js'

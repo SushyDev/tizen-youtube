@@ -1,15 +1,14 @@
 'use strict';
 
-// The certificate issuer, checked against the tool that defines the format. Every one of these
-// failures is silent on a television — a certificate the container will not accept, or a file
-// named something it never looks for — so they are worth catching here.
+// Checks the issuer's certificates and subject hashes against openssl.
 
 const { execFileSync } = require('child_process');
-const { mkdtempSync, writeFileSync } = require('fs');
+const { mkdtempSync, rmSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');
 
 const x509 = require('../lib/x509.js');
+const { INTERCEPTED } = require('../lib/mitm.js');
 
 let failures = 0;
 
@@ -21,33 +20,33 @@ function check(label, ok, detail) {
 const dir = mkdtempSync(join(tmpdir(), 'tube-x509-'));
 const openssl = (args) => execFileSync('openssl', args, { encoding: 'utf8' });
 
-// The pair of names the certificate that first worked inside the container was filed under, taken
-// off the television. It costs nothing to check and it pins the hash to a value observed in the
-// wild rather than only to whatever openssl on this machine happens to say.
+const finish = (code) => {
+    rmSync(dir, { recursive: true, force: true });
+    process.exit(code);
+};
+
 const known = x509.subjectHashes('Tube Cobalt Experiment CA');
-check('the hashes reproduce a name that worked on the set',
+check('subject hashes of a known name',
     known.hash === '24de7fb5' && known.hashOld === '147bf03f', JSON.stringify(known));
 
 const CA_NAME = 'Tube Local CA On This Set';
-const HOSTS = ['youtube.com', '*.youtube.com', 'googlevideo.com', '*.googlevideo.com'];
+const HOSTS = INTERCEPTED.flatMap((domain) => [domain, `*.${domain}`]);
 
 x509.createCa(CA_NAME, (error, ca) => {
     if (error) {
         check('the CA is issued', false, error.message);
-        return process.exit(1);
+        return finish(1);
     }
 
     const caPath = join(dir, 'ca.crt');
     writeFileSync(caPath, ca.cert);
 
-    // A certificate openssl cannot parse fails here rather than on the set.
     const text = openssl(['x509', '-in', caPath, '-noout', '-text']);
     check('the CA parses', text.indexOf('Signature Algorithm: sha256WithRSAEncryption') !== -1);
     check('the CA is a CA', /CA:TRUE/.test(text), text.slice(0, 200));
     check('the CA can sign certificates', /Certificate Sign/.test(text));
     check('the CA carries a subject key identifier', /Subject Key Identifier/.test(text));
 
-    // The whole point of the exercise: the file name the container looks for.
     const ours = x509.subjectHashes(CA_NAME);
     const theirs = openssl(['x509', '-in', caPath, '-noout', '-subject_hash']).trim();
     const theirsOld = openssl(['x509', '-in', caPath, '-noout', '-subject_hash_old']).trim();
@@ -58,7 +57,7 @@ x509.createCa(CA_NAME, (error, ca) => {
     x509.createLeaf(ca, 'www.youtube.com', HOSTS, (leafError, leaf) => {
         if (leafError) {
             check('the leaf is issued', false, leafError.message);
-            return process.exit(1);
+            return finish(1);
         }
 
         const leafPath = join(dir, 'leaf.crt');
@@ -73,7 +72,6 @@ x509.createCa(CA_NAME, (error, ca) => {
             check(`the leaf names ${host}`, leafText.indexOf(`DNS:${host}`) !== -1);
         });
 
-        // Over 398 days and Chromium refuses it outright, which is what the whole round cost.
         const dates = openssl(['x509', '-in', leafPath, '-noout', '-dates']);
         const from = new Date(/notBefore=(.*)/.exec(dates)[1]);
         const to = new Date(/notAfter=(.*)/.exec(dates)[1]);
@@ -89,6 +87,6 @@ x509.createCa(CA_NAME, (error, ca) => {
         check('the chain carries both certificates', leaf.chain.split('BEGIN CERTIFICATE').length === 3);
 
         console.log(failures ? `\n${failures} failed.` : '\nall checks passed');
-        process.exit(failures ? 1 : 0);
+        finish(failures ? 1 : 0);
     });
 });

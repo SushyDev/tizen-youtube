@@ -50,7 +50,7 @@ npm run package    # release/tube.wgt, for Tizen Homebrew
 | --- | --- |
 | `npm run doctor` | Check prerequisites when something looks wrong |
 | `npm run build` | Boot screen, the userscript bundle, the service |
-| `npm test` | Lint, rewrite parity, routing, loader, update flow |
+| `npm test` | Lint, waitFor, rewrite parity, routing, loader, update flow |
 | `npm run package` | Build a `.wgt` — signed by nobody, which is what a release carries |
 | `npm run release` | Stage `release/origin/` — the bundle and `latest.json` |
 | `npm run dev` | The whole app in a browser, no hardware needed |

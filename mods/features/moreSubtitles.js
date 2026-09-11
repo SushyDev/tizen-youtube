@@ -1,4 +1,6 @@
 import { configRead } from "../config.js";
+import { findResolver } from '../youtube/internals.js';
+import { waitFor } from '../utils/waitFor.js';
 import { displayLanguage, displayRegion } from "../languageNames.js";
 
 const LANGUAGE_CODES = [
@@ -11,7 +13,7 @@ const LANGUAGE_CODES = [
     "th", "tr", "uk", "ur", "uz", "vi", "cy", "yi", "yo", "zu"
 ];
 
-export function getComprehensiveLanguageList() {
+function getComprehensiveLanguageList() {
     try {
         const map = {};
         LANGUAGE_CODES.forEach((code) => {
@@ -33,7 +35,7 @@ export function getComprehensiveLanguageList() {
     }
 }
 
-export function getCountryLanguage(countryCode) {
+function getCountryLanguage(countryCode) {
     if (!countryCode) return null;
     try {
         const region = String(countryCode).toUpperCase();
@@ -57,8 +59,6 @@ export function getCountryLanguage(countryCode) {
         return null;
     }
 }
-
-let isPatched = false;
 
 function getUserCountryCode() {
     try {
@@ -177,37 +177,15 @@ function createSectionTitle(title) {
     };
 }
 
-function patchSubtitleMenu() {
-    if (isPatched) return;
-
-    const player = document.querySelector('.html5-video-player');
-    if (!player) return setTimeout(patchSubtitleMenu, 250);
-
-    if (!window._yttv) return setTimeout(patchSubtitleMenu, 250);
-    const yttvInstance = Object.values(window._yttv).find(
-        (obj) =>
-            obj &&
-            obj.instance &&
-            typeof obj.instance.resolveCommand === "function"
-    );
-
-    if (
-        !yttvInstance ||
-        yttvInstance.instance.resolveCommand.isPatchedBySubtitleLocalization
-    ) {
-        if (!yttvInstance) {
-            console.error(
-                "Subtitles: Could not find resolveCommand instance."
-            );
-        } else {
-            console.log("Subtitles: Already patched.");
-        }
+function patchSubtitleMenu(resolver) {
+    if (resolver.resolveCommand.isPatchedBySubtitleLocalization) {
+        console.log("Subtitles: Already patched.");
         return;
     }
 
-    const originalResolveCommand = yttvInstance.instance.resolveCommand;
+    const originalResolveCommand = resolver.resolveCommand;
 
-    yttvInstance.instance.resolveCommand = function (cmd, _) {
+    resolver.resolveCommand = function (cmd, _) {
         if (
             cmd?.openPopupAction?.uniqueId ===
             "CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE"
@@ -323,23 +301,11 @@ function patchSubtitleMenu() {
         return originalResolveCommand.apply(this, arguments);
     };
 
-    yttvInstance.instance.resolveCommand.isPatchedBySubtitleLocalization = true;
+    resolver.resolveCommand.isPatchedBySubtitleLocalization = true;
     console.log("Subtitles: Patch successful!");
-    isPatched = true;
 }
 
-const interval = setInterval(() => {
-    if (window._yttv && Object.keys(window._yttv).length > 0) {
-        patchSubtitleMenu();
-        clearInterval(interval);
-    }
-}, 1000);
-
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", patchSubtitleMenu);
-} else {
-    patchSubtitleMenu();
-}
+waitFor(findResolver, patchSubtitleMenu);
 
 console.log(
     "Subtitles: Module loaded, waiting for YouTube TV..."

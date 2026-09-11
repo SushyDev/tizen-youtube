@@ -1,13 +1,11 @@
 import { configRead } from '../config.js';
 import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
+import { waitFor } from '../utils/waitFor.js';
 
-const interval = setInterval(() => {
-    const videoElement = document.querySelector('video');
-    if (videoElement) {
-        execute_once_dom_loaded_speed();
-        clearInterval(interval);
-    }
-}, 1000);
+const WAIT_INTERVAL = 1000;
+
+waitFor(() => document.querySelector('video'), execute_once_dom_loaded_speed,
+    { everyMs: WAIT_INTERVAL, forMs: Infinity });
 
 function execute_once_dom_loaded_speed() {
     document.querySelector('video').addEventListener('canplay', () => {

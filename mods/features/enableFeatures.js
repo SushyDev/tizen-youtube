@@ -1,14 +1,13 @@
 import { configRead, configChangeEmitter } from '../config.js';
+import { findMap } from '../youtube/internals.js';
+import { waitFor } from '../utils/waitFor.js';
 
-configChangeEmitter.addEventListener('configChange', (event) => {
-    enableFeatures();
-});
+const PREVIEWS = 'ENABLE_PREVIEWS_WITH_SOUND';
+
+configChangeEmitter.addEventListener('configChange', (event) => event.detail.key === 'enablePreviews' && enableFeatures());
 
 function enableFeatures() {
-    if (!window._yttv) return setTimeout(enableFeatures, 250);
-    const yttvValues = Object.values(window._yttv);
-
-    yttvValues.find(a => a instanceof Map && a.has("ENABLE_PREVIEWS_WITH_SOUND"))?.set("ENABLE_PREVIEWS_WITH_SOUND", configRead('enablePreviews'));
+    waitFor(() => findMap(PREVIEWS), (flags) => flags.set(PREVIEWS, configRead('enablePreviews')));
 }
 
 if (document.readyState === 'complete') {

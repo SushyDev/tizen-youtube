@@ -1,4 +1,5 @@
 import { configChangeEmitter, configRead } from '../config.js';
+import { waitFor } from '../utils/waitFor.js';
 
 const RECURRING_ACTIONS = 'yt.leanback.default::recurring_actions';
 
@@ -63,11 +64,9 @@ function disableWhosWatching(value) {
     return true;
 }
 
-if (!disableWhosWatching(configRead('enableWhoIsWatchingMenu'))) {
-    const until = Date.now() + WAIT_WINDOW;
-    const waiting = setInterval(() => {
-        if (disableWhosWatching(configRead('enableWhoIsWatchingMenu')) || Date.now() > until) {
-            clearInterval(waiting);
-        }
-    }, WAIT_INTERVAL);
-}
+// localStorage may not carry the record yet when this module loads.
+waitFor(
+    readActions,
+    () => disableWhosWatching(configRead('enableWhoIsWatchingMenu')),
+    { everyMs: WAIT_INTERVAL, forMs: WAIT_WINDOW }
+);

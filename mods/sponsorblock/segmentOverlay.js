@@ -1,5 +1,6 @@
 import { gradientOver, stretches } from './segmentGradient.js';
 import { drawnBar } from './drawnBar.js';
+import { carry, nest, structureOf, wrapperFor } from './mirror.js';
 
 // One band per chapter, because Cobalt has no clip-path to cut a single box to the bar's shape.
 
@@ -13,41 +14,6 @@ const RADII = [
 const identityOf = (bar) => bar.pieces
     .map(({ element, span }) => `${element.getAttribute('idomkey')}@${span.from}-${span.to}`)
     .join('|');
-
-// Rebuilding the wrappers mid-fade would restart their transitions, so only a change here does.
-const mirrorOf = (bar) => bar.layers.map((layer) => layer.transition).join(' || ');
-
-const wrapperFor = (layer) => {
-    const element = document.createElement('div');
-
-    element.style.setProperty('position', 'absolute', 'important');
-    element.style.setProperty('left', '0px', 'important');
-    element.style.setProperty('top', '0px', 'important');
-    element.style.setProperty('width', '0px', 'important');
-    element.style.setProperty('height', '0px', 'important');
-    element.style.setProperty('transition', layer.transition, 'important');
-    element.style.setProperty('opacity', layer.opacity, 'important');
-    element.style.setProperty('transform', layer.transform, 'important');
-
-    return { element, written: { opacity: layer.opacity, transform: layer.transform } };
-};
-
-const nest = (parent, wrappers) => {
-    if (!wrappers.length) return parent;
-
-    parent.appendChild(wrappers[0].element);
-    return nest(wrappers[0].element, wrappers.slice(1));
-};
-
-const carry = (wrapper, layer) => {
-    if (!layer) return wrapper;
-
-    ['opacity', 'transform']
-        .filter((name) => wrapper.written[name] !== layer[name])
-        .forEach((name) => wrapper.element.style.setProperty(name, layer[name], 'important'));
-
-    return { element: wrapper.element, written: { opacity: layer.opacity, transform: layer.transform } };
-};
 
 const bandFor = (piece, all, at) => {
     const gradient = gradientOver(all, piece.span);
@@ -95,7 +61,7 @@ const place = (band, piece, shift) => {
 const segmentOverlay = (segments) => {
     const held = {
         video: null, root: null, wrappers: [], inner: null, bands: [],
-        identity: null, mirror: null, duration: null, stretches: [], frame: null
+        identity: null, structure: null, duration: null, stretches: [], frame: null
     };
 
     const watch = (video) => {
@@ -155,14 +121,14 @@ const segmentOverlay = (segments) => {
 
         if (!bar) {
             if (held.bands.length) clear();
-            if (held.mirror !== null) stop();
+            if (held.structure !== null) stop();
             return;
         }
 
-        const mirror = mirrorOf(bar);
+        const structure = structureOf(bar.layers);
 
-        if (mirror !== held.mirror) {
-            held.mirror = mirror;
+        if (structure !== held.structure) {
+            held.structure = structure;
             raise(bar);
         }
 
@@ -216,7 +182,7 @@ const segmentOverlay = (segments) => {
         held.inner = null;
         held.bands = [];
         held.identity = null;
-        held.mirror = null;
+        held.structure = null;
         held.duration = null;
         held.video = null;
     };

@@ -96,7 +96,8 @@ hashes.forEach((one) => {
 
 const { gradientOver, stretches } = await import('../mods/sponsorblock/segmentGradient.js');
 const { chapterIn, spansFor } = await import('../mods/sponsorblock/drawnBar.js');
-const { commaParts, transitionOf, animatesMotion, translateOf, shiftOf } = await import('../mods/sponsorblock/transitions.js');
+const { commaParts, transitionOf, slideOf, translateOf, shiftOf } = await import('../mods/sponsorblock/transitions.js');
+const { carry, structureOf } = await import('../mods/sponsorblock/mirror.js');
 const gradientFor = (segments, duration) => gradientOver(stretches(segments, duration), { from: 0, to: duration });
 
 const seg = (category, from, to) => ({ category, segment: [from, to], UUID: `${category}-${from}` });
@@ -209,23 +210,91 @@ check('the longhands are put back together one property at a time', () => {
     }), 'transform 200ms cubic-bezier(0.05,0,0.3,1) 0s, opacity 200ms cubic-bezier(0.05,0,0.3,1) 0s');
 });
 
-check('an ancestor is mirrored for what it would move, not what it is moving', () => {
+check('an ancestor carries what it would ease, not what it is easing', () => {
     // ytlr-progress-bar, which is at rest whenever it is asked but fades over 500ms when told to.
-    assert.ok(animatesMotion({
+    assert.strictEqual(transitionOf({
         transitionProperty: 'opacity', transitionDuration: '500ms',
         transitionTimingFunction: 'cubic-bezier(0.25,0.1,0.25,1)', transitionDelay: '0s'
-    }));
+    }), 'opacity 500ms cubic-bezier(0.25,0.1,0.25,1) 0s');
+
+    // The same element while a panel is open, when YouTube cuts it rather than fading it.
+    assert.strictEqual(transitionOf({
+        transitionProperty: 'none', transitionDuration: '0s',
+        transitionTimingFunction: 'cubic-bezier(0.25,0.1,0.25,1)', transitionDelay: '0s'
+    }), 'none');
 
     // The renderer between them, which declares `all` and eases nothing.
-    assert.strictEqual(animatesMotion({
+    assert.strictEqual(transitionOf({
         transitionProperty: 'all', transitionDuration: '0s',
         transitionTimingFunction: 'cubic-bezier(0.25,0.1,0.25,1)', transitionDelay: '0s'
-    }), false);
+    }), 'none');
 
-    assert.strictEqual(animatesMotion({
+    assert.strictEqual(transitionOf({
         transitionProperty: 'color', transitionDuration: '200ms',
         transitionTimingFunction: 'linear', transitionDelay: '0s'
-    }), false, 'a colour fade moves nothing this overlay has to keep up with');
+    }), 'none', 'a colour fade moves nothing this overlay has to keep up with');
+});
+
+check('shorter lists repeat across the properties, as CSS repeats them', () => {
+    assert.strictEqual(transitionOf({
+        transitionProperty: 'transform, opacity, visibility',
+        transitionDuration: '200ms, 500ms',
+        transitionTimingFunction: 'linear',
+        transitionDelay: '0s'
+    }), 'transform 200ms linear 0s, opacity 500ms linear 0s, visibility 200ms linear 0s');
+});
+
+check('only a translation is copied onto a box of ours', () => {
+    assert.strictEqual(slideOf('translateY(48px)'), 'translateY(48px)');
+    assert.strictEqual(slideOf('translateX(2px) translateY(-3px)'), 'translateX(2px) translateY(-3px)');
+    assert.strictEqual(slideOf('none'), 'none');
+
+    // The player squeezed beside a panel, which the bar is already hidden for.
+    assert.strictEqual(slideOf('translateX(54px) translateY(219px) scaleX(0.596875) scaleY(0.5972222)'), 'none');
+
+    // A percentage is of the element's own size, and a box of ours has none.
+    assert.strictEqual(slideOf('translateX(-50%) translateY(-50%)'), 'none');
+});
+
+const layerOf = (transition, opacity) => ({
+    name: 'yt-focus-container[controls]', transition, opacity, transform: 'none', visibility: 'visible'
+});
+
+const recorded = () => {
+    const writes = [];
+    const element = { style: { setProperty: (name, value) => writes.push(`${name}: ${value}`) } };
+    return { writes, wrapper: { element, written: {} } };
+};
+
+check('a box is told how to move before it is told where to', () => {
+    const { writes, wrapper } = recorded();
+    const shown = carry(wrapper, layerOf('opacity 200ms linear 0s', '1'));
+    writes.length = 0;
+
+    // A panel opening: YouTube cuts the controls, so ours are cut with them.
+    const hidden = carry(shown, layerOf('none', '0'));
+    assert.deepStrictEqual(writes, ['transition: none', 'opacity: 0']);
+    writes.length = 0;
+
+    // And closing, where the fade comes back in the same change as the value it fades to.
+    carry(hidden, layerOf('opacity 200ms linear 0s', '1'));
+    assert.deepStrictEqual(writes, ['transition: opacity 200ms linear 0s', 'opacity: 1']);
+});
+
+check('nothing that has not changed is written again', () => {
+    const { writes, wrapper } = recorded();
+    const once = carry(wrapper, layerOf('none', '1'));
+    writes.length = 0;
+
+    carry(once, layerOf('none', '1'));
+    assert.deepStrictEqual(writes, []);
+});
+
+check('the boxes are rebuilt for a different ancestor, never for a different declaration', () => {
+    const controls = layerOf('opacity 200ms linear 0s', '1');
+
+    assert.strictEqual(structureOf([controls]), structureOf([layerOf('none', '0')]));
+    assert.notStrictEqual(structureOf([controls]), structureOf([controls, Object.assign({}, controls, { name: 'div' })]));
 });
 
 check('the mirrored translation is subtracted', () => {
@@ -233,6 +302,7 @@ check('the mirrored translation is subtracted', () => {
     assert.deepStrictEqual(translateOf('translateY(0px)'), { x: 0, y: 0 });
     assert.deepStrictEqual(translateOf('none'), { x: 0, y: 0 });
     assert.deepStrictEqual(translateOf('translate(-4px, 6px)'), { x: -4, y: 6 });
+    assert.deepStrictEqual(translateOf('translateX(2px) translateY(-3px)'), { x: 2, y: -3 });
 
     // Anything that is not a translation costs the slide and nothing else.
     assert.deepStrictEqual(translateOf('scaleX(0.5)'), { x: 0, y: 0 });

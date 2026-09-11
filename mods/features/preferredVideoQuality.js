@@ -1,113 +1,141 @@
-import { configRead, configChangeEmitter } from "../config.js";
+import { configRead, configChangeEmitter } from '../config.js';
+import { waitFor } from '../utils/waitFor.js';
+import { chooseQuality, shouldAsk } from './quality.js';
 
-const SELECTORS = {
-    PLAYER: '.html5-video-player',
-};
+const PLAYER = '.html5-video-player';
+const QUALITY = 'preferredVideoQuality';
 
-const EVENTS = {
-    YT_STATE_CHANGE: 'onStateChange',
-    CONFIG_CHANGE: 'configChange',
-};
+const CHECK_INTERVAL = 3000;
+const ATTACH_EVERY = 250;
 
-const CONFIG_KEYS = {
-    QUALITY: 'preferredVideoQuality',
-};
+// Asking restarts the stream, so a rung the player will not take is dropped after a few tries.
+const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
 
-class PreferredQualityHandler {
-    #player = null;
-    #attachTimeout = null;
-    #lastVideoId = null;
-    #hasAppliedQuality = false;
+const RESTART_JUMP = 2;
 
-    constructor() {
-        this.init();
-    }
+function watchPreferredQuality() {
+    const held = {
+        player: null,
+        lastVideoId: null,
+        lastTime: 0,
+        target: null,
+        attempts: 0,
+        askedAt: 0,
+        // Without this, a quality chosen from the player's own menu is overridden on the next tick.
+        settled: false
+    };
 
-    init() {
-        this.#pollForPlayer();
-        this.#setupConfigListener();
-    }
+    const forget = () => {
+        held.target = null;
+        held.attempts = 0;
+        held.askedAt = 0;
+        held.settled = false;
+    };
 
-    #pollForPlayer() {
-        clearTimeout(this.#attachTimeout);
+    const startedOver = (player) => {
+        const id = player.getVideoData?.()?.video_id;
+        const time = player.getCurrentTime?.() ?? 0;
+        const looped = time < RESTART_JUMP && time + RESTART_JUMP < held.lastTime;
 
-        const playerElement = document.querySelector(SELECTORS.PLAYER);
+        held.lastTime = time;
 
-        if (!playerElement) {
-            this.#attachTimeout = setTimeout(() => this.#pollForPlayer(), 100);
-            return;
-        }
+        if (id === held.lastVideoId && !looped) return false;
 
-        this.#player = playerElement;
+        held.lastVideoId = id;
+        return true;
+    };
 
-        this.#player.addEventListener(EVENTS.YT_STATE_CHANGE, this.#handleStateChange);
-
-        this.#handleStateChange();
-    }
-
-    #setupConfigListener() {
-        configChangeEmitter.addEventListener(EVENTS.CONFIG_CHANGE, (ev) => {
-            if (ev.detail?.key === CONFIG_KEYS.QUALITY) {
-                this.#applyQuality();
-            }
-        });
-    }
-
-    #handleStateChange = () => {
-        const state = this.#player?.getPlayerStateObject?.();
-        const videoData = this.#player?.getVideoData?.();
-        const videoId = videoData?.video_id;
-
-        if (videoId !== this.#lastVideoId) {
-            this.#lastVideoId = videoId;
-            this.#hasAppliedQuality = false;
-        }
-
-        const isShorts = Object.values(this.#player.getVideoStats()).find(a => a && a === 'shortspage');
-        if (state?.isPlaying && !this.#hasAppliedQuality && !isShorts) {
-            this.#applyQuality();
-            this.#hasAppliedQuality = true;
+    const isShorts = (player) => {
+        try {
+            return Object.values(player.getVideoStats()).some((value) => value === 'shortspage');
+        } catch (e) {
+            return false;
         }
     };
 
-    #applyQuality() {
-        const preferredQuality = configRead(CONFIG_KEYS.QUALITY);
-        if (!preferredQuality || preferredQuality === 'auto' || !this.#player) return;
+    const askFor = (player, chosen, current) => {
+        const again = chosen === held.target;
+
+        const state = {
+            current,
+            wanted: chosen,
+            again,
+            attempts: held.attempts,
+            askedAt: held.askedAt
+        };
+
+        if (!shouldAsk(state, Date.now(), LIMITS)) return;
+
+        player.setPlaybackQualityRange(chosen, chosen);
+        held.target = chosen;
+        held.attempts = again ? held.attempts + 1 : 1;
+        held.askedAt = Date.now();
+    };
+
+    const applyPreference = (player) => {
+        if (startedOver(player)) forget();
+        if (held.settled) return;
+
+        const preference = configRead(QUALITY);
+        if (!preference || preference === 'auto') return;
+        if (!player.getPlayerStateObject?.()?.isPlaying) return;
+        if (isShorts(player)) return;
+
+        const chosen = chooseQuality(preference, player.getAvailableQualityData());
+        if (!chosen) return;
+
+        const current = player.getPlaybackQuality();
+
+        if (current === chosen) {
+            held.attempts = 0;
+            held.settled = true;
+            return;
+        }
+
+        askFor(player, chosen, current);
+    };
+
+    const attachToPlayer = () => waitFor(
+        () => document.querySelector(PLAYER),
+        (player) => {
+            held.player = player;
+            player.addEventListener('onStateChange', tick);
+            tick();
+        },
+        { everyMs: ATTACH_EVERY }
+    );
+
+    function tick() {
+        if (!held.player) return;
+
+        // The player element is replaced on some navigations, which leaves the listener on a node
+        // nothing plays through any more.
+        if (held.player.isConnected === false) {
+            held.player = null;
+            forget();
+            attachToPlayer();
+            return;
+        }
 
         try {
-            const quality = this.#determineQuality(preferredQuality);
-
-            if (quality) {
-              this.#player.setPlaybackQualityRange(quality, quality)
-            }
+            applyPreference(held.player);
         } catch (e) {
-            console.warn('[PreferredQuality] Failed to apply quality:', e);
+            console.warn('[tube] could not apply the preferred quality:', e);
         }
     }
 
-    #determineQuality(preference) {
-        const available = (this.#player.getAvailableQualityData() || [])
-            .filter((entry) => entry && entry.isPlayable !== false);
+    configChangeEmitter.addEventListener('configChange', (event) => {
+        if (event.detail?.key !== QUALITY) return;
 
-        if (!available.length) return null;
+        forget();
+        tick();
+    });
 
-        const pixels = (entry) => parseInt(entry.qualityLabel, 10) || 0;
-
-        if (preference === 'highest') {
-            return available.reduce((best, entry) => (pixels(entry) > pixels(best) ? entry : best)).quality;
-        }
-
-        const target = parseInt(preference, 10) || 0;
-        const match = available.find((entry) => pixels(entry) === target);
-
-        if (match) return match.quality;
-
-        const below = available
-            .filter((entry) => pixels(entry) <= target)
-            .reduce((best, entry) => (!best || pixels(entry) > pixels(best) ? entry : best), null);
-
-        return below ? below.quality : null;
-    }
+    setInterval(tick, CHECK_INTERVAL);
+    attachToPlayer();
 }
 
-window.preferredVideoQualityHandler = new PreferredQualityHandler();
+// Cobalt reports the rung under a different name, so asking never settles and wedges playback.
+const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.userAgent || '');
+
+if (typeof window !== 'undefined' && !inCobalt) watchPreferredQuality();

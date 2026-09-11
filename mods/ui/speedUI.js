@@ -2,112 +2,72 @@ import { configRead } from '../config.js';
 import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
 import { waitFor } from '../utils/waitFor.js';
 
+const SPEED_KEYS = [406, 191];
+
+const MAX_SPEED = 5;
+const DEFAULT_INCREMENT = 0.25;
+const STUTTER_FIX = 1.0001;
+
 const WAIT_INTERVAL = 1000;
 
-waitFor(() => document.querySelector('video'), execute_once_dom_loaded_speed,
-    { everyMs: WAIT_INTERVAL, forMs: Infinity });
+const round = (value) => Math.round(value * 100) / 100;
 
-function execute_once_dom_loaded_speed() {
-    document.querySelector('video').addEventListener('canplay', () => {
-        document.getElementsByTagName('video')[0].playbackRate = configRead('videoSpeed');;
-    });
+const currentRate = () => {
+    const video = document.querySelector('video');
+    if (video && video.playbackRate > 0) return round(video.playbackRate);
 
-    const eventHandler = (evt) => {
-        if (evt.keyCode == 406 || evt.keyCode == 191) {
-            evt.preventDefault();
-            evt.stopPropagation();
-            if (evt.type === 'keydown') {
-                openSpeedOptions();
-                return false;
-            }
-            return true;
-        };
-    }
+    return configRead('rememberPlaybackSpeed') ? configRead('videoSpeed') : 1;
+};
 
-    document.addEventListener('keydown', eventHandler, true);
-    document.addEventListener('keypress', eventHandler, true);
-    document.addEventListener('keyup', eventHandler, true);
-}
+const speedButton = (speed, title = `${speed}x`) => buttonItem({ title }, null, [
+    { signalAction: { signal: 'POPUP_BACK' } },
+    {
+        setClientSettingEndpoint: {
+            settingDatas: [{ clientSettingEnum: { item: 'videoSpeed' }, intValue: speed.toString() }]
+        }
+    },
+    { customAction: { action: 'SET_PLAYER_SPEED', parameters: speed.toString() } }
+]);
+
+const speedLadder = () => {
+    const increment = configRead('speedSettingsIncrement') || DEFAULT_INCREMENT;
+    const rungs = Math.floor(MAX_SPEED / increment);
+
+    return Array.from({ length: rungs }, (_, step) => round((step + 1) * increment));
+};
 
 function openSpeedOptions() {
-    const currentSpeed = configRead('videoSpeed');
-    let selectedIndex = 0;
-    const maxSpeed = 5;
-    const increment = configRead('speedSettingsIncrement') || 0.25;
-    const buttons = [];
-    for (let speed = increment; speed <= maxSpeed; speed += increment) {
-        const fixedSpeed = Math.round(speed * 100) / 100;
-        buttons.push(
-            buttonItem(
-                { title: `${fixedSpeed}x` },
-                null,
-                [
-                    {
-                        signalAction: {
-                            signal: 'POPUP_BACK'
-                        }
-                    },
-                    {
-                        setClientSettingEndpoint: {
-                            settingDatas: [
-                                {
-                                    clientSettingEnum: {
-                                        item: 'videoSpeed'
-                                    },
-                                    intValue: fixedSpeed.toString()
-                                }
-                            ]
-                        }
-                    },
-                    {
-                        customAction: {
-                            action: 'SET_PLAYER_SPEED',
-                            parameters: fixedSpeed.toString()
-                        }
-                    }
-                ]
-            )
-        );
-        if (currentSpeed === fixedSpeed) {
-            selectedIndex = buttons.length - 1;
-        }
-    }
+    const rungs = speedLadder();
+    const chosen = rungs.indexOf(currentRate());
+    const buttons = rungs.map((speed) => speedButton(speed))
+        .concat([speedButton(STUTTER_FIX, `Fix stuttering (${STUTTER_FIX}x)`)]);
 
-    buttons.push(
-        buttonItem(
-            { title: 'Fix stuttering (1.0001x)' },
-            null,
-            [
-                {
-                    signalAction: {
-                        signal: 'POPUP_BACK'
-                    }
-                },
-                {
-                    setClientSettingEndpoint: {
-                        settingDatas: [
-                            {
-                                clientSettingEnum: {
-                                    item: 'videoSpeed'
-                                },
-                                intValue: '1.0001'
-                            }
-                        ]
-                    }
-                },
-                {
-                    customAction: {
-                        action: 'SET_PLAYER_SPEED',
-                        parameters: '1.0001'
-                    }
-                }
-            ]
-        )
+    showModal(
+        'Playback Speed',
+        overlayPanelItemListRenderer(buttons, chosen === -1 ? 0 : chosen),
+        'options-speed'
     );
-
-    showModal('Playback Speed', overlayPanelItemListRenderer(buttons, selectedIndex), 'options-speed');
 }
 
-export {
-    openSpeedOptions
-}
+const keepSpeed = (event) => {
+    if (!(event.target instanceof window.HTMLVideoElement) || !configRead('rememberPlaybackSpeed')) return;
+    event.target.playbackRate = configRead('videoSpeed');
+};
+
+const attach = () => {
+    const onKey = (event) => {
+        if (SPEED_KEYS.indexOf(event.keyCode) === -1) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.type === 'keydown') openSpeedOptions();
+    };
+
+    ['keydown', 'keypress', 'keyup'].forEach((type) => document.addEventListener(type, onKey, true));
+};
+
+document.addEventListener('canplay', keepSpeed, true);
+waitFor(() => document.querySelector('video'), attach, { everyMs: WAIT_INTERVAL, forMs: Infinity });
+
+export { openSpeedOptions };

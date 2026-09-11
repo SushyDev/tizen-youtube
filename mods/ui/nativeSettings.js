@@ -1,7 +1,7 @@
 import { configRead, configChangeEmitter } from '../config.js';
 import { GROUPS, chosenLabel, chosenSummary } from './settingsModel.js';
 import { optionsCommand, storeCommand } from './settingsOptions.js';
-import { claimBooleanRows, redrawSettingRows } from '../youtube/settingComponents.js';
+import { claimBooleanRows, claimActionRows, redrawSettingRows, ROWS } from '../youtube/settingComponents.js';
 
 const BEFORE = 'SETTING_CAT_TVHTML5_LINK_PHONE';
 
@@ -28,34 +28,12 @@ function switchRow(item) {
     };
 }
 
-function choiceRow(item, path) {
-    const row = {
-        title: runs(item.title),
-        trackingParams: 'null',
-        itemId: idFor(item),
-        thumbnail: picture(item.image)
-    };
-
-    Object.defineProperty(row, 'button', {
-        enumerable: true,
-        get: () => ({
-            buttonRenderer: {
-                text: { simpleText: `${item.prefix}: ${chosenLabel(item)}` },
-                icon: { iconType: 'EDIT' },
-                trackingParams: 'null',
-                command: optionsCommand(path)
-            }
-        })
-    });
-
-    return { settingSingleOptionMenuRenderer: row };
-}
-
-function listRow(item, path) {
+function openerRow(item, path, label) {
     const row = {
         title: runs(item.title),
         summary: runs(item.summary),
         serviceEndpoint: optionsCommand(path),
+        tubeNote: item.note,
         trackingParams: 'null',
         itemId: idFor(item),
         thumbnail: picture(item.image)
@@ -63,7 +41,7 @@ function listRow(item, path) {
 
     Object.defineProperty(row, 'actionLabel', {
         enumerable: true,
-        get: () => runs(chosenSummary(item))
+        get: () => runs(label())
     });
 
     return { settingActionRenderer: row };
@@ -71,8 +49,9 @@ function listRow(item, path) {
 
 const rowFor = (item, path) =>
     item.kind === 'switch' ? switchRow(item)
-        : item.kind === 'choice' ? choiceRow(item, path)
-            : listRow(item, path);
+        : item.kind === 'choice'
+            ? openerRow(item, path, () => `${item.prefix}: ${chosenLabel(item)}`)
+            : openerRow(item, path, () => chosenSummary(item));
 
 const category = (categoryId, title, items) => ({
     settingCategoryCollectionRenderer: {
@@ -168,22 +147,29 @@ function takeMoved(items) {
         if (found) reachable[found.categoryId] = true;
     });
 
-    const taken = {};
+    const categories = items.map(categoryOf).filter((found) => found && Array.isArray(found.items));
 
-    for (let index = items.length - 1; index >= 0; index--) {
-        const found = categoryOf(items[index]);
-        if (!found || !Array.isArray(found.items)) continue;
+    const moved = categories.reduce((all, found) => all.concat(found.items
+        .map((row) => ({ row, move: moveFor(row, reachable) }))
+        .filter((entry) => entry.move)), []);
 
-        found.items = found.items.filter((row) => {
-            const move = moveFor(row, reachable);
-            if (!move) return true;
+    const taken = moved.reduce((byTarget, entry) => ({
+        ...byTarget,
+        [entry.move.to]: (byTarget[entry.move.to] || []).concat([entry])
+    }), {});
 
-            (taken[move.to] = taken[move.to] || []).push({ row, move });
-            return false;
-        });
+    categories.forEach((found) => {
+        found.items = found.items.filter((row) => !moveFor(row, reachable));
+    });
 
-        if (found.items.length === 0) items.splice(index, 1);
-    }
+    // Emptied categories are removed after the walk, not during it: splicing mid-iteration skips
+    // whatever followed each removal.
+    const emptied = items.filter((item) => {
+        const found = categoryOf(item);
+        return found && Array.isArray(found.items) && found.items.length === 0;
+    });
+
+    emptied.forEach((item) => items.splice(items.indexOf(item), 1));
 
     return taken;
 }
@@ -201,9 +187,22 @@ function putMoved(items, taken) {
     });
 }
 
+const SETTLING_ATTEMPTS = 20;
+const PATIENT_ATTEMPTS = 120;
+const SETTLING_EVERY = 250;
+const PATIENT_EVERY = 500;
+
+// The action row's component loads only when the first row is drawn, after this response is patched.
 function claimRows(attempt = 0) {
-    if (claimBooleanRows() || attempt > 20) return;
-    setTimeout(() => claimRows(attempt + 1), 250);
+    const claimed = claimBooleanRows();
+    const annotated = claimActionRows();
+    if (claimed && annotated) return;
+
+    const settling = attempt < SETTLING_ATTEMPTS;
+    if (!settling && !document.querySelector(ROWS)) return;
+    if (attempt >= SETTLING_ATTEMPTS + PATIENT_ATTEMPTS) return;
+
+    setTimeout(() => claimRows(attempt + 1), settling ? SETTLING_EVERY : PATIENT_EVERY);
 }
 
 function PatchSettings(response) {

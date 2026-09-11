@@ -1,52 +1,20 @@
-import { PLAYER, configChangeEmitter, configRead, every, onResponse, stop, until, waitFor, whenPlayer } from '../../framework/index.js';
+import { PLAYER, configChangeEmitter, configRead, every, onResponse, until, waitFor, whenPlayer } from '../../framework/index.js';
 import { NAMED, chooseQuality } from './qualityLadder.js';
-import { LIMITS, shouldAsk } from './askBudget.js';
+import { rungToAsk } from './qualityAsk.js';
 import { QUALITY, liftCeiling, seedPreferredQuality } from './qualitySeed.js';
 
-// Keeps the playing video on the preferred rung: pinned at attach, settled after each player
-// response, re-checked on a heartbeat.
+// Tells each playback which rung it prefers: as soon as its ladder is known, and again if the
+// ladder grows. Checked after each player response and on a heartbeat.
 
 const CHECK_INTERVAL = 3000;
 
 const SETTLING_EVERY = 250;
 const SETTLING_FOR = 8000;
 
-// Seconds. A video whose position jumps this far backwards has looped, and a loop is a fresh
-// video as far as the choice is concerned.
-const RESTART_JUMP = 2;
-
 function watchPreferredQuality() {
-    const held = {
-        player: null,
-        lastVideoId: null,
-        lastTime: 0,
-        pinned: null,
-        target: null,
-        attempts: 0,
-        askedAt: 0,
-        // Without this, a quality chosen from the player's own menu is overridden on the next tick.
-        settledOn: null
-    };
-
-    const forget = () => {
-        held.target = null;
-        held.attempts = 0;
-        held.askedAt = 0;
-        held.settledOn = null;
-    };
-
-    const startedOver = (player) => {
-        const id = player.getVideoData?.()?.video_id;
-        const time = player.getCurrentTime?.() ?? 0;
-        const looped = time < RESTART_JUMP && time + RESTART_JUMP < held.lastTime;
-
-        held.lastTime = time;
-
-        if (id === held.lastVideoId && !looped) return false;
-
-        held.lastVideoId = id;
-        return true;
-    };
+    // Keyed on the cpn, because the player keeps a choice on the data of the playback it was made
+    // for, and a Next passes through a copy of that data which is then thrown away.
+    const held = { player: null, playback: null, asked: null };
 
     // Shorts are vertical and short; forcing 2160p on one spends the link on a video that was
     // never going to show it.
@@ -58,55 +26,32 @@ function watchPreferredQuality() {
         }
     };
 
-    const askFor = (player, chosen, current) => {
-        const again = chosen === held.target;
-
-        const state = {
-            current,
-            wanted: chosen,
-            again,
-            attempts: held.attempts,
-            askedAt: held.askedAt
-        };
-
-        if (!shouldAsk(state, Date.now(), LIMITS)) return;
-
-        player.setPlaybackQualityRange(chosen, chosen);
-        held.target = chosen;
-        held.attempts = again ? held.attempts + 1 : 1;
-        held.askedAt = Date.now();
-    };
+    // A preview on a shelf plays in this same player, which YouTube caps at 480p for a box a
+    // fraction of the screen.
+    const onWatchPage = () => String(location.hash).indexOf('#/watch') === 0;
 
     const applyPreference = (player) => {
-        if (startedOver(player)) forget();
+        const data = player.getVideoData?.() || {};
+        const playback = data.cpn || data.video_id;
+
+        if (playback !== held.playback) {
+            held.playback = playback;
+            held.asked = null;
+        }
 
         const preference = configRead(QUALITY);
         if (!preference || preference === 'auto') return;
-        if (isShorts(player)) return;
+        if (!onWatchPage() || isShorts(player)) return;
 
-        const chosen = chooseQuality(preference, player.getAvailableQualityData());
-        if (!chosen) return;
+        const wanted = rungToAsk({
+            chosen: chooseQuality(preference, player.getAvailableQualityData()),
+            preferred: player.getPreferredQuality?.(),
+            asked: held.asked
+        });
+        if (!wanted) return;
 
-        // The ladder grows after playback starts, so a settlement holds only while the chosen rung
-        // is unchanged.
-        if (held.settledOn === chosen) return;
-        held.settledOn = null;
-
-        if (held.pinned === chosen) {
-            held.target = held.pinned;
-            held.attempts = 1;
-        }
-        held.pinned = null;
-
-        const current = player.getPlaybackQuality();
-
-        if (current === chosen) {
-            held.attempts = 0;
-            held.settledOn = chosen;
-            return;
-        }
-
-        askFor(player, chosen, current);
+        player.setPlaybackQualityRange(wanted, wanted);
+        held.asked = wanted;
     };
 
     // The one point early enough to be sure the first segment fetched is the right one. A rung the
@@ -118,7 +63,6 @@ function watchPreferredQuality() {
 
         try {
             player.setPlaybackQualityRange(named, named);
-            held.pinned = named;
         } catch (e) {
             console.warn('[tube] could not pin the preferred quality:', e);
         }
@@ -130,7 +74,6 @@ function watchPreferredQuality() {
         held.player = player;
         player.addEventListener('onStateChange', tick);
         pinNamed(player);
-        forget();
         tick();
     };
 
@@ -157,22 +100,13 @@ function watchPreferredQuality() {
         // So the next video opens on the new setting rather than being corrected into it.
         seedPreferredQuality();
         if (configRead(QUALITY) === 'auto') liftCeiling();
-        forget();
         tick();
     });
 
     // The three second heartbeat is far too coarse to land inside the window between the response
-    // arriving and the player having read it, so the response opens a burst of its own. It is only
-    // read — the rungs on offer are left alone, so the quality menu keeps them all.
-    const settleQuickly = (response) => {
-        const videoId = response.videoDetails?.videoId;
-
-        stop('quality settling');
-        until('quality settling', SETTLING_EVERY, () => {
-            tick();
-            if (held.lastVideoId === videoId && held.settledOn !== null) stop('quality settling');
-        }, SETTLING_FOR);
-    };
+    // arriving and the player having read it, so the response opens a burst of its own. It runs its
+    // whole length: the first playback it sees after a Next may be the copy that is thrown away.
+    const settleQuickly = () => until('quality settling', SETTLING_EVERY, tick, SETTLING_FOR);
 
     onResponse('preferred quality', ['streamingData'], settleQuickly);
 

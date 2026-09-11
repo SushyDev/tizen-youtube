@@ -1,5 +1,5 @@
 import { chooseQuality } from '../mods/player/qualityLadder.js';
-import { shouldAsk } from '../mods/player/askBudget.js';
+import { rungToAsk } from '../mods/player/qualityAsk.js';
 
 const results = [];
 function check(name, ok, detail) {
@@ -72,35 +72,29 @@ const LADDER = [
 }
 
 {
-    const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
-    const at = (over) => Object.assign(
-        { current: 'hd1080', wanted: 'hd2160', again: false, attempts: 0, askedAt: 0 }, over || {}
-    );
+    const ask = (over) => rungToAsk(Object.assign({ chosen: 'hd2160', preferred: 'auto', asked: null }, over || {}));
 
-    check('already on the wanted rung asks nothing',
-        shouldAsk(at({ current: 'hd2160' }), 10000, LIMITS) === false, 'expected false');
+    // Half the videos opened with Next on the set sat here, left on Auto because Auto had already
+    // reached the top when the ladder first appeared.
+    check('a new playback is told even when the player is already on its rung',
+        ask() === 'hd2160', JSON.stringify(ask()));
 
-    check('a rung we are not on is asked for',
-        shouldAsk(at(), 10000, LIMITS) === true, 'expected true');
+    check('what a new playback prefers is the player\'s default, not a choice',
+        ask({ chosen: 'hd1080', preferred: 'hd1440' }) === 'hd1080', 'expected hd1080');
 
-    check('nothing to want asks nothing',
-        shouldAsk(at({ wanted: null }), 10000, LIMITS) === false, 'expected false');
+    check('a playback is told once',
+        ask({ asked: 'hd2160', preferred: 'hd2160' }) === null, 'expected null');
 
-    check('the same rung is not asked for twice in a row too quickly',
-        shouldAsk(at({ again: true, attempts: 1, askedAt: 9000 }), 10000, LIMITS) === false,
-        'expected false');
+    check('a ladder that grows is followed while what was said stands',
+        ask({ asked: 'hd1080', preferred: 'hd1080' }) === 'hd2160', 'expected hd2160');
 
-    check('the same rung is asked again once the delay has passed',
-        shouldAsk(at({ again: true, attempts: 1, askedAt: 1000 }), 10000, LIMITS) === true,
-        'expected true');
+    check('and before the player has taken in what was said',
+        ask({ asked: 'hd1080', preferred: 'auto' }) === 'hd2160', 'expected hd2160');
 
-    check('a rung the player will not take is given up on',
-        shouldAsk(at({ again: true, attempts: 3, askedAt: 1000 }), 10000, LIMITS) === false,
-        'expected false');
+    check('a rung picked from the menu is left alone',
+        ask({ asked: 'hd1080', preferred: 'hd720' }) === null, 'expected null');
 
-    check('a different rung is asked for even after giving up on the last',
-        shouldAsk(at({ wanted: 'hd1440', attempts: 3, askedAt: 1000 }), 10000, LIMITS) === true,
-        'expected true');
+    check('nothing to want asks nothing', ask({ chosen: null }) === null, 'expected null');
 }
 
 const failed = results.filter((r) => !r).length;

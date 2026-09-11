@@ -11,8 +11,8 @@ const BANDWIDTH_KEY = 'yt-player-bandwidth';
 const CEILING_KEY = 'yt-player-quality';
 
 // Bytes per second. A named rung is pinned by the watcher as well, so its estimate need only be
-// plausible. `highest` has nothing else forcing its hand, so it is told the link is larger than
-// any stream could use — ABR measures the truth within a segment or two either way.
+// plausible. `highest` has no rung to pin until its ladder arrives, so until then it is told the
+// link is larger than any stream could use — ABR measures the truth within a segment or two.
 const SEEDED_BYTES_PER_SECOND = 6250000;
 const UNCAPPED_BYTES_PER_SECOND = 1250000000;
 const REMEMBERED_FOR_MS = 30 * 24 * 60 * 60 * 1000;

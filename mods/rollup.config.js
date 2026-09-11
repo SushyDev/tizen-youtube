@@ -6,10 +6,11 @@ import commonjs from '@rollup/plugin-commonjs';
 import replace from '@rollup/plugin-replace';
 import json from '@rollup/plugin-json';
 
-import { load } from '../tools/config.js';
+import { load, gitStamp } from '../tools/config.js';
 
 const config = load();
-const { version, commit, tree } = config;
+const { version } = config;
+const { commit, tree } = gitStamp();
 
 const ENGINE = 'Chrome 63';
 const ECMA = 2017;
@@ -36,7 +37,7 @@ export default {
                 __TUBE_ORIGIN__: config.origin,
                 __TUBE_VERSION__: version,
                 __TUBE_COMMIT__: commit,
-                __TUBE_TREE__: tree
+                __TUBE_TREE__: process.env.ROLLUP_WATCH === 'true' ? 'watch' : tree
             }
         }),
         getBabelOutputPlugin({

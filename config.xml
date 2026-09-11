@@ -4,8 +4,7 @@
     <tizen:allow-navigation href="*"/>
     <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
-    <!-- Never loaded: nativeID hands the launch to the container, as the comment below says. It
-         is here because a widget will not install without a start file. -->
+    <!-- A widget will not install without a start file; nativeID means it never runs. -->
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
     <feature name="http://tizen.org/feature/web.service"/>

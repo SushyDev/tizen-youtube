@@ -1,13 +1,5 @@
 'use strict';
 
-// The app off the television. There is no page of ours to serve any more — the set launches
-// Cobalt and the service is the whole of what we ship — so this starts the two things a browser
-// needs to stand in for one: the userscript watcher, and the service that injects it.
-//
-//   npm run dev        then open http://localhost:8099/tv
-//
-// The service is the proxy, so that URL is YouTube with the userscript already in it.
-
 const { spawn } = require('child_process');
 const { createServer } = require('net');
 const { join } = require('path');
@@ -16,14 +8,13 @@ const ui = require('./ui.js');
 const { ROOT } = require('./config.js');
 const ports = require('../service/lib/ports.js');
 
-// A desktop Chrome asking YouTube for the TV site gets the desktop one back. This is what the
-// sets actually send.
+// YouTube serves the TV site only to a TV user agent.
 const TV_USER_AGENT = 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 '
     + '(KHTML, like Gecko) 94.0.4606.31/6.5 TV Safari/537.36';
 
-const COLOURS = { mods: '\x1b[35m', svc: '\x1b[33m' };
+const COLOURS = { mods: ui.style.magenta, svc: ui.style.yellow };
 
-const children = [];
+const running = { children: [] };
 
 const portIsFree = (port) => new Promise((resolve) => {
     const probe = createServer();
@@ -37,10 +28,10 @@ const relay = (label, stream) => {
 
     stream.on('data', (chunk) => {
         const lines = (held.partial + chunk.toString()).split('\n');
-        held.partial = lines.pop();
+        held.partial = lines[lines.length - 1];
 
-        lines.filter((line) => line.trim()).forEach((line) => {
-            process.stdout.write(`  ${COLOURS[label]}${label}\x1b[0m  ${line.trim()}\n`);
+        lines.slice(0, -1).filter((line) => line.trim()).forEach((line) => {
+            process.stdout.write(`  ${COLOURS[label](label)}  ${line.trim()}\n`);
         });
     });
 };
@@ -60,12 +51,14 @@ const start = (label, command, args, options) => {
         if (code) ui.fail(label, `exited with code ${code}`);
     });
 
-    children.push(child);
+    running.children = running.children.concat(child);
     return child;
 };
 
 const stopEverything = () => {
-    children.splice(0).forEach((child) => child.kill());
+    const children = running.children;
+    running.children = [];
+    children.forEach((child) => child.kill());
 };
 
 const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'rollup.config.js', '-w'], {

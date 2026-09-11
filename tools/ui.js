@@ -17,6 +17,7 @@ const style = {
     green: paint('32'),
     yellow: paint('33'),
     blue: paint('34'),
+    magenta: paint('35'),
     cyan: paint('36')
 };
 

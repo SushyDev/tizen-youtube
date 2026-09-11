@@ -26,9 +26,6 @@ const cobalt = cobaltIfItLoads();
 
 const isTV = typeof tizen !== 'undefined';
 
-// Which container slot this build claims. The platform launches Cobalt and never runs our own
-// content, so nothing of ours has a page: this is the whole of the app, and the value is here to
-// be reported rather than acted on.
 const containerRoute = cobalt ? cobalt.container() : null;
 
 const platformVersion = isTV
@@ -111,8 +108,8 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
-// The postmortem log over the network. Inside the container there is no console and no dev bridge,
-// so on those sets this is the only way to find out what the service did.
+// Inside the container there is no console and no dev bridge, so this route is the only way to
+// read what the service did.
 app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });

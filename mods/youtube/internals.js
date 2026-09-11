@@ -36,20 +36,9 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
-// A component carries its custom-element name as a static, but which one holds it varies: `S` on
-// the setting rows, `K` on the About panel. Matched by value, so neither name has to be known.
+// `S` is the component's custom-element name; survives releases that rename the export.
 const findComponent = (tag) => {
-    const named = (value) => Object.getOwnPropertyNames(value).some((name) => {
-        try {
-            return value[name] === tag;
-        } catch (e) {
-            return false;
-        }
-    });
-
-    const match = entries().find(([, value]) =>
-        typeof value === 'function' && !!value.prototype && named(value));
-
+    const match = entries().find(([, value]) => typeof value === 'function' && value.S === tag);
     return match ? match[1] : null;
 };
 

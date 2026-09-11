@@ -1,6 +1,5 @@
 import { configRead, configChangeEmitter } from '../config.js';
 import { DEV_TOOLS } from '../dev/tools.js';
-import { measured } from './playbackStats.js';
 
 const REPORT_EVERY = 1000;
 const LISTEN_EVERY = 200;
@@ -67,7 +66,6 @@ const reading = () => {
         dropped: quality ? quality.droppedVideoFrames : null,
         corrupted: quality ? quality.corruptedVideoFrames : null,
 
-        measured: measured(),
         evaluated: held.lastEval,
 
         mediaTime: +video.currentTime.toFixed(2),

@@ -1,12 +1,5 @@
 'use strict';
 
-// Routing the remote inspector's socket.
-//
-// It has to arrive under the page's own origin. Cobalt sends HTTP through --proxy but not
-// WebSockets, so a socket opened straight to the laptop bypasses the proxy, cannot reach the LAN
-// from inside the container, and closes 1006 — measured on the set. Addressed to youtube.com it
-// comes through our own TLS front, and this is what turns it back towards the inspector.
-
 const assert = require('assert');
 
 const chii = require('../dev/chii.js');

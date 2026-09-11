@@ -9,6 +9,7 @@
 | `npm run typecheck` | `tsc --noEmit` on its own |
 | `npm test` | Lint, types, then the userscript and service suites |
 | `npm run package` | Build an unsigned `.wgt` for Tizen Homebrew |
+| `npm run deploy` | Package a dev build and install it on the set; needs `TUBE_DEV_TOKEN` |
 | `npm run release` | Stage `release/origin/` — the userscript, the language names and `latest.json` |
 | `npm run dev` | YouTube with the mods in a browser, no hardware needed |
 | `npm run dev:service` | The service off-TV, on `:8099` |
@@ -26,16 +27,16 @@ container and closes 1006.
 
 ```
 npm run chii                                    # leave it running
-TUBE_CHII=192.168.1.103:8711 npm run deploy     # bake the address into the widget
+TUBE_CHII=<laptop-ip>:8711 npm run deploy       # bake the address into the widget
 ```
 
 It attaches only when asked, and forgets being asked the moment it has read it: an inspector that
 attaches on every boot is one bad build away from a television that will not start, and the only
 way back from that is a reinstall. Arm it through the dev bridge, then reopen the app on the set —
-installing does not reload the page.
+the switch is read only when the app starts.
 
 ```
-curl -X POST http://192.168.1.29:8097/eval -H 'x-tube-token: tvdebug2026' \
+curl -X POST http://<tv-ip>:8097/eval -H "x-tube-token: $TUBE_DEV_TOKEN" \
      --data-binary "localStorage.setItem('tube.inspector', 'on')"
 ```
 

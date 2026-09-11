@@ -294,12 +294,9 @@ const stageOrFail = (content) => {
     }
 };
 
-// Stopping the container and starting it again, which is the only way a page picks up a new build.
-// Installing restarts *this service* but leaves the container running the bundle it already has —
-// verified on the set, where the page kept its old start_time across three installs in a row.
-//
-// The kill has to name the container's own context: our own appId is what the platform launches,
-// but what is running is com.samsung.tv.cobalt-yt, and killing the wrong one does nothing.
+const LAUNCH_AFTER_KILL = 1200;
+
+// Kills the cobalt-yt context as well as ours, because that context holds the running bundle.
 const relaunch = (done) => {
     if (typeof tizen === 'undefined') return done(new Error('not on a television'));
 
@@ -319,12 +316,11 @@ const relaunch = (done) => {
 
         if (!running.length) return start();
 
-        // Killed one at a time; the launch waits for the last answer either way, because a context
-        // that refuses to die must not hold up the start.
+        // The launch waits for every kill to answer, success or failure.
         const remaining = { count: running.length };
         const finished = () => {
             remaining.count -= 1;
-            if (remaining.count <= 0) setTimeout(start, 1200);
+            if (remaining.count <= 0) setTimeout(start, LAUNCH_AFTER_KILL);
         };
 
         return running.forEach((context) => {

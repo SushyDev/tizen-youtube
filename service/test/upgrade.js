@@ -1,15 +1,5 @@
 'use strict';
 
-// WebSockets through the proxy.
-//
-// The container reaches the network only through us, and node delivers an upgrade as its own
-// `upgrade` event — express never sees it. Nothing listened, so every WebSocket the page opened
-// was accepted at the TCP level and then never answered. Found while attaching a remote inspector,
-// but nothing about it is dev-only.
-//
-// No websocket library here: an upgrade is an HTTP request with two headers and a 101, and using
-// raw sockets is what makes this a test of the proxy rather than of a client.
-
 const http = require('http');
 const net = require('net');
 

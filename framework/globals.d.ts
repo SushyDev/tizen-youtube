@@ -27,7 +27,7 @@ interface Window {
     /** Set by the proxy before our script runs; false means it patched the page itself. */
     __TUBE_NATIVE_PROXY_PATCHES__?: boolean;
 
-    /** Dev builds only: true while a remote inspector is attached, which loosens parentNode. */
+    /** Dev builds only: set when an inspector attaches and kept until reload; loosens parentNode. */
     __tubeInspecting?: boolean;
 
     /** Dev builds only: JSON.parse/stringify as they were before we took them over. */

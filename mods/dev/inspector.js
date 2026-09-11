@@ -1,32 +1,15 @@
-import { after, nativeJson } from '../../framework/index.js';
+import { after } from '../../framework/index.js';
 import { shim } from './domShims.js';
 
-// The remote inspector, attached once the app is up.
-//
-// Not injected into the HTML: chii's target script hooks console, XHR and the DOM, and doing that
-// while kabuki is still booting leaves a black screen — reproduced twice on the set, once with the
-// script served from the laptop and once from our own origin, so it is the timing rather than
-// where it comes from.
-//
-// Same-origin on purpose. Cobalt sends HTTP through --proxy but not WebSockets, so a socket opened
-// straight to the laptop bypasses the proxy, cannot reach the LAN from inside the container, and
-// closes 1006. Asked for under youtube.com, both the script and the socket it derives travel the
-// one route out of that page that works, and the service forwards them on.
+// Same-origin: Cobalt proxies HTTP but not WebSockets.
 const MOUNT = '/__tube/chii/target.js';
 
-// Long enough that the feed has drawn. The inspector is for looking at a running app, so nothing
-// is lost by arriving late, and arriving early costs the whole page.
+// Attaching while kabuki boots blacks the screen.
 const ATTACH_AFTER = 6000;
 
-// Off unless asked for, and remembered across launches. An inspector that attaches on every boot
-// is one bad build away from a television that will not start, and the only way back from that is
-// a reinstall — so arming it is a decision, not a default.
 const SWITCH = 'tube.inspector';
 
-// One shot. The switch is cleared the moment it is read, so an inspector that takes the page down
-// takes it down once — the next launch is clean without anyone having to reach the set. Learned the
-// hard way: a sticky flag plus a target script that breaks the dev bridge is a television that can
-// only be recovered by reinstalling.
+// Cleared on read so a crashing inspector costs one launch.
 const wanted = () => {
     try {
         const asked = window.localStorage.getItem(SWITCH) === 'on';
@@ -34,17 +17,6 @@ const wanted = () => {
         return asked;
     } catch (e) {
         return false;
-    }
-};
-
-// Handed to the page so a debugger can serialise through the unpatched pair. Ours run a handler
-// per parse, which is the wrong thing to have in the path of a tool that is trying to observe the
-// page rather than us.
-const offerNativeJson = () => {
-    try {
-        window.__tubeNativeJSON = nativeJson();
-    } catch (e) {
-        // Nothing depends on this beyond convenience.
     }
 };
 
@@ -61,20 +33,15 @@ const attach = () => {
     document.head.appendChild(script);
 };
 
-// Asked for first, so a build with no inspector configured does nothing at all rather than
-// appending a script tag that 404s on every launch.
 const start = () => {
-    // Offered whether or not the inspector attaches: a dev build should always be able to reach
-    // the unpatched pair, including when the debugger is being driven by hand.
-    offerNativeJson();
-
     if (!wanted()) return;
 
     after('inspector', ATTACH_AFTER, () => {
+        // Probed first so a build without an inspector appends no dead script tag.
         fetch(MOUNT)
             .then((answer) => (answer.ok ? attach() : undefined))
             .catch(() => undefined);
     });
 };
 
-export { start, attach, SWITCH };
+export { start };

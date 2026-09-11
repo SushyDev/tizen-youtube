@@ -1,19 +1,8 @@
-// The two loosenings a debugger needs from this engine, and what each one is worth.
-//
-// The parentNode one is the reason the Elements panel ever drew. kabuki instruments
-// Text.prototype.data with a setter whose last two lines walk through this.parentNode, and every
-// node a debugger builds is detached at the moment it is first written to — so DOM.enable, the
-// first DOM command of a session, threw and the panel stayed empty every time. Reproduced here in
-// the shape it has on the set: the assignment lands, the bookkeeping after it does not.
-//
-// The range one is smaller: this engine has no Range and no document.createRange whatsoever.
-
 import assert from 'assert';
 
 const PARENTS = new Map();
 
-// Stands in for Node.prototype, whose parentNode getter is configurable on the set — which is the
-// only reason any of this is possible, since Text.prototype.data is not.
+// Stands in for Node.prototype: its parentNode is configurable, Text.prototype.data is not.
 const nodePrototype = {};
 
 Object.defineProperty(nodePrototype, 'parentNode', {
@@ -77,8 +66,6 @@ const check = (name, run) => {
     }
 };
 
-// What it was like before, so a later change that quietly stops shimming is a failure here rather
-// than an empty panel on the television.
 check('the defect: writing to a detached node throws through parentNode', () => {
     assert.throws(() => { textFor('before').data = 'written'; });
 });
@@ -144,7 +131,11 @@ check('nothing is loosened while no inspector is attached', () => {
 });
 
 check('an engine that already has createRange keeps its own', () => {
+    const own = () => null;
+    document.createRange = own;
+
     assert.strictEqual(shimRange(), false);
+    assert.strictEqual(document.createRange, own);
 });
 
 check('a range answers with the node it was given', () => {

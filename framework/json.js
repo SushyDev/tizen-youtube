@@ -98,16 +98,12 @@ const keepAdopting = (forMs) => {
     until('json adoption', ADOPTION_INTERVAL, adopt, forMs);
 };
 
-// The pair as they were before we took them over. A remote debugger speaks CDP as JSON, and
-// serialising that through our own hooks measures us rather than the page — so it is handed these.
-const native = { parse: null, stringify: null };
+const state = { intercepted: false, parse: null, stringify: null };
 
 const nativeJson = () => ({
-    parse: native.parse || JSON.parse,
-    stringify: native.stringify || JSON.stringify
+    parse: state.parse || JSON.parse,
+    stringify: state.stringify || JSON.stringify
 });
-
-const state = { intercepted: false };
 
 const interceptJson = () => {
     if (state.intercepted) return;
@@ -116,8 +112,8 @@ const interceptJson = () => {
     const parse = JSON.parse;
     const stringify = JSON.stringify;
 
-    native.parse = parse;
-    native.stringify = stringify;
+    state.parse = parse;
+    state.stringify = stringify;
 
     JSON.parse = function () {
         const response = parse.apply(this, arguments);

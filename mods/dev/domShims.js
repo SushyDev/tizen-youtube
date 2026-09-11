@@ -1,22 +1,8 @@
-// What this engine and this page cannot give a debugger. Two things, both measured on the set.
-//
-// They are loosenings of the DOM that only make sense while something is inspecting it, which is
-// why they sit behind the inspector rather than in the framework: nothing else should want them.
-//
-// 1. kabuki instruments Text.prototype.data, and its setter is:
-//
-//      set(b) { this.textContent = b; this.parentNode.appendChild(a); this.parentNode.removeChild(a); }
-//
-//    The assignment succeeds; the bookkeeping after it throws on a detached node, which is every
-//    node a debugger builds before attaching it. That threw on DOM.enable — the first DOM command
-//    — so the Elements panel was always empty. Text.prototype.data is non-configurable and cannot
-//    be wrapped, but parentNode can: a detached text node is handed a throwaway parent, and those
-//    two lines become harmless. Told only while the inspector is attached, because a detached node
-//    claiming a parent is a lie and only one caller cannot cope with the truth.
-//
-// 2. There is no Range and no document.createRange at all. Enough of one to be asked for a node.
+// DOM behaviour a debugger needs that this engine lacks.
+
 const holder = { element: null };
 
+// kabuki's Text.prototype.data setter dereferences parentNode, which is null on detached nodes.
 const shimParentNode = () => {
     const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'parentNode');
     if (!descriptor || !descriptor.get || !descriptor.configurable) return false;
@@ -68,8 +54,6 @@ const rangeFor = () => {
 
 const shimRange = () => {
     if (typeof document.createRange !== 'undefined') return false;
-    // Deliberately partial: a Range with the handful of members a debugger asks for, on an engine
-    // that has none at all. The cast says that is intended rather than overlooked.
     document.createRange = /** @type {() => Range} */ (/** @type {unknown} */ (rangeFor));
     return true;
 };

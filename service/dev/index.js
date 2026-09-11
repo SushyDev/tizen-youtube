@@ -52,9 +52,6 @@ const pageRoutes = (app) => {
 };
 
 const routes = (app, { policies, state, knobs, relaunch }) => {
-    // Stop the container and start it again. Installing restarts the service but leaves the
-    // container on the bundle it already had, so without this a new build can be installed three
-    // times over and change nothing on screen.
     app.get('/__tube/dev/relaunch', (_, res) => {
         if (!relaunch) return res.status(501).json({ ok: false, why: 'no container route on this set' });
 

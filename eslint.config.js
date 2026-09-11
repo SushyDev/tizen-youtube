@@ -43,8 +43,6 @@ const BROWSER_GLOBALS = {
     localStorage: 'readonly',
     Element: 'readonly',
     Node: 'readonly',
-    Text: 'readonly',
-    CharacterData: 'readonly',
     Event: 'readonly',
     CustomEvent: 'readonly',
     MutationObserver: 'readonly',

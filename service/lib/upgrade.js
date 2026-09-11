@@ -1,15 +1,6 @@
 'use strict';
 
-// WebSockets through the proxy.
-//
-// The container reaches the network only through us — `--proxy` sends every request here — and an
-// upgrade is not an ordinary request: node emits it as `upgrade` on the server and express never
-// sees it. Nothing listened for that, so every WebSocket the page opened was accepted at the TCP
-// level and then simply never answered. Not refused, not logged: hung. A page waiting on one waits
-// for ever, which is the worst shape a failure can take.
-//
-// Found while trying to attach a remote inspector, but it is not a dev-only fault — anything on
-// the page that opens a socket hits it.
+// Forwards WebSocket upgrades, which express never sees.
 
 const http = require('http');
 const https = require('https');
@@ -49,16 +40,12 @@ const targetOf = (req) => {
     };
 };
 
-const headersFor = (req, target) => Object.keys(req.headers).reduce((all, key) => {
-    if (key === 'proxy-connection') return all;
-    all[key] = req.headers[key];
-    return all;
-}, { host: `${target.host}${target.port === 80 || target.port === 443 ? '' : `:${target.port}`}` });
+const headersFor = (req, target) => Object.assign(
+    { host: `${target.host}${target.port === 80 || target.port === 443 ? '' : `:${target.port}`}` },
+    Object.fromEntries(Object.entries(req.headers).filter(([key]) => key !== 'proxy-connection'))
+);
 
-// A proxied socket is idle for long stretches by design — a debugger session says nothing while
-// nobody clicks — so nothing on the path may decide it has gone quiet. Keepalive probes hold it
-// open through anything counting idle time, and Nagle is off because a debugger is many tiny
-// writes where latency is the whole experience.
+// Idle timeouts off: a WebSocket can be silent for minutes.
 const hold = (socket) => {
     if (!socket) return;
     socket.setTimeout(0);
@@ -66,9 +53,6 @@ const hold = (socket) => {
     socket.setKeepAlive(true, 30000);
 };
 
-// `rewrite` may claim an upgrade for somewhere other than the host it names, and returning null
-// leaves it to the ordinary routing. Passed in rather than known here, so this file stays ignorant
-// of anything only a dev build has.
 const attach = (server, options) => {
     const rewrite = (options && options.rewrite) || (() => null);
 
@@ -77,8 +61,6 @@ const attach = (server, options) => {
 
         const target = rewrite(req) || targetOf(req);
 
-        // Nothing to forward to. Ending the socket is the point: a client told "no" retries or
-        // reports, a client told nothing waits for ever.
         if (!target || !target.host) {
             socket.destroy();
             return;
@@ -115,10 +97,7 @@ const attach = (server, options) => {
             if (upstreamHead && upstreamHead.length) socket.write(upstreamHead);
             if (head && head.length) upstream.write(head);
 
-            // Counted in both directions. A socket that carries bytes one way only looks exactly
-            // like a working one from either end, and that is the shape this had to be able to
-            // tell apart.
-            const moved = { out: 0, back: 0 };
+            const moved = { out: 0, back: 0, closed: false };
 
             upstream.on('data', (chunk) => { moved.back += chunk.length; });
             socket.on('data', (chunk) => { moved.out += chunk.length; });
@@ -129,6 +108,9 @@ const attach = (server, options) => {
             postmortem.note('upgrade', `open ${target.host}:${target.port}${target.path}`);
 
             const close = () => {
+                if (moved.closed) return;
+                moved.closed = true;
+
                 postmortem.note('upgrade',
                     `closed ${target.host}:${target.port} — ${moved.out}B up, ${moved.back}B down`);
                 upstream.destroy();
@@ -141,9 +123,10 @@ const attach = (server, options) => {
             socket.on('close', close);
         });
 
-        // Answered rather than left hanging, whatever went wrong.
         outgoing.on('response', (answer) => {
             postmortem.note('upgrade', `${target.host}:${target.port} refused the upgrade (${answer.statusCode})`);
+            answer.resume();
+            outgoing.destroy();
             socket.destroy();
         });
 
@@ -158,4 +141,4 @@ const attach = (server, options) => {
     });
 };
 
-module.exports = { attach, targetOf };
+module.exports = { attach };

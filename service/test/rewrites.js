@@ -1,14 +1,5 @@
 'use strict';
 
-// Everything the proxy changes about a body or a header, which is text in and text out and so is
-// the part of it that can be exercised without a set.
-//
-// Two of these are denials rather than degradations, which is why they are checked rather than
-// read: Cobalt is served `default-src 'none'`, so a directive the policy does not name is refused
-// outright — a missing connect-src fails every cross-origin request the userscript makes before it
-// reaches the network, and a missing img-src refuses a substituted thumbnail while the fetch
-// beside it succeeds.
-
 const assert = require('assert');
 
 process.env.TUBE_PROXY_HOST = 'tv.example';
@@ -28,15 +19,13 @@ const check = (name, run) => {
     }
 };
 
-// -- the content security policy ------------------------------------------------------------
-
 check('connect-src is widened where it is named', () => {
     const out = rewrites.withOurGrants("default-src 'none'; connect-src 'self' https://x.example");
     assert.ok(/connect-src \*/.test(out), out);
     assert.ok(out.indexOf('https://x.example') === -1, 'the narrow list survived');
 });
 
-check('and added where it is not, because default-src none refuses what it omits', () => {
+check('and added where it is not', () => {
     const out = rewrites.withOurGrants("default-src 'none'; script-src 'self'");
     assert.ok(/connect-src \*/.test(out), out);
     assert.ok(/img-src \*/.test(out), out);
@@ -59,12 +48,10 @@ check('the nonce is read back out of the policy the page was served', () => {
     assert.strictEqual(rewrites.nonceOf("script-src 'self'"), null);
 });
 
-// -- the body -------------------------------------------------------------------------------
-
 check('the innertube host override is added ahead of the client name', () => {
     const out = rewrites.overrideInnertubeHost('{"INNERTUBE_CONTEXT_CLIENT_NAME":7}');
     assert.ok(out.indexOf('INNERTUBE_HOST_OVERRIDE') !== -1, out);
-    assert.ok(out.indexOf('"INNERTUBE_CONTEXT_CLIENT_NAME":7') !== -1, out);
+    assert.ok(out.indexOf('INNERTUBE_HOST_OVERRIDE') < out.indexOf('"INNERTUBE_CONTEXT_CLIENT_NAME":7'), out);
 });
 
 check('the one SABR media url is sent back through the proxy', () => {
@@ -74,15 +61,11 @@ check('the one SABR media url is sent back through the proxy', () => {
         'the url was left pointing straight at googlevideo');
 });
 
-// BotGuard's program url arrives inside a JSON string, so its quotes and slashes are escaped. A
-// pattern expecting a bare quote matches nothing and fails silently.
 check('the attestation program url is rewritten in its escaped form', () => {
     const escaped = '{\\"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\":\\"\\/\\/x.example\\/p\\"}';
     const out = rewrites.rewriteAttestation(escaped, 'https://www.youtube.com/tv_config');
-    assert.ok(out.indexOf('https:\\/\\/x.example') !== -1 || out.indexOf('https://x.example') !== -1, out);
+    assert.ok(out.indexOf('https:\\/\\/x.example') !== -1, out);
 });
-
-// -- experiment flags -------------------------------------------------------------------------
 
 check('a flag already in the blob is retuned in place', () => {
     flagOverrides.clear();
@@ -100,11 +83,9 @@ check('a flag not in the blob is added to the front of it', () => {
     flagOverrides.set('new_flag', 'true');
 
     const out = rewrites.retuneFlags('"serializedExperimentFlags\\":\\"other\\u003d1');
-    assert.ok(out.indexOf('new_flag\\u003dtrue') !== -1, out);
+    assert.strictEqual(out, '"serializedExperimentFlags\\":\\"new_flag\\u003dtrue\\u0026other\\u003d1');
     flagOverrides.clear();
 });
-
-// -- cookies -----------------------------------------------------------------------------------
 
 // __Secure- and __Host- prefixed cookies are refused over plain HTTP, so they are renamed in both
 // directions rather than dropped.

@@ -20,4 +20,3 @@ docs-internal/
 TODO.md
 test-results/
 playwright-report/
-.dev/e2e-cache/

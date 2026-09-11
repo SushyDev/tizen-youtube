@@ -3,23 +3,13 @@
 // The userscript in Cobalt, against real YouTube.
 //
 //   node test/cobalt/run.js [--image ghcr.io/…/cobalt:latest]
-//
-// What this is for, and the browser suite is not: the set is served `default-src 'none'`, where a
-// directive the policy omits is a refusal rather than a relaxation. Chromium reads an omitted
-// directive as permission, so a run there proves nothing about whether SponsorBlock can reach its
-// api — and that request being refused looks exactly like the data being wrong.
-//
-// The page is asked through the dev bridge, the same channel doctor-tv.js uses on a television.
-// Not the proxy's log: it only records requests that arrived over our own TLS, and in CI there is
-// no certificate to intercept with. Not Cobalt's debugger either, since the bridge already works
-// inside Cobalt and needs nothing from the engine.
 
 const { spawn } = require('child_process');
 const { join } = require('path');
 
 const ui = require('../../tools/report.js');
 const { ROOT } = require('../../tools/config.js');
-const { evaluate } = require('../../tools/bridge.js');
+const { AGENT } = require('../e2e/cobalt.js');
 
 const at = (flag, fallback) => {
     const found = process.argv.indexOf(flag);
@@ -31,9 +21,8 @@ const PORT = Number(process.env.TUBE_COBALT_PORT) || 8299;
 const DEV_PORT = Number(process.env.TUBE_DEV_PORT) || 8297;
 const TOKEN = process.env.TUBE_DEV_TOKEN || 'cobalt-ci';
 
-// What the container sends, so YouTube serves the page a set is served.
-const AGENT = 'Mozilla/5.0 (LINUX; Tizen/9.0/2025.20.1034877) Cobalt/25.lts.30.1034943-gold '
-    + '(unlike Gecko) v8/8.8.278.17-jit gles Evergreen-Full';
+process.env.TUBE_DEV_PORT = String(DEV_PORT);
+const { evaluate } = require('../../tools/bridge.js');
 
 const BOOTING = 90000;
 
@@ -63,9 +52,8 @@ const serve = () => spawn(process.execPath, ['index.js'], {
     })
 });
 
-// Loaded from the service directly rather than through --proxy: interception needs a certificate
-// authority the runner does not have, and without one every host is tunnelled and nothing is
-// dressed. --network host so the container reaches the service on the runner's own loopback.
+// Loaded from the service directly, because the runner has no certificate authority to
+// intercept with.
 const run = (said) => {
     const cobalt = spawn('docker', [
         'run', '--rm', '--network', 'host', IMAGE,

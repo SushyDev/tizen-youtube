@@ -5,9 +5,7 @@ import { asCobalt } from './cobalt.js';
 
 const SETTINGS_KEY = 'tube.settings';
 
-// The app itself, waited for attached rather than visible: it carries no box of its own, so
-// visibility never resolves. Not a tile either — signed out, which is all CI can be, YouTube opens
-// on its welcome screen rather than a feed.
+// Waited for attached, because ytlr-app has no box of its own.
 const APP = 'ytlr-app';
 
 const test = base.extend({
@@ -18,8 +16,6 @@ const test = base.extend({
         page.on('pageerror', (error) => failures.push(String(error.message)));
 
         const open = async (settings, path) => {
-            // Before the settings script, so the page is already the cut-down browser when our
-            // bundle reads them.
             await asCobalt(page);
 
             await page.addInitScript(([key, value]) => {
@@ -47,7 +43,6 @@ const switchOf = (page, name) => page.evaluate(
     name
 );
 
-// What the page asks for a video, which is where adblock does the part that actually works.
 const playerRequests = (page) => {
     const asked = [];
 
@@ -59,4 +54,4 @@ const playerRequests = (page) => {
     return asked;
 };
 
-export { test, expect, switchOf, playerRequests, APP, SETTINGS_KEY };
+export { test, expect, switchOf, playerRequests, APP };

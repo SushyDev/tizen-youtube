@@ -1,13 +1,4 @@
-# The built Cobalt, and what running it needs.
-#
-# Built by .github/workflows/cobalt-image.yaml, whose context is the youtube/cobalt checkout and
-# whose stage/ holds the binary, its content directory and any shared object beside it.
-#
-# On Cobalt's own unittest runtime, which is the image their Linux tests run in and so carries the
-# libraries a linux-x64x11 build links against. The packages below are its runtime counterparts
-# again, because a missing one fails at launch with nothing in the log but a loader error.
-
-FROM ghcr.io/youtube/cobalt/cobalt-linux-x64x11-unittest:25.lts
+FROM ghcr.io/youtube/cobalt/cobalt-linux-x64x11-unittest:25.lts@sha256:3f59ed4ff458daef063f696bbb311db42564bec81ea6d6d41a6d8f8249902fed
 
 RUN apt-get update -qqy \
     && apt-get install -qqy --no-install-recommends \
@@ -21,7 +12,5 @@ COPY stage /cobalt
 
 ENV DISPLAY=:99
 
-# Cobalt's own Xvfb invocation from docker/linux/xvfb, since a runner has no display for a port
-# that expects to draw on one.
 ENTRYPOINT ["/bin/sh", "-c", "Xvfb -ac -listen tcp :99 -noreset +extension GLX +render -screen 0 1920x1080x24 >/dev/null 2>&1 & exec \"$@\"", "--"]
 CMD ["/cobalt/cobalt"]

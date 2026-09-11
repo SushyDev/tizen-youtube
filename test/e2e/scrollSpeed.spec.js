@@ -1,16 +1,8 @@
-// Both states of a setting, end to end: localStorage, our mod, the getter it installs, and the
-// object kabuki reads it back out of.
-//
-// Each state is read at runtime rather than written down. The values a setting leaves alone come
-// from /tv_config, so they are YouTube's to change and differ by client — an earlier version of
-// this file asserted the 300ms a television is served and failed against the 250ms this one is.
-
 import { test, expect, switchOf } from './tube.js';
 
 const VERTICAL = 'verticalListDurationMs';
 const HORIZONTAL = 'horizontalListDurationMs';
 
-// The 2x rung, from mods/shell/scrollSpeed.js.
 const CHOSEN = { vertical: 110, horizontal: 60 };
 
 test('a chosen speed replaces the pacing, and Default leaves it', async ({ page, open }) => {
@@ -20,8 +12,7 @@ test('a chosen speed replaces the pacing, and Default leaves it', async ({ page,
         horizontal: await switchOf(page, HORIZONTAL)
     };
 
-    // Undefined is a real answer here: this switch is served to a television and not to this
-    // client, so Default leaving it alone means kabuki falls back to its own built-in.
+    // Default may read undefined, which means kabuki uses its built-in pacing.
     expect(theirs, 'Default answered with our own numbers').not.toEqual(CHOSEN);
 
     await open({ scrollSpeed: '2' });

@@ -8,12 +8,17 @@
 | `npm run build` | Userscript and service |
 | `npm run typecheck` | `tsc --noEmit` on its own |
 | `npm test` | Lint, types, then the userscript and service suites |
+| `npm run test:e2e` | The userscript against real YouTube, in Chromium cut down to the container |
+| `npm run test:cobalt` | The same in Cobalt itself, from the published image; needs Docker and a `TUBE_DEV=1` build |
 | `npm run package` | Build an unsigned `.wgt` for Tizen Homebrew |
+| `npm run audit` | Check what is inside the `.wgt`; `-- --release` fails on anything dev-only |
 | `npm run deploy` | Package a dev build and install it on the set; needs `TUBE_DEV_TOKEN` |
 | `npm run release` | Stage `release/origin/` — the userscript, the language names and `latest.json` |
 | `npm run dev` | YouTube with the mods in a browser, no hardware needed |
 | `npm run dev:service` | The service off-TV, on `:8099` |
 | `npm run chii` | Remote inspector for the page inside the container |
+| `npm run doctor:tv` | Ask a `TUBE_DEV=1` build on a set whether YouTube still has what the mods reach into — after a YouTube update, and before tagging a release |
+| `npm run probe:cobalt` | Ask a `TUBE_DEV=1` build on a set which browser APIs it lacks, for `test/e2e/cobalt.js` to take away |
 | `npm run version:set 1.2.0` | Set the version everywhere it is written |
 | `npm run clean` | Remove every build artefact |
 

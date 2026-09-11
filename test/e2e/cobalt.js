@@ -1,18 +1,5 @@
 // Chromium, cut down to what the container actually has.
-//
-// Measured on the set through the dev bridge, not assumed — tools/probe-cobalt.js is the script
-// that produced this list and re-runs against a live television when the firmware moves.
-//
-//   Cobalt/25.lts.30.1034943-gold  ·  v8/8.8.278.17-jit  ·  Tizen 9.0
-//
-// Without this the browser suite is testing a browser. Every environment bug this project has had
-// would pass unshimmed: startPage.js reached for history.replaceState, which Chromium has and the
-// container does not, and shipped a feature that threw on its first line.
-//
-// What cannot be reproduced here is named at the bottom rather than left to be discovered.
 
-// The whole History API. window.history in the container carries `length` and nothing else, which
-// is why kabuki assigns location.hash and wraps it in a try/catch.
 const NO_HISTORY = ['replaceState', 'pushState', 'back', 'forward', 'go'];
 
 const ABSENT = [
@@ -43,18 +30,14 @@ const ABSENT_UNDER = [
     ['Intl', 'ListFormat']
 ];
 
-// Reported by the container, and what YouTube is served by. A television is 1920x1080 at a device
-// pixel ratio of 2.
+// The user agent the set sends, which decides what YouTube serves.
 const AGENT = 'Mozilla/5.0 (LINUX; Tizen/9.0/2025.20.1034877) Cobalt/25.lts.30.1034943-gold '
     + '(unlike Gecko) v8/8.8.278.17-jit gles Evergreen-Full';
 
 const SCREEN = { width: 1920, height: 1080, ratio: 2 };
 
-// Runs before anything else on the page, so the app sees the cut-down browser from its first line.
 const asCobalt = (page) => page.addInitScript(([absent, absentOn, absentUnder, noHistory, screen]) => {
-    // Deleting is not enough and does not complain: replaceState lives on History.prototype, so
-    // `delete window.history.replaceState` removes nothing, returns true, and leaves the method
-    // reachable through the chain. What has to be checked is whether it is still readable.
+    // An inherited method survives delete, so anything still readable is shadowed with undefined.
     const drop = (owner, name) => {
         if (!owner) return;
 
@@ -84,16 +67,4 @@ const asCobalt = (page) => page.addInitScript(([absent, absentOn, absentUnder, n
     }));
 }, [ABSENT, ABSENT_ON, ABSENT_UNDER, NO_HISTORY, SCREEN]);
 
-// What the shim does not reach, so that a green run is not read as more than it is:
-//
-//   customElements and ShadowRoot   absent in the container and present here. Removing them stops
-//                                   kabuki rendering at all in Chromium, so the page under test
-//                                   would be a blank one.
-//   the key re-dispatch             kabuki rebuilds key events through a Tizen-only remapping
-//                                   table, and the copy loses `repeat`. A constructed
-//                                   KeyboardEvent carries it here and on the set, so the loss is
-//                                   kabuki's and only happens where the remapping runs.
-//   the renderer                    a real panel, a real decoder, and the cost of drawing on one.
-const NOT_REPRODUCED = ['customElements', 'ShadowRoot', 'key re-dispatch', 'render cost'];
-
-export { asCobalt, AGENT, NOT_REPRODUCED };
+export { asCobalt, AGENT };

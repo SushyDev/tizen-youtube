@@ -1,49 +1,12 @@
-// The feed dressers that had no test of their own.
-//
-// Each is a visitor over a response, so each is exercised through JSON.parse rather than by
-// calling it: registration, the walk that reaches it, and the setting it answers to are all part
-// of what can be wrong, and only the whole path covers them.
-//
-// Every one is checked in both states. A setting that reads the config but ignores it looks
-// exactly like a setting that works, until someone turns it off.
+// Drives each feed dresser through JSON.parse with its setting on and off.
 
 import assert from 'assert';
+import { check, withConfig, through, finish } from './harness.js';
 
-global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };
-global.window.JSON = JSON;
-global.location = { hash: '#/' };
-global.fetch = () => new Promise(() => { });
-
-const { configRead, configWrite } = await import('../framework/config.js');
 const { interceptJson } = await import('../framework/json.js');
 await import('../mods/feed/index.js');
 
 interceptJson();
-
-const results = [];
-
-const check = (name, run) => {
-    try {
-        run();
-        results.push(true);
-        console.log(`PASS  ${name}`);
-    } catch (failure) {
-        results.push(false);
-        console.log(`FAIL  ${name}\n      ${String(failure.message).split('\n').slice(0, 5).join('\n      ')}`);
-    }
-};
-
-const withConfig = (settings, run) => {
-    const before = Object.keys(settings).map((key) => [key, configRead(key)]);
-    Object.keys(settings).forEach((key) => configWrite(key, settings[key]));
-    try {
-        return run();
-    } finally {
-        before.forEach((entry) => configWrite(entry[0], entry[1]));
-    }
-};
-
-const through = (response) => JSON.parse(JSON.stringify(response));
 
 // A browse surface, which is the shape the walk descends to reach a tile.
 const surface = (items) => ({
@@ -88,8 +51,6 @@ const watched = (videoId, percent) => {
     return tile;
 };
 
-// -- shorts --------------------------------------------------------------------------------
-
 const SHORT = { tileRenderer: { tvhtml5ShelfRendererType: 'TVHTML5_TILE_RENDERER_TYPE_SHORTS' } };
 
 check('shorts are dropped from a row that mixes them with ordinary videos', () => {
@@ -104,8 +65,6 @@ check('and kept when the setting is on', () => {
         assert.strictEqual(tilesOf(through(surface([video('a'), SHORT]))).length, 2);
     });
 });
-
-// -- watched videos ------------------------------------------------------------------------
 
 check('a video watched past the threshold is dropped on a chosen page', () => {
     withConfig({
@@ -131,8 +90,6 @@ check('and kept with the setting off', () => {
         assert.strictEqual(tilesOf(through(surface([watched('seen', 95)]))).length, 1);
     });
 });
-
-// -- thumbnails ----------------------------------------------------------------------------
 
 const thumbnailOf = (out) => tilesOf(out)[0].tileRenderer.header.tileHeaderRenderer
     .thumbnail.thumbnails[0].url;
@@ -164,8 +121,6 @@ check('a thumbnail from another host is left alone', () => {
     });
 });
 
-// -- the whole-response dressers -------------------------------------------------------------
-
 check('end screen cards are dropped only when asked for', () => {
     withConfig({ enableHideEndScreenCards: true }, () =>
         assert.strictEqual(through({ endscreen: { x: 1 } }).endscreen, null));
@@ -192,5 +147,4 @@ check('are you still watching is dropped from the messages, and nothing else is'
         assert.strictEqual(through(messages()).messages.length, 2));
 });
 
-console.log(`\n${results.filter(Boolean).length}/${results.length} checks passed`);
-process.exit(results.every(Boolean) ? 0 : 1);
+finish();

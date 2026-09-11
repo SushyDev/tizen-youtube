@@ -1,29 +1,17 @@
-// The userscript against real YouTube, in a real browser.
-//
-// The service is the proxy that injects our bundle, so pointing a browser at it is the app minus
-// the television. What that last part costs is worth stating: Chromium is not Cobalt, and every
-// environment bug this project has hit lived in the gap between them — no History API, key events
-// re-dispatched without `repeat`, module chunks arriving after our script. A green run here says
-// the feature works, not that it works on a set.
-//
-// Port 8199 rather than the default: a dev service is usually already holding 8099.
-
 import { defineConfig, devices } from '@playwright/test';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { AGENT } from './cobalt.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// 8199 so a dev service on 8099 can keep running.
 const PORT = Number(process.env.TUBE_E2E_PORT) || 8199;
 const ROOT = join(HERE, '..', '..');
 
-// Read off the container rather than guessed at: this is the string the set sends, and what
-// YouTube decides to serve is decided by it.
-const TV_USER_AGENT = 'Mozilla/5.0 (LINUX; Tizen/9.0/2025.20.1034877) '
-    + 'Cobalt/25.lts.30.1034943-gold (unlike Gecko) v8/8.8.278.17-jit gles Evergreen-Full';
-
 export default defineConfig({
     testDir: HERE,
-    // YouTube is a live dependency: a run is allowed one retry before it counts as a failure.
+    outputDir: join(HERE, 'test-results'),
+    // One retry on CI, because YouTube is a live dependency.
     retries: process.env.CI ? 1 : 0,
     workers: 1,
     reporter: process.env.CI ? [['github'], ['list']] : [['list']],
@@ -32,13 +20,12 @@ export default defineConfig({
 
     use: {
         baseURL: `http://127.0.0.1:${PORT}`,
-        userAgent: TV_USER_AGENT,
         viewport: { width: 1280, height: 720 },
         trace: 'retain-on-failure',
         video: 'retain-on-failure'
     },
 
-    projects: [{ name: 'chromium', use: devices['Desktop Chrome'] }],
+    projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], userAgent: AGENT } }],
 
     webServer: {
         command: 'node service/index.js',
@@ -50,7 +37,7 @@ export default defineConfig({
         stderr: 'pipe',
         env: {
             TUBE_PROXY_PORT: String(PORT),
-            TUBE_DEV_UA: TV_USER_AGENT,
+            TUBE_DEV_UA: AGENT,
             TUBE_PLATFORM_VERSION: '9.0',
             TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
             TUBE_CACHE_DIR: join(ROOT, '.dev', 'e2e-cache')

@@ -1,19 +1,10 @@
 // That every feature is registered, reached, and survived contact with a real page.
-//
-// This is the thing only a browser can check. The unit suites import a mod and call it, so they
-// pass just as happily on one nobody registered in mods/index.js, and on one whose start() throws
-// — the phase runner catches that so a single feature cannot take the rest down, which means a
-// dead feature looks exactly like a working one. It cost two build-and-install rounds to find that
-// startPage.js was throwing on a History API the container does not have.
 
 import { test, expect, APP } from './tube.js';
 
 // What register.js says when a feature does not start, and when one registers too late to run.
 const BROKEN = /\[.+\] did not start:|\[register\] .+ arrived after boot/;
 
-// Defaults exercise almost nothing: a mod whose start() returns early when its setting is off
-// never reaches the line that breaks. This is every switch away from the value it ships with, so
-// each feature actually runs.
 const EVERYTHING_ON = {
     startupPage: 'FEsubscriptions',
     scrollSpeed: '2',
@@ -67,7 +58,7 @@ test('no feature failed to start, on the settings it ships with', async ({ page,
     expect(broken, `a feature did not start: ${broken.join(' | ')}`).toEqual([]);
 });
 
-test('nor with every setting turned away from its default', async ({ page, open }) => {
+test('nor with every feature switched on', async ({ page, open }) => {
     const said = watchConsole(page);
     await open(EVERYTHING_ON);
 

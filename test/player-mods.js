@@ -1,17 +1,8 @@
-// The player and shell dressers that had no test of their own.
-//
-// All three answer a setting, and all three are checked in both states: a dresser that reads the
-// config and ignores it is indistinguishable from one that works until someone turns it off.
-
 import assert from 'assert';
+import { check, withConfig, through, finish } from './harness.js';
 
-global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };
-global.window.JSON = JSON;
-global.location = { hash: '#/' };
-global.fetch = () => new Promise(() => { });
 global.document = { querySelector: () => null, addEventListener: () => undefined };
 
-const { configRead, configWrite } = await import('../framework/config.js');
 const { interceptJson } = await import('../framework/json.js');
 await import('../mods/player/codecs.js');
 await import('../mods/player/overlays.js');
@@ -19,33 +10,6 @@ await import('../mods/player/autoplay.js');
 await import('../mods/shell/guide.js');
 
 interceptJson();
-
-const results = [];
-
-const check = (name, run) => {
-    try {
-        run();
-        results.push(true);
-        console.log(`PASS  ${name}`);
-    } catch (failure) {
-        results.push(false);
-        console.log(`FAIL  ${name}\n      ${String(failure.message).split('\n').slice(0, 5).join('\n      ')}`);
-    }
-};
-
-const withConfig = (settings, run) => {
-    const before = Object.keys(settings).map((key) => [key, configRead(key)]);
-    Object.keys(settings).forEach((key) => configWrite(key, settings[key]));
-    try {
-        return run();
-    } finally {
-        before.forEach((entry) => configWrite(entry[0], entry[1]));
-    }
-};
-
-const through = (response) => JSON.parse(JSON.stringify(response));
-
-// -- codecs --------------------------------------------------------------------------------
 
 const streams = () => ({
     streamingData: {
@@ -78,8 +42,6 @@ check('a codec the video does not carry leaves every format alone', () => {
         assert.strictEqual(codecsIn(through(streams())).length, 3));
 });
 
-// -- player overlays -----------------------------------------------------------------------
-
 const overlays = () => ({
     playerOverlays: {
         playerOverlayRenderer: {
@@ -104,8 +66,6 @@ check('the shopping card goes when asked, and the watermark goes regardless', ()
             ['TIMELY_ACTION_TYPE_SHOPPING', 'TIMELY_ACTION_TYPE_UP_NEXT']));
 });
 
-// -- up next -------------------------------------------------------------------------------
-
 check('turning the up next card off stops the next video as well', () => {
     const response = () => ({
         playerOverlays: {
@@ -128,8 +88,6 @@ check('turning the up next card off stops the next video as well', () => {
         assert.strictEqual(out.playerOverlays.playerOverlayRenderer.timelyActionRenderers.length, 1);
     });
 });
-
-// -- the guide -----------------------------------------------------------------------------
 
 const guide = () => ({
     items: [{
@@ -156,5 +114,4 @@ check('hiding nothing leaves the guide as it came', () => {
         assert.deepStrictEqual(iconsIn(through(guide())), ['GAMING', 'SUBSCRIPTIONS', 'none']));
 });
 
-console.log(`\n${results.filter(Boolean).length}/${results.length} checks passed`);
-process.exit(results.every(Boolean) ? 0 : 1);
+finish();

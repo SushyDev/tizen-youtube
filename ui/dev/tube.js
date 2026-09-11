@@ -12,8 +12,6 @@ const PROXY_PORT = 8099;
 const TV_USER_AGENT = 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) 94.0.4606.31/6.5 TV Safari/537.36';
 
-const DEFAULT_PLATFORM_VERSION = '6.5';
-
 function portIsFree(port) {
     return new Promise((resolve) => {
         const probe = createServer();
@@ -88,7 +86,6 @@ const tubeService = ({ enabled }) => {
                         cwd: join(ROOT, 'service'),
                         env: {
                             TUBE_DEV_UA: process.env.TUBE_DEV_UA || TV_USER_AGENT,
-                            TUBE_PLATFORM_VERSION: process.env.TUBE_PLATFORM_VERSION || DEFAULT_PLATFORM_VERSION,
                             TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
                             TUBE_CACHE_DIR: join(ROOT, '.dev', 'cache'),
                             TUBE_DEV_INJECT: join(HERE, 'remote.js')

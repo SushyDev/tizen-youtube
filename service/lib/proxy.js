@@ -91,7 +91,7 @@ function restoreCookiePrefixes(cookieHeader) {
         .replace(/__LocalHost-/g, '__Host-');
 }
 
-function create(platformVersion) {
+function create() {
     const app = express();
 
     app.use((req, res, next) => {

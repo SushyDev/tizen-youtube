@@ -3,9 +3,8 @@ const PROXY_URL = 'http://localhost:8098/tv';
 const BASE = {
     ip: '192.168.2.9',
     platformVersion: '6.5',
-    variant: 'modern',
     proxyUrl: PROXY_URL,
-    script: { version: '2.0.1', origin: 'https://cdn.example.com/tube', variant: 'modern' }
+    script: { version: '2.0.1', origin: 'https://cdn.example.com/tube' }
 };
 
 const SCENARIOS = {

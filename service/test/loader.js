@@ -35,12 +35,33 @@ check('a digest-matching cached update is preferred',
     cached.origin === 'cache' && cached.version === '9.9.9', `${cached.origin} / ${cached.version}`);
 
 writeFileSync(join(scratch, 'userScript.js'), Buffer.from('/* truncated or tampered */'));
+const afterCorruption = loader.resolve();
 check('a cache whose digest no longer matches is refused',
-    loader.resolve().origin === 'bundled', loader.resolve().origin);
+    afterCorruption.origin === 'bundled', afterCorruption.origin);
 
 unlinkSync(join(scratch, 'userScript.js'));
+const afterDeletion = loader.resolve();
 check('metadata pointing at a missing file falls back',
-    loader.resolve().origin === 'bundled', loader.resolve().origin);
+    afterDeletion.origin === 'bundled', afterDeletion.origin);
+
+global.tizen = { application: { getAppInfo: () => ({ version: '0.3.2' }) } };
+writeFileSync(join(scratch, 'userScript.js'), fakeUpdate);
+
+writeFileSync(join(scratch, 'update.json'), JSON.stringify({
+    sha256: loader.sha256(fakeUpdate), version: '9.9.9', appVersion: '0.3.1'
+}));
+const otherApp = loader.resolve();
+check('a cache stamped by another app version is passed over',
+    otherApp.origin === 'bundled', otherApp.origin);
+
+writeFileSync(join(scratch, 'update.json'), JSON.stringify({
+    sha256: loader.sha256(fakeUpdate), version: '9.9.9', appVersion: '0.3.2'
+}));
+const sameApp = loader.resolve();
+check('a cache stamped by this app version is served',
+    sameApp.origin === 'cache', sameApp.origin);
+
+delete global.tizen;
 
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);

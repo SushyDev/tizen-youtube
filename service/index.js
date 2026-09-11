@@ -13,7 +13,7 @@ const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
-const app = proxy.create(platformVersion);
+const app = proxy.create();
 
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
@@ -32,18 +32,19 @@ function maybeCheckForUpdate() {
     );
 }
 
-function describeState() {
-    let script = null;
+function describeScript() {
     try {
-        const resolved = loader.resolve();
-        script = { version: resolved.version, origin: resolved.origin };
+        const { version, origin } = loader.resolve();
+        return { version, origin };
     } catch (e) {
-        script = { error: e.message };
+        return { error: e.message };
     }
+}
 
+function describeState() {
     return {
         platformVersion,
-        script,
+        script: describeScript(),
         proxyUrl: `http://localhost:${ports.PROXY}/tv`
     };
 }

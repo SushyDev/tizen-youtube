@@ -90,6 +90,31 @@ origin.listen(0, '127.0.0.1', () => {
             });
         })
         .then(() => {
+            mode = 'good';
+            const installed = { version: '0.3.1' };
+            global.tizen = { application: { getAppInfo: () => ({ version: installed.version }) } };
+
+            const cacheE = mkdtempSync(join(tmpdir(), 'tube-reinstall-'));
+            const loaderE = loadLoader(cacheE, url);
+            return loaderE.checkForUpdate()
+                .then(() => {
+                    const before = loaderE.resolve();
+                    check('an install serves the update it took', before.origin === 'cache', before.origin);
+
+                    installed.version = '0.3.2';
+                    const after = loaderE.resolve();
+                    check('a reinstall does not serve the cache its predecessor took',
+                        after.origin === 'bundled', after.origin);
+                    return loaderE.checkForUpdate();
+                })
+                .then((updated) => {
+                    check('the reinstall takes the published bundle again', updated === true, String(updated));
+                    const retaken = loaderE.resolve();
+                    check('the retaken bundle is what gets served', retaken.origin === 'cache', retaken.origin);
+                    delete global.tizen;
+                });
+        })
+        .then(() => {
             origin.close();
             const failed = results.filter((r) => !r).length;
             console.log(`\n${results.length - failed}/${results.length} checks passed.`);

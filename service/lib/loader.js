@@ -12,6 +12,7 @@ const FETCH_TIMEOUT = 8000;
 const MAX_SCRIPT_BYTES = 4 * 1024 * 1024;
 
 const BUNDLE = 'userScript.js';
+const CACHED_PATH = join(CACHE_DIR, BUNDLE);
 
 const BUNDLED_DIRS = [
     process.env.TUBE_BUNDLE_DIR,
@@ -39,10 +40,6 @@ function bundledPath() {
     return found || join(BUNDLED_DIRS[0], BUNDLE);
 }
 
-function cachedPath() {
-    return join(CACHE_DIR, BUNDLE);
-}
-
 function readMeta() {
     try {
         return JSON.parse(readFileSync(META_PATH, 'utf8'));
@@ -60,9 +57,6 @@ function writeMeta(meta) {
     }
 }
 
-// A cache written by an older app is a leftover, not an update: the package just
-// installed may carry a newer script. Without this a set that ever took an update keeps
-// running it through every reinstall.
 function appVersion() {
     try {
         return tizen.application.getAppInfo().version;
@@ -73,13 +67,12 @@ function appVersion() {
 
 function resolve() {
     const meta = readMeta();
-    const cached = cachedPath();
     const running = appVersion();
     const cacheIsForThisApp = !running || meta.appVersion === running;
 
-    if (meta.sha256 && cacheIsForThisApp && existsSync(cached)) {
+    if (meta.sha256 && cacheIsForThisApp && existsSync(CACHED_PATH)) {
         try {
-            const source = readFileSync(cached);
+            const source = readFileSync(CACHED_PATH);
             if (sha256(source) === meta.sha256) {
                 return { source: source.toString('utf8'), version: meta.version, origin: 'cache' };
             }
@@ -111,7 +104,7 @@ function checkForUpdate() {
         }
 
         const meta = readMeta();
-        if (meta.sha256 === entry.sha256) return false;
+        if (meta.sha256 === entry.sha256 && meta.appVersion === appVersion()) return false;
 
         return timed(
             fetch(`${ORIGIN}/${entry.path}`, { headers: { 'user-agent': 'tube/0.1' } })
@@ -132,12 +125,11 @@ function checkForUpdate() {
             }
 
             if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
-            writeFileSync(cachedPath(), buffer);
+            writeFileSync(CACHED_PATH, buffer);
 
             writeMeta({
                 sha256: digest,
                 version: latest.version || null,
-                // Which app wrote it, so a later package is never shadowed by it.
                 appVersion: appVersion(),
                 at: new Date().toISOString()
             });

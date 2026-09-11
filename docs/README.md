@@ -6,7 +6,7 @@ Ad-free YouTube on a Samsung TV, as an app of its own.
 
 A rewrite of TizenTube Standalone. The userscript ships inside the package, so a
 first launch works with no network at all — the origin is an update path, not a
-dependency. No loading screen, and a 68% smaller script.
+dependency. No loading screen, and an 85% smaller script.
 
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
@@ -76,14 +76,12 @@ is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
 diverges.
 
 **One bundle.** Polyfills in a browser bundle are parsed on *every* launch, and
-the sets that needed them are gone: the floor is Chrome 63 and the ES5 downlevel,
-core-js and the fetch polyfill go with it. Against the reference's 556,988 bytes
-the bundle is 178,633 — 378KB less to parse. Most of it was 30 statically
+the sets that needed them are gone: the floor is Chrome 63, so the ES5 downlevel,
+core-js and the fetch polyfill go. Against the reference's 556,988 bytes
+the bundle is 83,072 — 474KB less to parse. Most of it was 30 statically
 imported locales (~375KB, now fetched on demand), `esprima` + `estraverse`
 shipped for four call sites (~150KB, replaced by a marker-anchored scan), and a
-static language-name map (33KB, now `Intl.DisplayNames`). The spatial-navigation
-polyfill is **kept** — no Tizen webview ships it, and dropping it would break
-D-pad focus everywhere.
+static language-name map (33KB, now `Intl.DisplayNames`).
 
 **The CDN is never on the critical path.** The bundle is inside the `.wgt`.
 On launch `latest.json` is checked in the background; a newer bundle is
@@ -125,13 +123,12 @@ TV client, through the real proxy, with the real userscript in it. Every
 feature is reachable, video included. Editing anything under `mods/` rebuilds
 the bundle in about half a second; reload the page and it is running.
 
-Three things are arranged for that to work off hardware, all of them
+Two things are arranged for that to work off hardware, both of them
 environment variables that nothing in a build sets:
 
 | | |
 | --- | --- |
 | `TUBE_DEV_UA` | youtube.com/tv serves a redirect notice to anything that is not a television, so the proxy presents itself as one — upstream, and to the page |
-| `TUBE_PLATFORM_VERSION` | What the service reports when there is no platform to ask. Defaults to `6.5` |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
 Point the dev server's `/__tube` routes at a set with

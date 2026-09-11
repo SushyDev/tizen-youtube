@@ -9,16 +9,10 @@ import json from '@rollup/plugin-json';
 import { load } from '../tools/config.js';
 
 const config = load();
-const { version } = config;
+const version = config.version;
 
-// The userscript runs inside Cobalt, not the set's webview, so the floor is Cobalt's engine and
-// not Tizen's Chromium. Verified pairs: Tizen 6.5 / node 12 / Cobalt 3.2.1, and Tizen 9 / node 18 /
-// Cobalt 5.2.1. Everything between them is unverified.
-//
-// Chrome 63 is the target that has actually run on Cobalt 3.2.1. Cobalt's V8 is probably newer
-// than that, but "probably" is not worth a black screen on a set we cannot reach — raise it only
-// after measuring the engine with tools/engine-probe.js.
 const ENGINE = 'Chrome 63';
+const ECMA = 2017;
 
 export default {
     input: 'entry.js',
@@ -39,15 +33,14 @@ export default {
             preventAssignment: true,
             values: {
                 __TUBE_ORIGIN__: config.origin,
-                __TUBE_VERSION__: version,
-                __TUBE_BUNDLE__: 'userScript'
+                __TUBE_VERSION__: version
             }
         }),
         getBabelOutputPlugin({
             babelHelpers: 'bundled',
             presets: [['@babel/preset-env', { targets: ENGINE }]]
         }),
-        terser({ ecma: 2017, mangle: true }),
+        terser({ ecma: ECMA, mangle: true }),
         replace({
             preventAssignment: false,
             delimiters: ['', ''],

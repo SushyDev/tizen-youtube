@@ -21,6 +21,7 @@ const outDir = join(ROOT, 'release', 'origin');
 
 const version = config.version;
 const BUNDLE = 'userScript.js';
+const BUNDLE_PATH = join(distDir, BUNDLE);
 
 function sha256(buffer) {
     return createHash('sha256').update(buffer).digest('hex');
@@ -32,10 +33,6 @@ function ensure(dir) {
 
 function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
-}
-
-function bundlePath() {
-    return join(distDir, BUNDLE);
 }
 
 async function preflight() {
@@ -58,8 +55,7 @@ async function preflight() {
     if (!published || published.version !== version) return;
 
     const already = published.bundle;
-    const file = bundlePath();
-    const changed = already && existsSync(file) && sha256(readFileSync(file)) !== already.sha256;
+    const changed = already && existsSync(BUNDLE_PATH) && sha256(readFileSync(BUNDLE_PATH)) !== already.sha256;
 
     if (changed) {
         throw friendly(
@@ -79,11 +75,10 @@ function stage() {
     const versionDir = join(outDir, version);
     ensure(versionDir);
 
-    const file = bundlePath();
-    if (!existsSync(file)) throw friendly(`Missing ${file}\n  Run: npm run build`);
+    if (!existsSync(BUNDLE_PATH)) throw friendly(`Missing ${BUNDLE_PATH}\n  Run: npm run build`);
 
-    const buffer = readFileSync(file);
-    copyFileSync(file, join(versionDir, BUNDLE));
+    const buffer = readFileSync(BUNDLE_PATH);
+    copyFileSync(BUNDLE_PATH, join(versionDir, BUNDLE));
 
     const bundle = {
         path: `${version}/${BUNDLE}`,

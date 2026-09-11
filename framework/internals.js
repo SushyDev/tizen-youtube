@@ -139,7 +139,22 @@ const reloadGuide = () => {
     }
 };
 
+// The class is not in the module registry under any name we could ask for, but an instance of it
+// is on every list the page draws, and the element hands its component over.
+const virtualListPrototype = () => {
+    const list = document.querySelector('yt-virtual-list');
+    const component = list && list.__instance;
+    return component ? Object.getPrototypeOf(component) : null;
+};
+
+// `isActive` is an interface name, but the driver field `j` is minified; if it is renamed this
+// reads as never moving.
+const isListMoving = (component) => {
+    const driver = component && component.j;
+    return !!driver && typeof driver.isActive === 'function' && driver.isActive();
+};
+
 export {
     findBySource, findByPrototype, findComponent, findResolver, resolve, reloadGuide,
-    sourceOf, whenFound
+    sourceOf, whenFound, virtualListPrototype, isListMoving
 };

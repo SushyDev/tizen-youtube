@@ -1,5 +1,6 @@
 // @ts-nocheck TODO: type-check once the sibling branches land.
 import { configRead } from '../../framework/index.js';
+import { SPEEDS } from '../shell/scrollSpeed.js';
 
 const ART = 'https://www.gstatic.com/ytlr/img/';
 
@@ -85,6 +86,10 @@ const PAGES = [
   { label: 'Gaming', value: 'gaming' },
   { label: 'More', value: 'more' }
 ];
+
+const SCROLL_SPEEDS = [{ label: 'Default', value: '' }].concat(Object.keys(SPEEDS)
+  .sort((a, b) => Number(a) - Number(b))
+  .map((value) => ({ label: `${value}\u00d7`, value })));
 
 const START_PAGES = [
   { label: 'Home', value: '' },
@@ -193,7 +198,16 @@ const GROUPS = [
     items: [
       Switch('enableHqThumbnails', 'High-quality thumbnails',
         'Ask for the largest thumbnail rather than the one sized for a phone', LOOKING),
-      Switch('enableShorts', 'Shorts', 'Keep Shorts shelves in the feeds', SCREEN)
+      Switch('enableShorts', 'Shorts', 'Keep Shorts shelves in the feeds', SCREEN),
+      Choice('scrollSpeed', 'Scroll speed',
+        'How fast the feed moves while a direction is held', CONTROLS,
+        SCROLL_SPEEDS),
+      Switch('enableRapidPress', 'Rapid press',
+        'Presses made faster than the feed can move are kept rather than dropped',
+        CONTROLS),
+      Switch('enableSmoothNavigation', 'Smoother navigation',
+        'Skip work YouTube does while you are moving. Tiles stop sliding one by one',
+        SCREEN)
     ]
   },
   {

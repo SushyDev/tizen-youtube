@@ -26,13 +26,17 @@ function readConfigFile() {
     }
 }
 
-function validUrl(value, field) {
-    let url;
+function parseUrl(value) {
     try {
-        url = new URL(value);
+        return new URL(value);
     } catch (e) {
-        fail(`${field} is not a valid URL: ${JSON.stringify(value)}`);
+        return null;
     }
+}
+
+function validUrl(value, field) {
+    const url = parseUrl(value);
+    if (!url) fail(`${field} is not a valid URL: ${JSON.stringify(value)}`);
     const isLoopback = ['localhost', '127.0.0.1', '::1'].indexOf(url.hostname) !== -1;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
         fail(`${field} must use https, got ${url.protocol.replace(':', '')}: ${value}`);
@@ -91,4 +95,4 @@ function load(options) {
     return config;
 }
 
-module.exports = { load, gitStamp, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };
+module.exports = { load, gitStamp, parseUrl, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };

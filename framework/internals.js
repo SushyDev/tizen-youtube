@@ -73,6 +73,7 @@ const resolve = (command, context) => {
     return resolver ? resolver.resolveCommand(command, context) : undefined;
 };
 
+// Keep looking until the registry yields, then hand it over once.
 const whenFound = (name, look, onFound, options) => waitFor(look, (found) => {
     try {
         return onFound(found);

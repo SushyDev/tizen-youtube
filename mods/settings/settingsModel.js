@@ -180,17 +180,9 @@ const GROUPS = [
     id: 'tube_player',
     title: 'Player controls',
     items: [
-      Switch('enablePatchingVideoPlayer', 'Custom player controls',
-        'Off leaves the row of buttons under the player exactly as YouTube built it',
-        CONTROLS),
       Switch('enablePreviousNextButtons', 'Previous and next',
         'Skip between videos in a playlist from the control row', CONTROLS),
-      Switch('enableSpeedControlsButton', 'Speed control',
-        'Playback speed in finer steps than YouTube\u2019s own menu offers', CONTROLS),
       Switch('enableMPButton', 'Mini player', 'Shrink the video and keep browsing',
-        CONTROLS),
-      Switch('enableSwapMPWithPIP', 'Picture in picture instead',
-        'The mini player button leaves the video over the interface rather than beside it',
         CONTROLS),
       Switch('enableSuperThanksButton', 'Super Thanks',
         'YouTube\u2019s button for paying the uploader', MONEY),
@@ -212,9 +204,7 @@ const GROUPS = [
     title: 'Sidebar',
     items: [
       Set_('disabledSidebarContents', 'Sections',
-        'Which entries the sidebar offers', CONTROLS, SIDEBAR, true),
-      Switch('disableChannelsOnSidebar', 'Channels',
-        'The channels you are subscribed to, listed under the sections', CONTROLS, false)
+        'Which entries the sidebar offers', CONTROLS, SIDEBAR, true)
     ]
   },
   {
@@ -241,6 +231,10 @@ const GROUPS = [
         'The tiles the uploader lays over the last seconds of a video', SCREEN, false),
       Switch('enablePaidPromotionOverlay', 'Paid promotion notice',
         'YouTube\u2019s "Includes paid promotion" badge', MONEY),
+      Switch('enableUpNextCard', 'Up next card',
+        'The countdown to the next video, laid over the end of this one. Off stops it '
+        + 'playing the next video too \u2014 the card is the only warning that it is coming',
+        SKIPPING),
       Switch('enableYouThereRenderer', 'Are you still watching?',
         'The prompt that stops playback after a long run', PRIVACY),
       Switch('enableSigninReminder', 'Sign-in reminder',

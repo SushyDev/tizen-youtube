@@ -7,12 +7,16 @@ const { join } = require('path');
 const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
 
-let config;
-try {
-    config = load({ requireReal: true });
-} catch (err) {
-    ui.crash(err);
+// crash() exits, so this either returns a config or does not return at all.
+function loadedConfig() {
+    try {
+        return load({ requireReal: true });
+    } catch (err) {
+        return ui.crash(err);
+    }
 }
+
+const config = loadedConfig();
 
 const paths = require('./paths.js');
 
@@ -37,27 +41,31 @@ function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
 }
 
-async function preflight() {
-    let published;
-
+// Nothing published, an origin that cannot be reached, and an origin that answers all end the
+// same way here: a manifest to compare against, or nothing to compare against.
+async function published() {
     try {
         const res = await fetch(`${config.origin}/latest.json`, {
             signal: AbortSignal.timeout(8000)
         });
-        if (res.status === 404) return;
+        if (res.status === 404) return null;
         if (!res.ok) throw new Error(`origin returned ${res.status}`);
-        published = await res.json();
+        return await res.json();
     } catch (err) {
         ui.warn(`Could not read ${config.origin}/latest.json (${err.message}).`);
         ui.warn('Skipping the duplicate-version check — make sure this version is new.');
         ui.blank();
-        return;
+        return null;
     }
+}
 
-    if (!published || published.version !== version) return;
+async function preflight() {
+    const already = await published();
 
-    const already = published.bundle;
-    const changed = already && existsSync(BUNDLE_PATH) && sha256(readFileSync(BUNDLE_PATH)) !== already.sha256;
+    if (!already || already.version !== version) return;
+
+    const shipped = already.bundle;
+    const changed = shipped && existsSync(BUNDLE_PATH) && sha256(readFileSync(BUNDLE_PATH)) !== shipped.sha256;
 
     if (changed) {
         throw friendly(

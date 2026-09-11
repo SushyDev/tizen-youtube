@@ -1,6 +1,11 @@
 import { until } from './schedule.js';
 import { booted } from './register.js';
 
+// Captured before interception so clone() never re-enters the readers.
+const original = { parse: JSON.parse, stringify: JSON.stringify };
+
+const clone = (value) => original.parse(original.stringify(value));
+
 // Handlers are indexed by key so a response reaches only the handlers that asked for one of its keys.
 const readers = Object.create(null);
 const writers = Object.create(null);
@@ -98,25 +103,14 @@ const keepAdopting = (forMs) => {
     until('json adoption', ADOPTION_INTERVAL, adopt, forMs);
 };
 
-const state = { intercepted: false, parse: null, stringify: null };
-
-const nativeJson = () => ({
-    parse: state.parse || JSON.parse,
-    stringify: state.stringify || JSON.stringify
-});
+const state = { intercepted: false };
 
 const interceptJson = () => {
     if (state.intercepted) return;
     state.intercepted = true;
 
-    const parse = JSON.parse;
-    const stringify = JSON.stringify;
-
-    state.parse = parse;
-    state.stringify = stringify;
-
     JSON.parse = function () {
-        const response = parse.apply(this, arguments);
+        const response = original.parse.apply(this, arguments);
         const wanted = matching(response, readers);
 
         if (wanted) wanted.forEach((reader) => guarded(reader, response));
@@ -126,18 +120,23 @@ const interceptJson = () => {
 
     JSON.stringify = function (value, replacer, space) {
         const wanted = matching(value, writers);
-        if (!wanted) return stringify.call(this, value, replacer, space);
+        if (!wanted) return original.stringify.call(this, value, replacer, space);
 
         const rewritten = wanted.reduce((current, writer) => {
             const result = guarded(writer, current, current);
             return result === undefined ? current : result;
         }, value);
 
-        return stringify.call(this, rewritten, replacer, space);
+        return original.stringify.call(this, rewritten, replacer, space);
     };
 
     keepAdopting(ADOPTION_WINDOW);
     window.addEventListener('hashchange', () => keepAdopting(AFTER_NAVIGATION));
 };
 
-export { onResponse, onRequest, interceptJson, nativeJson };
+// The unpatched pair, for code that must not be seen by our own hooks. clone() uses it, and a dev
+// build hands it to the inspector: a debugger that serialises through a patched JSON is measuring
+// us rather than the page.
+const nativeJson = () => ({ parse: original.parse, stringify: original.stringify });
+
+export { onResponse, onRequest, interceptJson, clone, nativeJson };

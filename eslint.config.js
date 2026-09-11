@@ -78,35 +78,56 @@ const CORRECTNESS_RULES = {
 };
 
 
-// TODO: reshape SIBLING_OWNED files once their branches land.
+// Style rules: const only, no loops, no classes, no IIFEs.
+//
+// These files are exempt because live sibling branches own them and a reshape here would conflict
+// on every restack. They are the follow-up, not an exception in principle.
 const SIBLING_OWNED = [
     'mods/player/pictureInPicture.js',
     'mods/commands/interpreters.js'
 ];
 
-const SHIPPED = ['service/**/*.js', 'framework/**/*.js', 'mods/**/*.js'];
+// Every layer, not only the ones that ship: the build scripts are read as often as the mods are.
+const STYLED = [
+    'service/**/*.js', 'framework/**/*.js', 'mods/**/*.js',
+    'tools/**/*.js', 'tools/**/*.mjs'
+];
 
+// Tests are exempt.
 const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
-    'test/**/*.js',
-    'service/vite.config.mjs'
+    'test/**/*.js'
 ]);
+
+const FEED_CONTAINERS = [
+    'tvBrowseRenderer', 'tvSurfaceContentRenderer', 'tvSurfaceContentContinuation',
+    'sectionListRenderer', 'sectionListContinuation', 'horizontalListContinuation',
+    'gridContinuation', 'tvSecondaryNavRenderer'
+];
+
+const NOT_THE_FEEDS_KEEPER = {
+    selector: `MemberExpression[property.name=/^(${FEED_CONTAINERS.join('|')})$/]`,
+    message: 'only mods/feed/surfaces.js descends to a feed container — register onTile/keepTile/'
+        + 'onShelf/keepShelf/onSurface with the walk instead'
+};
+
+const STYLE_SELECTORS = [
+    { selector: "VariableDeclaration[kind='let']", message: 'const only — hold what changes in one named record' },
+    { selector: 'ForStatement', message: 'use map/filter/reduce/find, or recursion' },
+    { selector: 'ForOfStatement', message: 'use map/filter/reduce/find, or recursion' },
+    { selector: 'ForInStatement', message: 'use Object.keys' },
+    { selector: 'WhileStatement', message: 'use map/filter/reduce/find, or recursion' },
+    { selector: 'DoWhileStatement', message: 'use map/filter/reduce/find, or recursion' },
+    { selector: 'ClassDeclaration', message: 'use a factory function that closes over its state' },
+    { selector: 'ClassExpression', message: 'use a factory function that closes over its state' },
+    { selector: 'CallExpression > ArrowFunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' },
+    { selector: 'CallExpression > FunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' }
+];
 
 const STYLE_RULES = {
     'no-var': 'error',
     'prefer-const': ['error', { destructuring: 'all' }],
-    'no-restricted-syntax': ['error',
-        { selector: "VariableDeclaration[kind='let']", message: 'const only — hold what changes in one named record' },
-        { selector: 'ForStatement', message: 'use map/filter/reduce/find, or recursion' },
-        { selector: 'ForOfStatement', message: 'use map/filter/reduce/find, or recursion' },
-        { selector: 'ForInStatement', message: 'use Object.keys' },
-        { selector: 'WhileStatement', message: 'use map/filter/reduce/find, or recursion' },
-        { selector: 'DoWhileStatement', message: 'use map/filter/reduce/find, or recursion' },
-        { selector: 'ClassDeclaration', message: 'use a factory function that closes over its state' },
-        { selector: 'ClassExpression', message: 'use a factory function that closes over its state' },
-        { selector: 'CallExpression > ArrowFunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' },
-        { selector: 'CallExpression > FunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' }
-    ]
+    'no-restricted-syntax': ['error'].concat(STYLE_SELECTORS)
 };
 
 module.exports = [
@@ -164,7 +185,7 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        files: SHIPPED,
+        files: STYLED,
         ignores: UNSTYLED,
         rules: STYLE_RULES
     },
@@ -197,11 +218,20 @@ module.exports = [
             }]
         }
     },
-    // Not shipped and not Node either: it is injected into the page by the dev service.
+    {
+        files: ['mods/**/*.js'],
+        ignores: UNSTYLED.concat(['mods/feed/surfaces.js']),
+        rules: {
+            'no-restricted-syntax': ['error'].concat(STYLE_SELECTORS, [NOT_THE_FEEDS_KEEPER])
+        }
+    },
+
+    // Not shipped and not Node either: a classic script injected into the page by the dev service.
+    // Held to the same engine floor as the userscript, because it runs in the same engine.
     {
         files: ['tools/dev/remote.js'],
         languageOptions: {
-            ecmaVersion: 5,
+            ecmaVersion: 2018,
             sourceType: 'script',
             globals: BROWSER_GLOBALS
         },

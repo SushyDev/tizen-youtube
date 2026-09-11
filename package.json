@@ -31,7 +31,8 @@
     "version": "node tools/version.js",
     "version:check": "node tools/version.js --check",
     "version:set": "node tools/version.js --set",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "./install-dev.sh"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.22.9",

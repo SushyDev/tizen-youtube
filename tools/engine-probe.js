@@ -10,13 +10,15 @@ const http = require('http');
 const ui = require('./report.js');
 const { DEV } = require('../service/lib/ports.js');
 
-const asJson = (text) => {
+// The reply is JSON twice over: the bridge's envelope, and the probe's own answer inside it.
+// Either layer can be an error page instead, so neither is parsed without a guard.
+function asJson(text) {
     try {
         return JSON.parse(text);
     } catch (e) {
         return null;
     }
-};
+}
 
 // Named so the reply reads as a table rather than a list of booleans.
 const PROBE = `(function () {

@@ -42,6 +42,7 @@ const stamped = injectTokens(readFileSync(bundle, 'utf8'), tokens).code;
 
 writeFileSync(bundle, stamped);
 console.log(`      origin: ${config.origin}${dev ? ' (dev build)' : ''}`);
+if (dev && chii !== 'off') console.log(`      inspector: chii at ${chii}`);
 console.log(`      dist/index.js  ${kb(Buffer.byteLength(stamped))}`);
 
 console.log('[3/4] embedding the userscript');

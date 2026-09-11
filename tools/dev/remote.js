@@ -1,7 +1,9 @@
-(function () {
-    'use strict';
+'use strict';
 
-    var KEYS = {
+// A function declaration, because re-injection would redeclare a top-level const.
+
+function tubeRemoteInstall() {
+    const KEYS = {
         g: { code: 404, what: 'green' },
         r: { code: 403, what: 'red' },
         y: { code: 405, what: 'yellow' },
@@ -16,34 +18,36 @@
         Backspace: { code: 10009, what: 'return' }
     };
 
-    function press(code) {
-        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
-            var event;
-            try {
-                event = new KeyboardEvent(type, { bubbles: true, cancelable: true });
-            } catch (e) {
-                event = document.createEvent('Event');
-                event.initEvent(type, true, true);
-            }
+    // Cobalt's engine has KeyboardEvent; the fallback is for anything that does not.
+    const eventFor = (type) => {
+        try {
+            return new KeyboardEvent(type, { bubbles: true, cancelable: true });
+        } catch (e) {
+            const legacy = document.createEvent('Event');
+            legacy.initEvent(type, true, true);
+            return legacy;
+        }
+    };
 
-            Object.defineProperty(event, 'keyCode', { get: function () { return code; } });
-            Object.defineProperty(event, 'which', { get: function () { return code; } });
+    // keyCode is read-only on a constructed event, so it is defined onto it rather than passed in.
+    const press = (code) => ['keydown', 'keypress', 'keyup'].forEach((type) => {
+        const event = eventFor(type);
+        Object.defineProperty(event, 'keyCode', { get: () => code });
+        Object.defineProperty(event, 'which', { get: () => code });
+        document.dispatchEvent(event);
+    });
 
-            document.dispatchEvent(event);
-        });
-    }
-
-    function isTyping(target) {
+    const isTyping = (target) => {
         if (!target) return false;
-        var name = (target.tagName || '').toLowerCase();
+        const name = (target.tagName || '').toLowerCase();
         return name === 'input' || name === 'textarea' || target.isContentEditable === true;
-    }
+    };
 
-    document.addEventListener('keydown', function (event) {
+    document.addEventListener('keydown', (event) => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (isTyping(event.target)) return;
 
-        var mapped = KEYS[event.key];
+        const mapped = KEYS[event.key];
         if (!mapped) return;
 
         event.preventDefault();
@@ -56,8 +60,10 @@
 
     console.log(
         '%ctube dev remote%c  ' +
-        Object.keys(KEYS).map(function (key) { return key + ' = ' + KEYS[key].what; }).join('  ·  ') +
+        Object.keys(KEYS).map((key) => `${key} = ${KEYS[key].what}`).join('  ·  ') +
         '\n                  tubeRemote(keyCode) presses anything else',
         'background:#c00;color:#fff;padding:1px 4px;border-radius:2px', ''
     );
-}());
+}
+
+tubeRemoteInstall();

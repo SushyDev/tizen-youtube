@@ -1,150 +1,30 @@
 'use strict';
 
-const express = require('express');
-const fetch = require('node-fetch');
-const http = require('http');
-const https = require('https');
-const URL = require('url');
+// The proxy the app is served through. youtube.com comes back from here so the userscript can be
+// injected into it and the page can reach anything it needs to.
 
-const ports = require('./ports.js');
+const express = require('express');
+
 const loader = require('./loader.js');
 const forward = require('./forward.js');
 const dev = require('../dev/index.js');
-const { flagOverrides, upstream } = require('./knobs.js');
+const ports = require('./ports.js');
 const postmortem = require('./postmortem.js');
-const bigheaders = require('./bigheaders.js');
-
-const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000 };
-const httpsAgent = new https.Agent(AGENT_OPTIONS);
-const httpAgent = new http.Agent(AGENT_OPTIONS);
-const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
+const { upstream } = require('./knobs.js');
+const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
+const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js');
+const { send } = require('./sending.js');
+const { nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants } = require('./rewrites.js');
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
 const CSP_HEADER = 'content-security-policy';
-const BODIED = ['POST', 'PUT', 'PATCH'];
-
-const YOUTUBE_HOST = 'www.youtube.com';
-const YOUTUBE_ORIGIN = `https://${YOUTUBE_HOST}`;
-
-// Node 12 hands out dead keep-alive sockets without retrying, so a bodiless request gets one retry
-// on a fresh connection.
-const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
-
-const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com|googleusercontent\.com)$/;
 
 // How many intercepted requests to write to the log on disk before falling quiet: inside the
-// container there is no console and no dev bridge, and a working page makes hundreds.
+// container this is the only record of what was asked for, and it must not fill the partition.
 const TRACE_LIMIT = 40;
 
 const state = { traced: 0 };
-
-const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
-
-const localOrigin = () => `http://${PROXY_HOST}:${ports.PROXY}`;
-const proxyPrefix = () => `${localOrigin()}/cors-bypass/`;
-
-const overOurTls = (req) => !!(req.socket && req.socket.encrypted);
-
-const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
-
-// Routes SABR's single media URL through the service so no page patch is needed to reach
-// googlevideo.
-const rerouteAbr = (text) => text.replace(
-    /"serverAbrStreamingUrl":"(https:\\?\/\\?\/[^"]+)"/g,
-    (whole, url) => `"serverAbrStreamingUrl":"${proxyPrefix()}${url}"`
-);
-
-// kabuki and the player both prefix every innertube call with INNERTUBE_HOST_OVERRIDE, which
-// brings that traffic here with nothing in the page patched.
-const overrideInnertubeHost = (text) => text.replace(
-    '"INNERTUBE_CONTEXT_CLIENT_NAME"',
-    `"INNERTUBE_HOST_OVERRIDE":${JSON.stringify(localOrigin())},"INNERTUBE_CONTEXT_CLIENT_NAME"`
-);
-
-// BotGuard's program URL arrives protocol-relative inside a JSON string, so its quotes and slashes
-// may be escaped.
-const WRAPPED_PROGRAM = /(\\?"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
-const PLAIN_PROGRAM = /(\\?"interpreterUrl\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
-
-const rewriteAttestation = (text, targetUrl) => {
-    const prefix = proxyPrefix();
-
-    const attested = /tv-player-[^/]+\.js/.test(targetUrl) || /player-es6/.test(targetUrl)
-        ? text.replace(/https:\/\/jnn-pa\.googleapis\.com/g, `${prefix}https://jnn-pa.googleapis.com`)
-        : text;
-
-    return attested
-        .replace(WRAPPED_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`)
-        .replace(PLAIN_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`);
-};
-
-const BLOB = /(serializedExperimentFlags\\?":\\?")((?:[^"\\]|\\u[0-9a-fA-F]{4})*)/g;
-
-const retuneFlag = (blob, [name, value]) => {
-    const flag = new RegExp(`(^|\\\\u0026|&)${name}(\\\\u003d|=)[^\\\\&]*`);
-
-    if (flag.test(blob)) {
-        return blob.replace(flag, (whole, separator, equals) => `${separator}${name}${equals}${value}`);
-    }
-
-    // An absent flag reads as off, so turning one on means adding it to the front of the blob.
-    return `${name}\\u003d${value}\\u0026${blob}`;
-};
-
-const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
-    `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
-));
-
-// Cobalt refuses any request type the policy has no directive for, and YouTube's policy has no
-// connect-src.
-const REACHABLE = 'connect-src * data: blob: ws: wss:';
-
-const CONNECT_SRC = /(^|;)(\s*)connect-src[^;]*/i;
-
-// YouTube sends two policies and both are enforced, so each needs the directive.
-const withOurConnections = (policy) => {
-    if (!policy) return policy;
-
-    return String(policy).split(',').map((one) => (CONNECT_SRC.test(one)
-        ? one.replace(CONNECT_SRC, `$1$2${REACHABLE}`)
-        : `${one}; ${REACHABLE}`)).join(',');
-};
-
-const rewriteBody = (text, url, injectionOrigin, nonce) => {
-    if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
-
-    const tuned = [
-        dev.spoofUserAgent,
-        flagOverrides.size ? retuneFlags : null,
-        upstream.nativeProxyPatches ? null : overrideInnertubeHost
-    ].filter(Boolean).reduce((out, step) => step(out), text);
-
-    const stamp = nonce ? ` nonce="${nonce}"` : '';
-    const origin = injectionOrigin || localOrigin();
-
-    const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
-        + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
-        + dev.pageScripts(origin, stamp);
-
-    // Appended past </html> a browser still runs it; Cobalt's parser drops it.
-    return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
-};
-
-// __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are renamed in both
-// directions and the HTTPS-only attributes dropped.
-const rewriteSetCookie = (values) => values.map((cookie) => cookie
-    .replace(/^__Secure-/i, '__LocalSecure-')
-    .replace(/^__Host-/i, '__LocalHost-')
-    .replace(/Domain=[^;]+/i, 'Domain=localhost')
-    .replace(/;\s*Secure/i, '')
-    .replace(/;\s*SameSite=None/i, '')
-    .replace(/;\s*;/g, ';')
-    .replace(/;\s*$/, ''));
-
-const restoreCookiePrefixes = (header) => header
-    .replace(/__LocalSecure-/g, '__Secure-')
-    .replace(/__LocalHost-/g, '__Host-');
 
 // A wildcard is refused for a request that carries cookies, so when the page names itself the
 // answer names it back.
@@ -216,98 +96,6 @@ const create = () => {
 
     return app;
 };
-
-const routeFor = (req) => {
-    const bypassTarget = () => {
-        const raw = req.url.substring('/cors-bypass/'.length);
-        return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
-    };
-
-    const targetOf = (forwarded, isBypass) => {
-        if (forwarded) return forwarded;
-        if (isBypass) return bypassTarget();
-        if (overOurTls(req) && req.headers.host) return `https://${req.headers.host}${req.url}`;
-
-        return `${YOUTUBE_ORIGIN}${req.url}`;
-    };
-
-    const hostNamedBy = (target) => {
-        try { return URL.parse(target).host || YOUTUBE_HOST; } catch (e) { return YOUTUBE_HOST; }
-    };
-
-    // The page is plain HTTP, so Google URLs it builds may carry http: and are upgraded here.
-    const upgradeScheme = (target, forGoogle) => (
-        forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target
-    );
-
-    const forwarded = forward.absoluteTarget(req.url);
-    const isBypass = !forwarded && req.path.indexOf('/cors-bypass/') === 0;
-
-    const target = targetOf(forwarded, isBypass);
-    const host = hostNamedBy(target);
-    const forGoogle = GOOGLE.test(host.split(':')[0]);
-
-    return {
-        url: upgradeScheme(target, forGoogle),
-        host,
-        forGoogle,
-        isBypass,
-        asTheRealHost: !!forwarded || overOurTls(req)
-    };
-};
-
-const headersFor = (req, route) => {
-    const dropped = route.forGoogle && upstream.origin === 'drop'
-        ? ['proxy-connection', 'origin', 'referer']
-        : ['proxy-connection'];
-
-    const referer = req.headers.referer ? { referer: `${upstream.origin}/tv` } : {};
-    const presented = route.forGoogle && upstream.origin !== 'drop' && upstream.origin !== 'pass'
-        ? Object.assign({ origin: upstream.origin }, referer)
-        : {};
-
-    const copied = Object.keys(req.headers)
-        .filter((key) => dropped.indexOf(key) === -1)
-        // The page only carries renamed cookies when we served it as the service on plain HTTP.
-        .map((key) => [key, key === 'cookie' && !route.asTheRealHost
-            ? restoreCookiePrefixes(req.headers[key])
-            : req.headers[key]]);
-
-    return dev.upstreamHeaders(Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
-        // Brotli is not decoded here, so ask for encodings that can be read.
-        { 'accept-encoding': 'gzip, deflate' }));
-};
-
-const isRetriable = (error) => !!error
-    && (RETRIABLE.indexOf(error.code) !== -1 || /socket hang up|premature close/i.test(error.message || ''));
-
-const send = (url, req, headers) => {
-    const body = BODIED.indexOf(req.method) === -1 ? undefined : req;
-
-    const options = {
-        method: req.method,
-        headers,
-        body,
-        redirect: 'manual',
-        agent: agentFor(url)
-    };
-
-    return fetch(url, options).catch((error) => {
-        if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {
-            postmortem.note('upstream', `header overflow on ${url.slice(0, 80)} — retrying over http2`);
-            return bigheaders.fetchOverHttp2(url, { method: req.method, headers });
-        }
-
-        // A streamed body cannot be sent twice.
-        if (!isRetriable(error) || body) throw error;
-
-        postmortem.note('upstream', `${postmortem.describe(error)} on ${url.slice(0, 80)}`
-            + ' — retrying on a fresh connection');
-
-        return fetch(url, Object.assign({}, options, { agent: undefined }));
-    });
-};
-
 const copyHeaders = (req, res, response, route) => {
     const raw = response.headers.raw();
 
@@ -320,7 +108,7 @@ const copyHeaders = (req, res, response, route) => {
         if (lower === CSP_HEADER) {
             if (!route.asTheRealHost) return;
 
-            res.setHeader(key, raw[key].map(withOurConnections));
+            res.setHeader(key, raw[key].map(withOurGrants));
             return;
         }
         if (route.isBypass && lower === 'access-control-allow-origin') return;
@@ -413,8 +201,4 @@ const attachFallback = (app) => {
 
     return app;
 };
-
-module.exports = {
-    create, attachFallback, rewriteBody, rewriteAttestation, withOurConnections,
-    rewriteSetCookie, restoreCookiePrefixes
-};
+module.exports = { create, attachFallback };

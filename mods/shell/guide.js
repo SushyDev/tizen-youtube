@@ -9,18 +9,13 @@ onResponse('guide', GUIDE_KEYS, (response) => {
     if (!sections[0] || !sections[0].guideSectionRenderer) return;
 
     const hidden = configRead('disabledSidebarContents') || [];
-    const hideChannels = configRead('disableChannelsOnSidebar');
-
-    if (hidden.length === 0 && !hideChannels) return;
+    if (hidden.length === 0) return;
 
     const keep = (entry) => {
         const item = entry.guideEntryRenderer;
         if (!item) return true;
 
-        const isHidden = item.icon && hidden.indexOf(item.icon.iconType) !== -1;
-        const isChannel = hideChannels && !!item.thumbnail;
-
-        return !isHidden && !isChannel;
+        return !(item.icon && hidden.indexOf(item.icon.iconType) !== -1);
     };
 
     sections.forEach((section) => {
@@ -32,7 +27,5 @@ onResponse('guide', GUIDE_KEYS, (response) => {
 });
 
 configChangeEmitter.addEventListener('configChange', (event) => {
-    if (event.detail.key === 'disabledSidebarContents' || event.detail.key === 'disableChannelsOnSidebar') {
-        reloadGuide();
-    }
+    if (event.detail.key === 'disabledSidebarContents') reloadGuide();
 });

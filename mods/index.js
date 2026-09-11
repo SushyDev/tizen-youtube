@@ -6,14 +6,20 @@ import { start as startSettings } from './settings/nativeSettings.js';
 import { start as startShell } from './shell/startup.js';
 import { start as startSpeed } from './player/speed.js';
 
-import './feed/adblock.js';
+import './feed/index.js';
 import './shell/guide.js';
 import './sponsorblock/sponsorblock.js';
-import './subtitles/moreSubtitles.js';
+import './subtitles/index.js';
 import './player/preferredQuality.js';
 import './queue/queue.js';
 import './player/pictureInPicture.js';
-import './player/customUI.js';
+import './player/playerButtons.js';
+import './player/autoplay.js';
+import './player/overlays.js';
+import './player/codecs.js';
+import './queue/shelf.js';
+import './sponsorblock/manualSkips.js';
+import './sponsorblock/highlight.js';
 import './shell/whosWatching.js';
 
 import './dev/index.js';

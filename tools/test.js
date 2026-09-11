@@ -5,74 +5,79 @@ const { execFileSync } = require('child_process');
 const ui = require('./report.js');
 const { ROOT } = require('./config.js');
 
+// Two kinds of thing run here. A gate is a command judged only by its exit status; a suite prints
+// `n/m checks passed` per file and is judged by the sum of those lines as well.
+const GATES = [
+    { name: 'lint', command: 'npx', args: ['eslint', '.'] },
+    { name: 'types', command: 'npx', args: ['tsc', '--noEmit'] }
+];
+
 const SUITES = [
     { name: 'userscript', command: ['node', ['test/index.js']] },
     { name: 'service', workspace: 'service' }
 ];
 
-ui.heading('test');
+const RUN = { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' };
 
-const gate = (name, command, args, detail) => {
+const spoken = (e) => `${e.stdout || ''}${e.stderr || ''}`;
+
+const echo = (lines) => lines.forEach((line) => process.stdout.write(`      ${line}\n`));
+
+const runGate = (gate) => {
     const started = Date.now();
     try {
-        execFileSync(command, args, { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
-        ui.ok(name, detail, Date.now() - started);
-        return 0;
+        execFileSync(gate.command, gate.args, RUN);
+        ui.ok(gate.name, 'no errors', Date.now() - started);
+        return true;
     } catch (e) {
-        ui.fail(name, 'errors found');
-        `${e.stdout || ''}${e.stderr || ''}`.split('\n')
-            .filter((line) => line.trim())
-            .slice(0, 25)
-            .forEach((line) => process.stdout.write(`      ${line}\n`));
-        return 1;
+        ui.fail(gate.name, 'errors found');
+        echo(spoken(e).split('\n').filter((line) => line.trim()).slice(0, 25));
+        return false;
     }
 };
 
-let failures = gate('lint', 'npx', ['eslint', '.'], 'no errors')
-    + gate('types', 'npx', ['tsc', '--noEmit'], 'no errors');
+const invocationOf = (suite) => (suite.workspace
+    ? ['npm', ['test', '--workspace', suite.workspace]]
+    : suite.command);
 
-SUITES.forEach((suite) => {
-    const started = Date.now();
-    let output = '';
-    let failed = false;
-
-    const invocation = suite.workspace
-        ? ['npm', ['test', '--workspace', suite.workspace]]
-        : suite.command;
-
+// A failed suite is still read for its counts: knowing 88 of 90 passed says more than "it failed".
+const attempt = (suite) => {
+    const invocation = invocationOf(suite);
     try {
-        output = execFileSync(invocation[0], invocation[1], {
-            cwd: ROOT,
-            stdio: 'pipe',
-            encoding: 'utf8'
-        });
+        return { failed: false, output: execFileSync(invocation[0], invocation[1], RUN) };
     } catch (e) {
-        failed = true;
-        failures++;
-        output = `${e.stdout || ''}${e.stderr || ''}`;
+        return { failed: true, output: spoken(e) };
     }
+};
 
-    let passed = 0;
-    let total = 0;
-    const counts = output.match(/(\d+)\/(\d+) checks passed/g) || [];
-    counts.forEach((line) => {
-        const parts = line.match(/(\d+)\/(\d+)/);
-        passed += Number(parts[1]);
-        total += Number(parts[2]);
-    });
+const tally = (output) => (output.match(/\d+\/\d+ checks passed/g) || [])
+    .map((line) => line.match(/(\d+)\/(\d+)/))
+    .reduce((sum, parts) => ({
+        passed: sum.passed + Number(parts[1]),
+        total: sum.total + Number(parts[2])
+    }), { passed: 0, total: 0 });
 
-    const detail = total ? `${passed}/${total} checks` : 'no checks reported';
+const runSuite = (suite) => {
+    const started = Date.now();
+    const run = attempt(suite);
+    const counted = tally(run.output);
+    const detail = counted.total ? `${counted.passed}/${counted.total} checks` : 'no checks reported';
 
-    if (failed) {
-        ui.fail(suite.name, detail);
-        output.split('\n')
-            .filter((line) => /^(FAIL|PASS)|Error|error:/.test(line.trim()) && !/^npm error/.test(line.trim()))
-            .slice(0, 30)
-            .forEach((line) => process.stdout.write(`      ${line}\n`));
-    } else {
+    if (!run.failed && counted.total && counted.passed === counted.total) {
         ui.ok(suite.name, detail, Date.now() - started);
+        return true;
     }
-});
+
+    ui.fail(suite.name, detail);
+    echo(run.output.split('\n')
+        .filter((line) => /^(FAIL|PASS)|Error|error:/.test(line.trim()) && !/^npm error/.test(line.trim()))
+        .slice(0, 30));
+    return false;
+};
+
+ui.heading('test');
+
+const failures = GATES.map(runGate).concat(SUITES.map(runSuite)).filter((ok) => !ok).length;
 
 ui.blank();
 if (failures) {

@@ -1,67 +1,19 @@
 import { PLAYER, configChangeEmitter, configRead, every, onResponse, stop, until, waitFor, whenPlayer } from '../../framework/index.js';
-import { chooseQuality, shouldAsk } from './quality.js';
+import { NAMED, chooseQuality } from './qualityLadder.js';
+import { LIMITS, shouldAsk } from './askBudget.js';
+import { QUALITY, liftCeiling, seedPreferredQuality } from './qualitySeed.js';
 
-const QUALITY = 'preferredVideoQuality';
+// Keeps the playing video on the preferred rung: pinned at attach, settled after each player
+// response, re-checked on a heartbeat.
 
 const CHECK_INTERVAL = 3000;
 
 const SETTLING_EVERY = 250;
 const SETTLING_FOR = 8000;
 
-// Asking restarts the stream, so a rung the player will not take is dropped after a few tries.
-const LIMITS = { maxAttempts: 2, retryDelay: 5000 };
-
+// Seconds. A video whose position jumps this far backwards has looped, and a loop is a fresh
+// video as far as the choice is concerned.
 const RESTART_JUMP = 2;
-
-const BANDWIDTH_KEY = 'yt-player-bandwidth';
-const CEILING_KEY = 'yt-player-quality';
-
-// `highest` claims more bandwidth than any stream needs, so ABR opens at the top and re-measures.
-const SEEDED_BYTES_PER_SECOND = 6250000;
-const UNCAPPED_BYTES_PER_SECOND = 1250000000;
-const REMEMBERED_FOR_MS = 30 * 24 * 60 * 60 * 1000;
-
-// The player's own names for the rungs, so a named setting can be acted on without the ladder.
-const NAMED = {
-    2160: 'hd2160', 1440: 'hd1440', 1080: 'hd1080', 720: 'hd720',
-    480: 'large', 360: 'medium', 240: 'small', 144: 'tiny'
-};
-
-const remember = (key, value) => {
-    const now = Date.now();
-
-    window.localStorage.setItem(key, JSON.stringify({
-        data: JSON.stringify(value),
-        expiration: now + REMEMBERED_FOR_MS,
-        creation: now
-    }));
-};
-
-const openAtPreferredQuality = () => {
-    const preference = configRead(QUALITY);
-    if (!preference || preference === 'auto') return;
-
-    try {
-        // The player overwrites this key with its own measurement as each video ends.
-        remember(BANDWIDTH_KEY, {
-            byterate: preference === 'highest' ? UNCAPPED_BYTES_PER_SECOND : SEEDED_BYTES_PER_SECOND
-        });
-
-        // `highest` wants no ceiling, and a stored zero is how the player spells that.
-        const height = parseInt(preference, 10) || 0;
-        remember(CEILING_KEY, { quality: height, previousQuality: height });
-    } catch (e) {
-        console.warn('[tube] could not seed the preferred quality:', e);
-    }
-};
-
-const liftCeiling = () => {
-    try {
-        remember(CEILING_KEY, { quality: 0, previousQuality: 0 });
-    } catch (e) {
-        console.warn('[tube] could not lift the quality ceiling:', e);
-    }
-};
 
 function watchPreferredQuality() {
     const held = {
@@ -73,8 +25,7 @@ function watchPreferredQuality() {
         attempts: 0,
         askedAt: 0,
         // Without this, a quality chosen from the player's own menu is overridden on the next tick.
-        settledOn: null,
-        settling: null
+        settledOn: null
     };
 
     const forget = () => {
@@ -97,6 +48,8 @@ function watchPreferredQuality() {
         return true;
     };
 
+    // Shorts are vertical and short; forcing 2160p on one spends the link on a video that was
+    // never going to show it.
     const isShorts = (player) => {
         try {
             return Object.values(player.getVideoStats()).some((value) => value === 'shortspage');
@@ -156,6 +109,9 @@ function watchPreferredQuality() {
         askFor(player, chosen, current);
     };
 
+    // The one point early enough to be sure the first segment fetched is the right one. A rung the
+    // video turns out not to offer is corrected down once the ladder arrives, before formats are
+    // chosen, so guessing wrong here costs nothing.
     const pinNamed = (player) => {
         const named = NAMED[parseInt(configRead(QUALITY), 10)];
         if (!named) return;
@@ -199,14 +155,15 @@ function watchPreferredQuality() {
         if (event.detail?.key !== QUALITY) return;
 
         // So the next video opens on the new setting rather than being corrected into it.
-        openAtPreferredQuality();
+        seedPreferredQuality();
         if (configRead(QUALITY) === 'auto') liftCeiling();
         forget();
         tick();
     });
 
-    // The player ingests a response some time after it is parsed, so the choice is polled closely
-    // until it settles.
+    // The three second heartbeat is far too coarse to land inside the window between the response
+    // arriving and the player having read it, so the response opens a burst of its own. It is only
+    // read — the rungs on offer are left alone, so the quality menu keeps them all.
     const settleQuickly = (response) => {
         const videoId = response.videoDetails?.videoId;
 
@@ -223,11 +180,11 @@ function watchPreferredQuality() {
     attachToPlayer();
 }
 
-// Must run before kabuki's script reads storage: our tag is parser-inserted, kabuki's is appended
-// and async.
+// Seeded before the watcher starts, and renewed on navigation for the same reason it is written
+// unconditionally: the player overwrites the estimate with its own as each video ends.
 if (typeof window !== 'undefined') {
-    openAtPreferredQuality();
-    window.addEventListener('hashchange', openAtPreferredQuality);
+    seedPreferredQuality();
+    window.addEventListener('hashchange', seedPreferredQuality);
 
     watchPreferredQuality();
 }

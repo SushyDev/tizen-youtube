@@ -1,6 +1,6 @@
 {
   "version": "0.4.0",
 
-  "comment": "Origin serving the userScript bundles, latest.json and the language-name fallback. Versioned paths under it are immutable and safe to cache forever; see README.md.",
+  "comment": "Versioned paths under this origin are cached as immutable, so a version republished with different content fails its digest check on every TV.",
   "origin": "https://cdn.example.com/tube"
 }

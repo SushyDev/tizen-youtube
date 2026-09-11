@@ -4,11 +4,9 @@ Ad-free YouTube on a Samsung TV, as an app of its own.
 
 <img src="../icon.png" width="96" align="right">
 
-Modded Cobalt Youtube app on Tizen OS.
-
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
-- Tizen 6.5 and up — one bundle, no polyfills
+- Tizen 6.5 and up, on sets with Samsung's Cobalt container — a Smart Monitor has none
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A
@@ -27,16 +25,21 @@ The easy one. No computer needed after setup, even for updates.
 
 ### Apps2Samsung, with a partner certificate
 
-Apps2Samsung is supported, you will need to use the partner certificate.
-Please join the discord linked above if you need help
+Apps2Samsung also works, signed with your own Samsung partner certificate.
+Please join the Discord linked above if you need help.
 
 ### Building it yourself
 
-For the Homebrew route, if you would rather not use the catalogue:
+For the Homebrew route, if you would rather not use the catalogue, with **Node 20+**:
 
 ```sh
+git clone https://github.com/SushyDev/tizen-youtube.git
+cd tizen-youtube
+npm install
 npm run package    # release/tube.wgt, for Tizen Homebrew
 ```
+
+Load `release/tube.wgt` through Homebrew's **Upload** tab; [DEVELOP.md](DEVELOP.md) has the other commands.
 
 ---
 

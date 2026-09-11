@@ -12,23 +12,14 @@
     <!-- use.game.mode must stay absent: it makes the renderer count frames, but the video
          element then sits at networkState 0 with no error and every video falls back to
          the default player. -->
-    <!-- Must stay true. Setting it false was tried against the reopen-after-force-close failure and
-         made it worse: the app then would not start even the first time. -->
+    <!-- Must stay true: false stops the app from starting at all. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/use.uwe" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- Claims the Cobalt container slot, the stack that plays 2160p60 VP9 HDR properly.
-         nativeID cannot be dropped: the slot carries read.metadata.from.hybrid.webapp, so it takes
-         its switches from the webapp nativeID pairs it to, and without it the container arrives
-         with none of them. That also means this package never runs its own content.
-         proxy names 127.0.0.2 because one package cannot reach another's 127.0.0.1 on this
-         platform (EHOSTUNREACH), while any other loopback address connects — so this is a fixed
-         string meaning "this television" on every television, with no DNS and nothing per-set.
-         content must be the Evergreen content directory itself, never the tree above it; the
-         service stages that copy, and the authority inside it, on first run. -->
+    <!-- proxy names 127.0.0.2 because the container, another package, cannot reach this one's 127.0.0.1. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=https://www.youtube.com/tv --proxy=http://127.0.0.2:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
@@ -56,11 +47,8 @@
     <tizen:profile name="tv-samsung"/>
 
 
-    <!-- auto-restart and on-boot are what bring the service back when the set wakes from standby —
-         observed directly: a new pid appears in service.log on resume, and without them nothing
-         would start it, because a package carrying nativeID never runs its own content. They are
-         documented as restricted to platform and partner signed packages, and this set holds a
-         partner pair, so whether they work on an ordinary public one is still an open question. -->
+    <!-- Without auto-restart and on-boot nothing restarts the service after standby, because a
+         package carrying nativeID never runs its own content. -->
     <tizen:service id="9Ur5IzDKqV.TubeService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>

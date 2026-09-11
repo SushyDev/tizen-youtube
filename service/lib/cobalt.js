@@ -14,9 +14,7 @@ const postmortem = require('./postmortem.js');
 
 const STOCK = '/usr/apps/com.samsung.tv.cobalt/content/app/cobalt/content';
 
-// Named by pkgid metadata rather than nativeID: carrying nativeID makes the launcher start the
-// container instead of our own content, so nothing is left to start the service or sequence the
-// two.
+// The nativeID this package claims, which is also the app id the launched container runs under.
 const CONTAINER = 'com.samsung.tv.cobalt-yt';
 
 const SHARE = process.env.TUBE_SHARE || '/home/owner/share/tube';
@@ -119,10 +117,7 @@ const checkAddress = () => {
     });
 };
 
-// Reopening is where this falls down: the container the platform starts on a reopen dies at once,
-// while the identical launch issued from a service works every time. Tizen calls onRequest on our
-// exports when the app is launched, so this is an event rather than a poll. The guard is only
-// against a launch storm — a viewer who closes the app must not be dragged back in.
+// Launched from the service because the container the platform starts on a reopen dies at once.
 const wake = () => {
     if (typeof tizen === 'undefined') return;
 
@@ -141,8 +136,7 @@ const wake = () => {
     }, () => {});
 };
 
-// About 5.1MB, nearly all of it icu/icudt68l.dat, and only on the first run. Same size is enough
-// to call a file done: a firmware update replaces the whole directory.
+// Same size is enough to call a file done: a firmware update replaces the whole directory.
 const copyInto = (from, to) => {
     fs.mkdirSync(to, { recursive: true });
 
@@ -248,7 +242,6 @@ const cobaltIsInstalledHere = () => {
     try { return fs.statSync(STOCK).isDirectory(); } catch (e) { return false; }
 };
 
-// About 5.1MB on the first run, then nothing.
 const stagedMaterial = (content) => {
     const copied = copyInto(STOCK, content);
     if (copied) note('staged', `${copied} files into ${content}`);
@@ -271,11 +264,12 @@ const prepare = (done) => {
         if (error) note('failed', error);
         else state.prepared = result;
 
-        const waiting = state.waiting.splice(0, state.waiting.length);
+        const waiting = state.waiting;
+        state.waiting = [];
         return waiting.forEach((waiter) => waiter(error, result));
     };
 
-    if (done) state.waiting.push(done);
+    if (done) state.waiting = state.waiting.concat([done]);
 
     if (state.prepared) return done ? done(null, state.prepared) : undefined;
 
@@ -336,4 +330,4 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-module.exports = { prepare, wake, material, container, MITM_DIR };
+module.exports = { prepare, wake, material, container, appId, MITM_DIR };

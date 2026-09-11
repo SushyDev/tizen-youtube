@@ -39,10 +39,7 @@ function stageContents(staging) {
     });
 }
 
-// TUBE_GAME_MODE=1 npm run package. use.game.mode is what makes the renderer count frames — a
-// pristine getVideoPlaybackQuality reads 0/0/0 otherwise — and is said to cost frames, so a
-// package built with it is for measuring and not for watching. Added to the staged copy, so the
-// file in the repository stays the file that ships.
+// use.game.mode is what makes getVideoPlaybackQuality count frames at all.
 const GAME_MODE = '<tizen:metadata key="http://samsung.com/tv/metadata/use.game.mode" value="true"/>';
 
 const wantsGameMode = () => process.env.TUBE_GAME_MODE === '1';

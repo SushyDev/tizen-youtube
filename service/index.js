@@ -39,11 +39,8 @@ const platformVersion = isTV
 
 const app = proxy.create();
 
-// Cobalt treats a document that arrived without a Content-Security-Policy as "deny everything",
-// which on screen is a black rectangle and a network error naming nothing. But which policies it
-// will parse differs by version, and one it refuses denies just as thoroughly — a set that
-// fetches the page over and over without running it is the symptom. Switchable at runtime so that
-// can be settled in a minute: /__tube/dev/csp?policy=wide|plain|none
+// Cobalt denies a document that arrives without a Content-Security-Policy, and which policies it
+// accepts varies by version.
 const POLICIES = {
     wide: [
         "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
@@ -55,8 +52,6 @@ const POLICIES = {
         'font-src * data:'
     ].join('; '),
 
-    // The same permission without data: or blob:, in case an older parser chokes on a scheme
-    // source in default-src and denies the lot.
     plain: "default-src *; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'",
 
     none: null
@@ -75,9 +70,7 @@ app.use((_, res, next) => {
     next();
 });
 
-// Checking for an update must never be able to fail the route that triggers it. A throw before
-// the promise exists used to leave `updateInFlight` set for the life of the process — one bad
-// call and no set ever checked again, while /__tube/state answered 500 to whatever asked.
+// Checking for an update must never be able to fail the route that triggers it.
 const maybeCheckForUpdate = () => {
     const now = Date.now();
     if (state.updateInFlight || now - state.lastUpdateCheck < UPDATE_CHECK_INTERVAL) return;
@@ -192,10 +185,10 @@ const READY_PORT = 'TUBE_BOOT';
 const READY_PORT_OPEN = 'TUBE_BOOT_OPEN';
 
 const announceReady = () => {
-    if (!isTV || !servesBootScreen) return;
+    if (!isTV || !servesBootScreen || !cobalt) return;
 
     try {
-        const uiAppId = `${tizen.application.getAppInfo().packageId}.Tube`;
+        const uiAppId = cobalt.appId();
         const payload = [{ key: 'state', value: JSON.stringify(describeState()) }];
 
         const send = (label, open) => {
@@ -216,15 +209,11 @@ const announceReady = () => {
     }
 };
 
-// Loopback is not enough and is not worth trying again. Cobalt runs in its own package, and this
-// set controls app-to-app traffic on 127.0.0.1 by SMACK label: from another package 127.0.0.1 and
-// 0.0.0.0 answer EHOSTUNREACH, ::1 and localhost answer EACCES, and only the LAN address connects.
+// Every interface, because the container is another package and cannot reach our 127.0.0.1.
 const BIND = '0.0.0.0';
 const RETRY_LISTEN_AFTER = 5000;
 
-// Most general first. The fallbacks matter because binding every interface collides with a server
-// already on loopback — an older build of this app is the usual cause — while binding the LAN
-// address directly does not, so the two can coexist.
+// Fallbacks, because a LAN address still binds while another server holds the port on loopback.
 const candidates = () => {
     const interfaces = os.networkInterfaces();
 
@@ -233,9 +222,6 @@ const candidates = () => {
     ), [BIND]);
 };
 
-// A failed listen used to kill the service outright: nothing handled the error, the process
-// exited, auto-restart brought it back and it failed again. From outside that is indistinguishable
-// from a service the platform never launched.
 const listen = (addresses, index) => {
     const address = addresses[index];
     const serving = { yes: false };
@@ -275,9 +261,7 @@ const listen = (addresses, index) => {
 
 listen(candidates(), 0);
 
-// Tizen's own service runner calls these on our exports — service_runner.js:152 calls
-// `app.onRequest()` on every wake message. Exporting nothing makes that a TypeError, which lands
-// in the uncaught handler and kills the service on any set whose runner sends one.
+// Tizen's service runner calls these on every wake message, and a missing one kills the service.
 module.exports = {
     onStart: () => {},
 

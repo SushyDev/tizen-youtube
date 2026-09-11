@@ -31,6 +31,8 @@ const guarded = (handler, value, fallback) => {
     }
 };
 
+// A module still initialising throws on property access, so each is guarded rather than ending
+// the walk.
 const adopt = () => {
     window.JSON.parse = JSON.parse;
     window.JSON.stringify = JSON.stringify;
@@ -39,21 +41,28 @@ const adopt = () => {
     if (!registry) return;
 
     Object.keys(registry).forEach((key) => {
-        const module = registry[key];
-        if (module && module.JSON && module.JSON.parse) {
-            module.JSON.parse = JSON.parse;
-            module.JSON.stringify = JSON.stringify;
-        }
+        try {
+            const module = registry[key];
+            if (module && module.JSON && module.JSON.parse) {
+                module.JSON.parse = JSON.parse;
+                module.JSON.stringify = JSON.stringify;
+            }
+        } catch (e) {}
     });
 };
 
-const ADOPTION_WINDOW = 15000;
+// The module that parses innertube responses can arrive long after boot, and until it is adopted
+// no mod sees one.
+const ADOPTION_WINDOW = 60000;
 const ADOPTION_INTERVAL = 250;
 
-const keepAdopting = () => {
+// Navigation loads modules that did not exist at boot, so each one reopens a short window.
+const AFTER_NAVIGATION = 5000;
+
+const keepAdopting = (forMs) => {
     adopt();
 
-    const until = Date.now() + ADOPTION_WINDOW;
+    const until = Date.now() + forMs;
     const timer = setInterval(() => {
         adopt();
         if (Date.now() > until) clearInterval(timer);
@@ -85,7 +94,8 @@ const interceptJson = () => {
         return stringify.call(this, rewritten, replacer, space);
     };
 
-    keepAdopting();
+    keepAdopting(ADOPTION_WINDOW);
+    window.addEventListener('hashchange', () => keepAdopting(AFTER_NAVIGATION));
 };
 
 export { onResponse, onRequest, interceptJson };

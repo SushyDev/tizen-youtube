@@ -116,6 +116,21 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
+// Cobalt refuses any request type the policy has no directive for, and YouTube's policy has no
+// connect-src.
+const REACHABLE = 'connect-src * data: blob: ws: wss:';
+
+const CONNECT_SRC = /(^|;)(\s*)connect-src[^;]*/i;
+
+// YouTube sends two policies and both are enforced, so each needs the directive.
+const withOurConnections = (policy) => {
+    if (!policy) return policy;
+
+    return String(policy).split(',').map((one) => (CONNECT_SRC.test(one)
+        ? one.replace(CONNECT_SRC, `$1$2${REACHABLE}`)
+        : `${one}; ${REACHABLE}`)).join(',');
+};
+
 const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
@@ -188,13 +203,23 @@ const create = () => {
         return next();
     });
 
+    // A credentialed preflight reads `*` as a refusal, so the origin of our own pages and the
+    // headers asked for are named back.
     app.use((req, res, next) => {
-        allowOrigin(req, res);
+        const asked = req.get('origin');
+        const ours = asked === YOUTUBE_ORIGIN || asked === localOrigin();
+
+        res.setHeader('Access-Control-Allow-Origin', ours ? asked : '*');
+        if (ours) res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+        if (req.method !== 'OPTIONS') return next();
+
+        res.setHeader('Vary', 'Origin, Access-Control-Request-Headers');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
         res.setHeader('Access-Control-Allow-Headers', req.get('access-control-request-headers') || '*');
+        res.setHeader('Access-Control-Max-Age', '86400');
 
-        if (req.method === 'OPTIONS') return res.status(200).end();
-        return next();
+        return res.status(200).end();
     });
 
     app.get('/__tube/userScript.js', (_, res) => {
@@ -320,8 +345,14 @@ const copyHeaders = (req, res, response, route) => {
         const lower = key.toLowerCase();
 
         if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
+
         // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants.
-        if (lower === CSP_HEADER && !route.asTheRealHost) return;
+        if (lower === CSP_HEADER) {
+            if (!route.asTheRealHost) return;
+
+            res.setHeader(key, raw[key].map(withOurConnections));
+            return;
+        }
         if (route.isBypass && lower === 'access-control-allow-origin') return;
 
         // A page on the real host would reject a cookie rewritten to Domain=localhost.
@@ -414,6 +445,6 @@ const attachFallback = (app) => {
 };
 
 module.exports = {
-    create, attachFallback, rewriteBody, rewriteAttestation,
+    create, attachFallback, rewriteBody, rewriteAttestation, withOurConnections,
     rewriteSetCookie, restoreCookiePrefixes, flagOverrides, upstream
 };

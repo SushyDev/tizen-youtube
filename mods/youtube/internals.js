@@ -70,7 +70,10 @@ const findActionRunner = () => {
 
         const name = Object.getOwnPropertyNames(prototype).find((key) => {
             try {
-                return typeof instance[key] === 'function' && sourceOf(instance[key]).indexOf(marker) !== -1;
+                const value = instance[key];
+                return key !== 'constructor'
+                    && typeof value === 'function'
+                    && sourceOf(value).indexOf(marker) !== -1;
             } catch (e) {
                 return false;
             }
@@ -105,8 +108,12 @@ const findActionRunner = () => {
 };
 
 const reloadGuide = () => {
-    const run = findActionRunner();
-    if (run) run('reloadGuideAction');
+    try {
+        const run = findActionRunner();
+        if (run) run('reloadGuideAction');
+    } catch (e) {
+        console.warn('[tube] could not reload the guide:', e);
+    }
 };
 
 export {

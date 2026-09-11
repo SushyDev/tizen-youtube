@@ -66,8 +66,8 @@ const defaultConfig = {
   enableShowUserLanguage: true,
   enableShowOtherLanguages: false,
 
-  launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
-  reloadHomeOnStartup: false,
+  // The browseId the app opens on, empty for wherever YouTube would have gone — which is home.
+  startupPage: '',
 };
 
 function readStoredSettings() {
@@ -80,7 +80,28 @@ function readStoredSettings() {
   }
 }
 
-const stored = readStoredSettings();
+const RETIRED_STARTUP_KEYS = ['launchToOnStartup', 'reloadHomeOnStartup'];
+
+function startPageOf(launchTo) {
+  try {
+    const browseId = JSON.parse(launchTo).browseEndpoint.browseId;
+    return typeof browseId === 'string' && browseId !== 'FEtopics' ? browseId : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function migrateStartPage(settings) {
+  const current = Object.keys(settings)
+    .filter((key) => RETIRED_STARTUP_KEYS.indexOf(key) === -1)
+    .reduce((kept, key) => Object.assign({}, kept, { [key]: settings[key] }), {});
+
+  return settings.reloadHomeOnStartup === true && settings.startupPage === undefined
+    ? Object.assign({}, current, { startupPage: startPageOf(settings.launchToOnStartup) })
+    : current;
+}
+
+const stored = migrateStartPage(readStoredSettings());
 
 const localConfig = Object.assign({}, defaultConfig, stored);
 

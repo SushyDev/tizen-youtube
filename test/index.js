@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const SUITES = ['feed.js', 'surfaces.js', 'framework.js', 'json-routing.js', 'settings.js', 'adblock.js', 'deArrow.js', 'playerButtons.js', 'subtitles.js', 'sponsorblock.js', 'quality.js', 'wait-for.js', 'dom-shims.js'];
+const SUITES = ['feed.js', 'surfaces.js', 'framework.js', 'json-routing.js', 'settings.js', 'adblock.js', 'deArrow.js', 'playerButtons.js', 'startPage.js', 'subtitles.js', 'sponsorblock.js', 'quality.js', 'wait-for.js', 'dom-shims.js'];
 
 const failed = SUITES.filter((suite) => {
     try {

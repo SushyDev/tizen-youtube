@@ -3,7 +3,6 @@ dist/
 # `npm run dev` keeps the service's update cache here.
 .dev/
 release/
-.ncc/
 .package/
 *.wgt
 *.p12
@@ -15,3 +14,9 @@ release/
 
 # macOS finder metadata
 .DS_Store
+
+docs-internal/
+
+TODO.md
+test-results/
+playwright-report/

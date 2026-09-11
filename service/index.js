@@ -1,150 +1,209 @@
 'use strict';
 
-// tube service: CDP injection when Developer Mode is on, a local proxy when it is off.
-// The shell asks which is available and goes straight there.
+const os = require('os');
+
+const postmortem = require('./lib/postmortem.js');
+postmortem.watch();
 
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
-const injector = require('./lib/injector.js');
 const proxy = require('./lib/proxy.js');
-const dial = require('./lib/dial.js');
+const dev = require('./dev/index.js');
+const forward = require('./lib/forward.js');
+const upgrade = require('./lib/upgrade.js');
+const knobs = require('./lib/knobs.js');
 
-// Off-TV the proxy, loader and rewrite rules still work; only DIAL and injection need
-// the platform. This is what `npm run dev` uses.
+// Guarded, and the guard is the point. Everything the container route needs is a convenience laid
+// on a proxy that has to start regardless.
+function cobaltIfItLoads() {
+    try {
+        return require('./lib/cobalt.js');
+    } catch (e) {
+        postmortem.note('cobalt', `module would not load: ${postmortem.describe(e)}`);
+        return null;
+    }
+}
+
+const cobalt = cobaltIfItLoads();
+
 const isTV = typeof tizen !== 'undefined';
 
-// Off-TV the variant would always come out `legacy`, so this says which TV to be.
+const containerRoute = cobalt ? cobalt.container() : null;
+
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
-const app = proxy.create(platformVersion);
+const app = proxy.create();
 
-// The service outlives the app and can stay resident for days, so checking only at
-// start would mean an update lands after a reboot. The shell hits /__tube/state once
-// per launch; debounced so repeated launches cannot hammer the origin.
+// Cobalt denies a document that arrives without a Content-Security-Policy, and which policies it
+// accepts varies by version.
+const POLICIES = {
+    wide: [
+        "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
+        'img-src * data: blob:',
+        'media-src * data: blob:',
+        "script-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
+        "style-src * data: blob: 'unsafe-inline'",
+        'connect-src *',
+        'font-src * data:'
+    ].join('; '),
+
+    plain: "default-src *; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'",
+
+    none: null
+};
+
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
-let lastUpdateCheck = 0;
-let updateInFlight = false;
+const state = { policy: 'wide', lastUpdateCheck: 0, updateInFlight: false };
 
-function maybeCheckForUpdate() {
+app.use((_, res, next) => {
+    const chosen = POLICIES[state.policy];
+
+    if (chosen) res.setHeader('Content-Security-Policy', chosen);
+    else res.removeHeader('Content-Security-Policy');
+
+    next();
+});
+
+// Checking for an update must never be able to fail the route that triggers it.
+const maybeCheckForUpdate = () => {
     const now = Date.now();
-    if (updateInFlight || now - lastUpdateCheck < UPDATE_CHECK_INTERVAL) return;
+    if (state.updateInFlight || now - state.lastUpdateCheck < UPDATE_CHECK_INTERVAL) return;
 
-    lastUpdateCheck = now;
-    updateInFlight = true;
-    // Deliberately not awaited: a slow or dead origin must never delay a launch.
-    loader.checkForUpdate(platformVersion).then(
-        () => { updateInFlight = false; },
-        () => { updateInFlight = false; }
-    );
-}
+    state.lastUpdateCheck = now;
+    state.updateInFlight = true;
 
-// A failed injection, remembered just long enough. The shell has already exited by the
-// time one fails, so the service brings the app back and leaves this behind — the next
-// launch takes the proxy instead of looping. Expires: developer mode gets turned back on.
-const FAILURE_MEMORY = 60 * 1000;
+    const settle = () => { state.updateInFlight = false; };
 
-let injectionFailedAt = 0;
+    try {
+        loader.checkForUpdate().then(settle, (error) => {
+            postmortem.note('update', error);
+            settle();
+        });
+    } catch (error) {
+        postmortem.note('update', error);
+        settle();
+    }
+};
 
-const injectionRecentlyFailed = () => Date.now() - injectionFailedAt < FAILURE_MEMORY;
+const describeState = () => {
+    const theScriptThisSetWouldRun = () => {
+        try {
+            const resolved = loader.resolve();
+            return { version: resolved.version, origin: resolved.origin };
+        } catch (e) {
+            return { error: e.message };
+        }
+    };
 
-// Without this the television is left on the home row with nothing having happened.
-function relaunchApp(reason) {
-    injectionFailedAt = Date.now();
-    injector.stopConnecting();
-    console.error(`Injection failed (${reason}); reopening the app on the proxy path.`);
+    return {
+        script: theScriptThisSetWouldRun(),
+        platformVersion,
+        container: containerRoute
+    };
+};
 
-    if (!isTV) return;
-
-    const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
-    tizen.application.launch(
-        appId,
-        () => console.log('Reopened the app.'),
-        (err) => console.error(`Could not reopen the app: ${err.message}`)
-    );
-}
-
-// The shell polls this to decide which path to take.
 app.get('/__tube/state', (_, res) => {
     maybeCheckForUpdate();
-
-    injector.canConnectToDaemon().then((state) => {
-        // Which script this TV would run, so "did my update land?" is answerable.
-        let script = null;
-        try {
-            const resolved = loader.resolve(platformVersion);
-            script = { version: resolved.version, origin: resolved.origin, variant: resolved.variant };
-        } catch (e) {
-            script = { error: e.message };
-        }
-
-        res.json({
-            canInject: state.canConnectToDaemon,
-            isConnecting: state.isConnecting,
-            injectionFailed: injectionRecentlyFailed(),
-            ip: state.ip,
-            platformVersion,
-            variant: loader.variantFor(platformVersion),
-            script,
-
-            // DIAL only runs on a TV, so off one there is no cast endpoint to point at.
-            proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
-                ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
-                : '')
-        });
-    });
+    res.json(describeState());
 });
 
-// Starts the debugger and injects. The shell exits immediately after calling this.
-app.get('/__tube/inject', (req, res) => {
-    if (!isTV) {
-        return res.status(501).json({ error: 'Injection needs a TV; this service is running off-device.' });
-    }
-
-    const args = req.originalUrl.split('?')[1] || '';
-    const appId = `${tizen.application.getAppInfo().packageId}.Tube`;
-
-    // The debug launch has to replace a window that is already gone, so wait for the
-    // shell to exit — and give up, rather than polling for the life of the service.
-    const startedWaiting = Date.now();
-
-    const waitForExit = setInterval(() => {
-        if (Date.now() - startedWaiting > 10000) {
-            clearInterval(waitForExit);
-            return relaunchApp('the app never closed');
-        }
-
-        tizen.application.getAppsContext((contexts) => {
-            if (contexts.some((context) => context.appId === appId)) return;
-
-            clearInterval(waitForExit);
-
-            injector.startDebugger(args).then(
-                // `false` means the daemon refused: a failure even though nothing threw.
-                (attached) => { if (!attached) relaunchApp('sdb would not accept a connection'); },
-                (err) => relaunchApp(err.message)
-            );
-        });
-    }, 50);
-
-    res.json({ ok: true });
+// Inside the container there is no console and no dev bridge, so this route is the only way to
+// read what the service did.
+app.get('/__tube/log', (_, res) => {
+    res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
 
-// Registered last so it cannot shadow the endpoints above.
+// `relaunch` is passed in rather than reached for, because dev/ may not know about the container
+// route — and on a set without one it is simply absent.
+dev.routes(app, {
+    policies: POLICIES,
+    state,
+    knobs,
+    relaunch: cobalt ? cobalt.relaunch : null
+});
+
+dev.attach(app);
 proxy.attachFallback(app);
 
-app.listen(ports.PROXY, '127.0.0.1', () => {
-    console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
-    if (!isTV) {
-        console.log('Running off-TV: proxy and userscript are live; DIAL and injection are disabled.');
+// Every interface, because the container is another package and cannot reach our 127.0.0.1.
+const BIND = '0.0.0.0';
+const RETRY_LISTEN_AFTER = 5000;
+
+// Fallbacks, because a LAN address still binds while another server holds the port on loopback.
+const candidates = () => {
+    const interfaces = os.networkInterfaces();
+
+    return Object.keys(interfaces).reduce((found, device) => found.concat(
+        interfaces[device].filter((a) => !a.internal && a.family === 'IPv4').map((a) => a.address)
+    ), [BIND]);
+};
+
+const listen = (addresses, index) => {
+    const address = addresses[index];
+    const serving = { yes: false };
+
+    const server = app.listen(ports.PROXY, address, () => {
+        serving.yes = true;
+
+        postmortem.note('listening', `${address}:${ports.PROXY}`);
+        console.log(`tube service on ${address}:${ports.PROXY}`);
+        if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
+    });
+
+    // Cobalt's --proxy sends TLS through CONNECT; without an answer to that the container has no
+    // network at all.
+    forward.tunnel(server);
+
+    // And an upgrade is not a request express ever sees, so without this every WebSocket the page
+    // opens is accepted and then never answered — a hang rather than a failure.
+    upgrade.attach(server, { rewrite: dev.upgradeRewrite });
+
+    // Handled rather than fatal, and never advanced once the port is ours: a later error would
+    // otherwise start a second server beside the one already answering.
+    server.on('error', (error) => {
+        const why = error.code === 'EADDRINUSE'
+            ? 'something already holds that port — an older build of this app is the usual cause'
+            : postmortem.describe(error);
+
+        postmortem.note('listen', `${address}:${ports.PROXY} — ${why}`);
+        if (serving.yes) return undefined;
+
+        const next = index + 1;
+        if (next < addresses.length) return listen(addresses, next);
+
+        // Wait for whatever holds it to go away rather than exiting, which would only be restarted
+        // into the same failure.
+        return setTimeout(() => listen(candidates(), 0), RETRY_LISTEN_AFTER);
+    });
+};
+
+listen(candidates(), 0);
+
+// Tizen's service runner calls these on every wake message, and a missing one kills the service.
+module.exports = {
+    onStart: () => {},
+
+    // The platform wakes the service when the app is launched, which is the only notice anything
+    // of ours gets that a viewer opened it: the container is started instead of our content, so no
+    // page of ours runs.
+    onRequest: () => {
+        if (!cobalt) return;
+        try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }
+    },
+
+    onStop: () => {}
+};
+
+// Staging a directory and issuing a certificate must not be able to stop the proxy answering.
+if (cobalt) {
+    try {
+        cobalt.prepare();
+    } catch (e) {
+        postmortem.note('cobalt', `prepare threw: ${postmortem.describe(e)}`);
     }
-});
+}
 
-// DIAL discovery needs the platform to launch the app on a cast request.
-if (isTV) dial.start();
-
-// A new script is used from the next launch onward, so a bad one cannot break the
-// session that fetched it.
 setTimeout(maybeCheckForUpdate, 5000);

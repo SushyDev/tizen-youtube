@@ -1,20 +1,3 @@
-# Builds the widget and opens a draft release for the tag that triggered it.
-#
-#   npm run version:set 1.2.0    # and commit
-#   git tag v1.2.0 && git push origin v1.2.0
-#
-# The widget is unsigned on purpose: a Tizen signature names the television it may be
-# installed on, and Tizen Homebrew re-signs whatever it installs.
-#
-# It must be a *draft* — GitHub refuses asset uploads once a release is published, and
-# no workflow event fires when someone saves a draft by hand.
-#
-# Exactly one .wgt is attached: Tizen Homebrew resolves a GitHub entry to the first
-# package asset it finds.
-#
-# Optional repo variable TUBE_ORIGIN sets where the TV checks for a newer userscript.
-# Without it the app works but never updates itself between releases.
-
 name: Release
 
 on:
@@ -44,11 +27,9 @@ jobs:
       - name: Install
         run: npm ci
 
-      # tizen.config.json's version is the one that ends up inside the package.
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          # tizen.config.json holds a bare MAJOR.MINOR.PATCH, so v1.2.0-rc1 compares as 1.2.0.
           tagged="${GITHUB_REF_NAME#v}"
           tagged="${tagged%%-*}"
           declared="$(node -p "require('./tizen.config.json').version")"
@@ -58,26 +39,25 @@ jobs:
             exit 1
           fi
 
-      # Before the tests: the routing suite asks the service for a bundle the build writes.
       - name: Build
         run: npm run build
 
       - name: Test
         run: npm test
 
-      # `--release` refuses the placeholder origin. A prerelease tag is held to the same
-      # standard as a hand-run build.
       - name: Package
         env:
           STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && vars.TUBE_ORIGIN != '') && '--release' || '' }}
-        run: npm run package -- --unsigned $STRICT
+        run: npm run package -- $STRICT
+
+      - name: Audit the widget
+        run: npm run audit -- --release
 
       - name: Say the origin is a placeholder
         if: vars.TUBE_ORIGIN == ''
         run: |
           echo "::warning::No TUBE_ORIGIN variable is set, so this build carries the placeholder origin and will never update itself over the air. The bundles inside the package still work."
 
-      # The userscript bundles the TV downloads after install.
       - name: Stage the origin release
         if: vars.TUBE_ORIGIN != ''
         run: npm run release
@@ -90,7 +70,6 @@ jobs:
           path: release/origin/
           if-no-files-found: error
 
-      # "tube.wgt" on the releases page says nothing about which build it is.
       - name: Name the widget after the version
         id: widget
         run: |
@@ -99,22 +78,99 @@ jobs:
           mv release/tube.wgt "release/${name}"
           echo "path=release/${name}" >> "$GITHUB_OUTPUT"
 
-      # Creates the draft, or replaces the asset on the one an earlier run of this tag left.
-      - name: Open a draft release with it
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Keep the service bundle for the runtime matrix
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: ${{ steps.widget.outputs.path }}
-          fail_on_unmatched_files: true
+          name: release-service-bundle
+          path: service/dist
+          retention-days: 1
+          if-no-files-found: error
 
-      # A hand-run build off a branch has no tag to draft a release for.
       - name: Upload it as an artifact
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
           name: tizen-youtube-widget
           path: ${{ steps.widget.outputs.path }}
           if-no-files-found: error
+
+  runtimes:
+    name: node ${{ matrix.node }}
+    needs: widget
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['12.16.3', '14.21.3', '16.20.2', '18.18.2', '20.18.1', '22.12.0']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-service-bundle
+          path: service/dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Load and answer on node ${{ matrix.node }}
+        run: node service/test/smoke.js
+
+  # Blocking, because a release reaches strangers.
+  browser:
+    name: Against real YouTube
+    needs: widget
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-playwright-report
+          path: test/e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish the draft
+    needs: [widget, runtimes, browser]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tizen-youtube-widget
+          path: release
+
+      - name: Open a draft release with it
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release/*.wgt
+          fail_on_unmatched_files: true

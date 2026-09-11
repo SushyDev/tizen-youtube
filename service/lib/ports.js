@@ -1,12 +1,11 @@
 'use strict';
 
-// One place for every port this app binds. The reference hardcoded them at each use
-// site and drifted: its injector navigated to localhost:8085 while the DIAL server
-// binds 8095, so cast payloads were silently dropped on the CDP path.
+// The overrides exist so tests and the runtime matrix can run beside a dev service already
+// holding the default.
+const port = (name, fallback) => Number(process.env[name]) || fallback;
 
 module.exports = {
-    PROXY: 8099,   // MITM proxy used when Developer Mode is off
-    DIAL: 8095,    // DIAL server the phone's YouTube app discovers
-    SDB: 26101,    // the TV's own SDB daemon
-    DMP: 8001      // the TV's Smart View REST API
+    // config.xml hard-codes PROXY in its --proxy switch, and npm run package fails if the two disagree.
+    PROXY: port('TUBE_PROXY_PORT', 8099),
+    DEV: port('TUBE_DEV_PORT', 8097)
 };

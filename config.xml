@@ -19,13 +19,6 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- The slot itself supplies nothing — it carries only read.metadata.from.hybrid.webapp — and
-         several webapps may claim the same one: the switches come from whichever webapp was
-         launched. Stock YouTube is the Samsung store app 9Ur5IzDKqV.TizenYouTube, which claims
-         this same cobalt-yt and supplies the same base_url switch with no proxy switch. So this
-         package is its counterpart rather than its replacement: both installed, each icon starts
-         the container with its own switches and neither disturbs the other. Verified on hardware
-         2026-09-06, which also settles that the claim is not bound to a particular package id. -->
     <!-- proxy names 127.0.0.2 because the container, another package, cannot reach this one's 127.0.0.1. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>

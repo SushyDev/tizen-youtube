@@ -9,6 +9,17 @@ const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
 const mitm = require('./mitm.js');
 
+// A cobalt.js that fails to load, which mitm.js notes, costs the served stamp, never the tunnel.
+function cobaltIfItLoads() {
+    try {
+        return require('./cobalt.js');
+    } catch (e) {
+        return null;
+    }
+}
+
+const cobalt = cobaltIfItLoads();
+
 const ABSOLUTE = /^https?:\/\//i;
 
 const QUIET = 60000;
@@ -51,6 +62,8 @@ const tunnel = (server) => {
     const interceptor = mitm.interceptor(server, record);
 
     server.on('connect', (req, client, head) => {
+        if (cobalt) cobalt.served();
+
         const [host, port] = req.url.split(':');
         const secure = mitm.isIntercepted(host) ? interceptor() : null;
 

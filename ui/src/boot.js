@@ -163,8 +163,6 @@ const isPlaceholder = (origin) => {
 
 const localProxyUrl = () => `${BASE}/tv`;
 
-const withArgs = (url, args) => (args ? `${url}${url.indexOf('?') === -1 ? '?' : '&'}${args}` : url);
-
 const paintThen = (act) => {
     let acted = false;
 
@@ -176,18 +174,6 @@ const paintThen = (act) => {
 
     setTimeout(once, 250);
     if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(once));
-};
-
-const castArguments = () => {
-    if (!onTv) return '';
-
-    try {
-        const data = application.getRequestedAppControl().appControl.data;
-        const args = data.filter((entry) => entry.key === 'args')[0];
-        return args ? (JSON.parse(args.value[0]).args || '') : '';
-    } catch (e) {
-        return '';
-    }
 };
 
 const claimMediaKeys = () => (onTv ? MEDIA_KEYS : []).reduce((result, key) => {
@@ -353,7 +339,6 @@ const describe = (state, asks) => {
 
 const boot = async () => {
     const reaching = reachService();
-    const args = castArguments();
 
     const info = application ? application.appInfo : null;
 
@@ -389,9 +374,6 @@ const boot = async () => {
         say('tvinputdevice', 'no platform, keys not claimed', 'warn');
     }
 
-    say('appcontrol', args ? `cast payload, ${args.length} bytes` : 'plain launch, no payload');
-    if (args) say('appcontrol', args.slice(0, 96), 'note');
-
     shellReadyAt = now();
 
     const reached = await reaching;
@@ -402,11 +384,11 @@ const boot = async () => {
 
     describe(reached.state, reached.asks);
 
-    return useProxy(reached.state, args);
+    return useProxy(reached.state);
 };
 
-const useProxy = (state, args) => {
-    const target = withArgs((state && state.proxyUrl) || localProxyUrl(), args);
+const useProxy = (state) => {
+    const target = (state && state.proxyUrl) || localProxyUrl();
 
     say('proxy', 'routing youtube.com through the local proxy');
     say('proxy', target);

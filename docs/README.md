@@ -137,8 +137,7 @@ environment variables that nothing in a build sets:
 | `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
-Only debugger injection needs real hardware, and it reports clearly instead of
-crashing. Point the dev server at a set with
+Point the dev server's `/__tube` routes at a set with
 `TUBE_TV=192.168.2.9 npm run dev`.
 
 `npm run dev:boot` is the other half: the boot screen exists to disappear, so
@@ -158,7 +157,7 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `service/lib/injector.js` | CDP injection over loopback sdb |
 | `service/lib/proxy.js` | The rewrite table, carried unchanged |
 | `service/lib/loader.js` | Which bundle a TV gets, and from where |
-| `service/lib/ports.js` | 8099 proxy, 8097 dev, 26101 sdb, 8001 Smart View |
+| `service/lib/ports.js` | 8099 proxy, 8097 dev |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 

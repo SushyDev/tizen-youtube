@@ -111,5 +111,4 @@ app.listen(ports.PROXY, BIND, () => {
     announceReady();
 });
 
-
 setTimeout(maybeCheckForUpdate, 5000);

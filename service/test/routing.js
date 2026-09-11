@@ -10,7 +10,7 @@ function check(name, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 }
 
-const app = proxy.create('7.0');
+const app = proxy.create();
 app.get('/__tube/state', (_, res) => res.json({ marker: 'service-endpoint' }));
 app.get('/its/own/route', (_, res) => res.status(501).json({ marker: 'service-route' }));
 proxy.attachFallback(app);

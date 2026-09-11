@@ -51,7 +51,6 @@ const BROWSER_GLOBALS = {
     getComputedStyle: 'readonly',
     requestAnimationFrame: 'readonly',
     cancelAnimationFrame: 'readonly',
-    HTMLImageElement: 'readonly',
     HTMLScriptElement: 'readonly',
     Reflect: 'readonly',
     atob: 'readonly',

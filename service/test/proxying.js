@@ -44,7 +44,7 @@ const upstream = http.createServer((req, res) => {
     return res.end('no');
 });
 
-const app = proxy.create('7.0');
+const app = proxy.create();
 proxy.attachFallback(app);
 
 upstream.listen(0, '127.0.0.1', () => {

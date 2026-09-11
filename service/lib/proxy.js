@@ -1,14 +1,9 @@
 'use strict';
 
-// The proxy the app is served through. youtube.com comes back from here so the userscript can be
-// injected with a plain script tag, and so requests Google will not answer to our origin can be
-// carried for the page.
-
 const express = require('express');
 const fetch = require('node-fetch');
 const http = require('http');
 const https = require('https');
-const os = require('os');
 const URL = require('url');
 const { readFileSync } = require('fs');
 
@@ -17,9 +12,7 @@ const loader = require('./loader.js');
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
 
-// No socket timeout. A SABR answer is one long-lived response the player reads from for as long
-// as it is watching, so a timeout here is a hard cap on how long a video plays.
-const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: 8, timeout: 0 };
+const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000 };
 const httpsAgent = new https.Agent(AGENT_OPTIONS);
 const httpAgent = new http.Agent(AGENT_OPTIONS);
 const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
@@ -36,65 +29,36 @@ const BODIED = ['POST', 'PUT', 'PATCH'];
 const YOUTUBE_HOST = 'www.youtube.com';
 const YOUTUBE_ORIGIN = `https://${YOUTUBE_HOST}`;
 
-// A dead pooled socket is handed out anyway and the request dies on it; newer Node retries that
-// internally, Node 12 does not. Every one of those became a 500, which the container answers by
-// retrying for ever behind a network error.
-const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED'];
+// Node 12 hands out dead keep-alive sockets without retrying, so a bodiless request gets one retry
+// on a fresh connection.
+const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
 
-const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com)(:|$)/;
+const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com|googleusercontent\.com)$/;
 
-const state = { host: process.env.TUBE_PROXY_HOST || null };
+const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
 
-// Every URL the page is handed has to name the set on the network rather than loopback, so that
-// the page reaches us from wherever it is running. Resolved lazily: the service can start before
-// the set has an address.
-const onTheNetwork = () => {
-    const interfaces = os.networkInterfaces();
-
-    const found = Object.keys(interfaces)
-        .reduce((all, device) => all.concat(interfaces[device]), [])
-        .find((face) => face && face.family === 'IPv4' && !face.internal);
-
-    return found ? found.address : null;
-};
-
-const proxyHost = () => {
-    if (!state.host) state.host = onTheNetwork();
-    return state.host || 'localhost';
-};
-
-const localOrigin = () => `http://${proxyHost()}:${ports.PROXY}`;
+const localOrigin = () => `http://${PROXY_HOST}:${ports.PROXY}`;
 const proxyPrefix = () => `${localOrigin()}/cors-bypass/`;
 
-// Which experiment flags the page is served with, and which Origin the service presents to
-// Google. Both settable at runtime through /__tube/dev so an A/B does not cost a reinstall.
 const flagOverrides = new Map();
 
 const upstream = {
-    origin: 'https://www.youtube.com',
+    origin: YOUTUBE_ORIGIN,
     abrThroughService: false,
     onesie: 'auto',
     nativeProxyPatches: true
 };
-
-// -- rewrites ------------------------------------------------------------------------------------
 
 const spoofUserAgent = (text) => {
     const shim = '<script>try{Object.defineProperty(navigator,"userAgent",'
         + `{get:function(){return ${JSON.stringify(DEV_USER_AGENT)};},configurable:true});`
         + '}catch(e){}</script>';
 
-    // No <head> means an unexpected shape; leaving it alone beats guessing.
     return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
 };
 
-// Onesie delivers the player response encrypted inside the media stream, so with it on there is
-// no JSON to read. The html5_onesie flag does not stop it — the client uses onesie whenever the
-// page hands it a hot config, so the way to turn it off is to take that away.
-const withoutOnesie = (text) => text.replace(/"onesieHotConfig"/g, '"onesieHotConfigWithheld"');
-
-// With SABR there is one media URL in the player response and every byte comes from it. Sending
-// that one field through the service means the page needs no patched fetch to reach googlevideo.
+// Routes SABR's single media URL through the service so no page patch is needed to reach
+// googlevideo.
 const rerouteAbr = (text) => text.replace(
     /"serverAbrStreamingUrl":"(https:\\?\/\\?\/[^"]+)"/g,
     (whole, url) => `"serverAbrStreamingUrl":"${proxyPrefix()}${url}"`
@@ -107,9 +71,8 @@ const overrideInnertubeHost = (text) => text.replace(
     `"INNERTUBE_HOST_OVERRIDE":${JSON.stringify(localOrigin())},"INNERTUBE_CONTEXT_CLIENT_NAME"`
 );
 
-// BotGuard's program URL comes from /tv_config, wrapped in a TrustedResourceUrl, protocol-relative
-// and inside a JSON string — so its quotes and slashes arrive escaped. A pattern expecting a bare
-// quote matches nothing and fails silently, which cost three rounds of guessing.
+// BotGuard's program URL arrives protocol-relative inside a JSON string, so its quotes and slashes
+// may be escaped.
 const WRAPPED_PROGRAM = /(\\?"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
 const PLAIN_PROGRAM = /(\\?"interpreterUrl\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
 
@@ -125,24 +88,22 @@ const rewriteAttestation = (text, targetUrl) => {
         .replace(PLAIN_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`);
 };
 
-// In the page the blob is a JSON string, so its separators arrive escaped. Matching only the
-// plain form silently does nothing, which looks exactly like it working.
-const BLOB = /serializedExperimentFlags\\?":\\?"/;
+const BLOB = /(serializedExperimentFlags\\?":\\?")((?:[^"\\]|\\u[0-9a-fA-F]{4})*)/g;
 
-const retuneFlags = (text) => Array.from(flagOverrides).reduce((out, [name, value]) => {
-    const escaped = new RegExp(`${name}\\\\u003d[^\\\\"]*`, 'g');
-    const plain = new RegExp(`${name}=[^&"\\\\]*`, 'g');
+const retuneFlag = (blob, [name, value]) => {
+    const flag = new RegExp(`(^|\\\\u0026|&)${name}(\\\\u003d|=)[^\\\\&]*`);
 
-    if (escaped.test(out)) return out.replace(escaped, `${name}\\u003d${value}`);
-    if (plain.test(out)) return out.replace(plain, `${name}=${value}`);
+    if (flag.test(blob)) {
+        return blob.replace(flag, (whole, separator, equals) => `${separator}${name}${equals}${value}`);
+    }
 
     // An absent flag reads as off, so turning one on means adding it to the front of the blob.
-    const found = BLOB.exec(out);
-    if (!found) return out;
+    return `${name}\\u003d${value}\\u0026${blob}`;
+};
 
-    const insert = found.index + found[0].length;
-    return `${out.slice(0, insert)}${name}\\u003d${value}\\u0026${out.slice(insert)}`;
-}, text);
+const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
+    `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
+));
 
 const rewriteBody = (text, url) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
@@ -150,12 +111,9 @@ const rewriteBody = (text, url) => {
     const tuned = [
         DEV_USER_AGENT ? spoofUserAgent : null,
         flagOverrides.size ? retuneFlags : null,
-        upstream.onesie === 'off' ? withoutOnesie : null,
         upstream.nativeProxyPatches ? null : overrideInnertubeHost
     ].filter(Boolean).reduce((out, step) => step(out), text);
 
-    // Only our own script: googlevideo and jnn-pa allow our origin, so the player reaches them
-    // itself.
     const origin = localOrigin();
 
     const tag = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
@@ -181,10 +139,14 @@ const restoreCookiePrefixes = (header) => header
     .replace(/__LocalSecure-/g, '__Secure-')
     .replace(/__LocalHost-/g, '__Host-');
 
-// -- the application -----------------------------------------------------------------------------
+// A wildcard is refused for a request that carries cookies, so when the page names itself the
+// answer names it back.
+const allowOrigin = (req, res) => {
+    const asked = req.get('origin');
+    res.setHeader('Access-Control-Allow-Origin', asked || '*');
+    if (asked) res.setHeader('Access-Control-Allow-Credentials', 'true');
+};
 
-// Express matches routes in registration order and the fallback matches everything, so it must be
-// attached after the caller's own routes.
 const create = () => {
     const app = express();
 
@@ -193,22 +155,21 @@ const create = () => {
 
         const path = String(req.url || req.originalUrl);
 
-        // Our own chatter would drown the page's: the dev bridge alone polls five times a second.
+        // Our own /__tube/ requests would drown the page's in the journal.
         if (path.indexOf('/__tube/') !== 0) journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
 
         return next();
     });
 
     app.use((req, res, next) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        allowOrigin(req, res);
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-        res.setHeader('Access-Control-Allow-Headers', '*');
+        res.setHeader('Access-Control-Allow-Headers', req.get('access-control-request-headers') || '*');
 
         if (req.method === 'OPTIONS') return res.status(200).end();
         return next();
     });
 
-    // Served from the package or the verified cache, never from a CDN.
     app.get('/__tube/userScript.js', (_, res) => {
         try {
             res.type('application/javascript').send(loader.resolve().source);
@@ -233,35 +194,33 @@ const create = () => {
     return app;
 };
 
-// Where a request is really going, and how the answer has to be dressed to be usable.
 const routeFor = (req) => {
-    const urlBehindTheBypassPrefix = () => {
+    const bypassTarget = () => {
         const raw = req.url.substring('/cors-bypass/'.length);
         return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
     };
 
-    const whereTheRequestIsReallyGoing = (isBypass) => (
-        isBypass ? urlBehindTheBypassPrefix() : `${YOUTUBE_ORIGIN}${req.url}`
+    const targetOf = (isBypass) => (
+        isBypass ? bypassTarget() : `${YOUTUBE_ORIGIN}${req.url}`
     );
 
     const hostNamedBy = (target) => {
         try { return URL.parse(target).host || YOUTUBE_HOST; } catch (e) { return YOUTUBE_HOST; }
     };
 
-    // Google answers over TLS whatever the request line said; the plain scheme only exists so the
-    // request reaches us in the first place.
-    const overTlsWhateverTheSchemeSaid = (target, forGoogle) => (
+    // The page is plain HTTP, so Google URLs it builds may carry http: and are upgraded here.
+    const upgradeScheme = (target, forGoogle) => (
         forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target
     );
 
     const isBypass = req.path.indexOf('/cors-bypass/') === 0;
 
-    const target = whereTheRequestIsReallyGoing(isBypass);
+    const target = targetOf(isBypass);
     const host = hostNamedBy(target);
     const forGoogle = GOOGLE.test(host.split(':')[0]);
 
     return {
-        url: overTlsWhateverTheSchemeSaid(target, forGoogle),
+        url: upgradeScheme(target, forGoogle),
         host,
         forGoogle,
         isBypass
@@ -269,34 +228,24 @@ const routeFor = (req) => {
 };
 
 const headersFor = (req, route) => {
-    // Copied in place rather than rebuilt per key: this runs on every request the set makes.
-    const headers = Object.keys(req.headers).reduce((all, key) => {
-        if (key === 'proxy-connection') return all;
+    const dropped = route.forGoogle && upstream.origin === 'drop'
+        ? ['proxy-connection', 'origin', 'referer']
+        : ['proxy-connection'];
 
+    const referer = req.headers.referer ? { referer: `${upstream.origin}/tv` } : {};
+    const presented = route.forGoogle && upstream.origin !== 'drop' && upstream.origin !== 'pass'
+        ? Object.assign({ origin: upstream.origin }, referer)
+        : {};
+
+    const copied = Object.keys(req.headers)
+        .filter((key) => dropped.indexOf(key) === -1)
         // The page carries renamed cookies, because we served it on plain HTTP.
-        all[key] = key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key];
+        .map((key) => [key, key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key]]);
 
-        return all;
-    }, {});
-
-    headers.host = route.host;
-
-    // The proof-of-origin token is minted at our origin, so if the server cross-checks the two
-    // this is the input that decides it.
-    if (route.forGoogle && upstream.origin === 'drop') {
-        delete headers.origin;
-        delete headers.referer;
-    } else if (route.forGoogle && upstream.origin !== 'pass') {
-        headers.origin = upstream.origin;
-        if (headers.referer) headers.referer = `${upstream.origin}/tv`;
-    }
-
-    if (DEV_USER_AGENT) headers['user-agent'] = DEV_USER_AGENT;
-
-    // Brotli is not decoded here, so ask for encodings that can be read.
-    headers['accept-encoding'] = 'gzip, deflate';
-
-    return headers;
+    return Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
+        DEV_USER_AGENT ? { 'user-agent': DEV_USER_AGENT } : {},
+        // Brotli is not decoded here, so ask for encodings that can be read.
+        { 'accept-encoding': 'gzip, deflate' });
 };
 
 const isRetriable = (error) => !!error
@@ -341,15 +290,10 @@ const copyHeaders = (req, res, response, route) => {
         res.setHeader(key, response.headers.get(key));
     });
 
-    // A wildcard is refused for a request that carries cookies, so when the page names itself the
-    // answer names it back.
-    const asked = req.get('origin');
-    res.setHeader('Access-Control-Allow-Origin', asked || '*');
-    if (asked) res.setHeader('Access-Control-Allow-Credentials', 'true');
+    allowOrigin(req, res);
 
-    // A redirect is followed by the browser underneath anything the page has hooked, so an
-    // untouched Location leaves our origin and dies on CORS. SABR moves between googlevideo hosts
-    // constantly, so the hop has to come back through here.
+    // SABR redirects between googlevideo hosts, so Location is pointed back through /cors-bypass/
+    // or the hop fails CORS.
     const movedTo = response.status >= 300 && response.status < 400 && response.headers.get('location');
     if (route.isBypass && movedTo && /^https?:\/\//.test(movedTo)) {
         res.setHeader('Location', proxyPrefix() + movedTo);
@@ -359,8 +303,7 @@ const copyHeaders = (req, res, response, route) => {
 // Must be called after every other route is registered.
 const attachFallback = (app) => {
     app.all('*', (req, res) => {
-        // Refusing the onesie request is the way to get a plain player response out of the client:
-        // withholding its hot config stalls it, but a failed request is a case it already handles.
+        // A failed initplayback makes the client fall back to a plain player response.
         if (upstream.onesie === 'fail' && req.url.indexOf('initplayback') !== -1) {
             journal.service('onesie', `refused ${req.method}`);
             return res.status(502).end();

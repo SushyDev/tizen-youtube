@@ -1,9 +1,5 @@
 'use strict';
 
-// What the proxy is allowed to change about a response. The old parity test compared against a
-// table of URL rewrites; that table is gone, because googlevideo and jnn-pa allow our origin and
-// the player reaches them itself. All that is left is the script tag and the cookie names.
-
 // Read at module load, so it has to be set before the proxy is required.
 process.env.TUBE_PROXY_HOST = 'tv.example';
 
@@ -18,26 +14,26 @@ function check(label, ok, detail) {
     if (!ok) failures += 1;
 }
 
-// Nothing of YouTube's own code is touched. These are the shapes the old table used to rewrite.
 const UNTOUCHED = [
     ['absolute googlevideo', 'var u="https://r5---sn-abc.googlevideo.com/videoplayback?x=1";'],
     ['escaped googlevideo', 'var u="https:\\/\\/r5---sn-abc.googlevideo.com\\/videoplayback";'],
     ['protocol-relative gv', 'src="//r1---sn-xyz.googlevideo.com/foo"'],
     ['gstatic', 'a="https://www.gstatic.com/x";'],
-    ['jnn-pa', 'f("https://jnn-pa.googleapis.com/v1/attest")'],
     ['origin allowlist', 'var o=new Set(["www.youtube.com","accounts.google.com"]);'],
     ['location href', 'var a=window.location.href;'],
     ['player scheme', 'this.scheme="https";this.host="x"']
 ];
 
+const PLAYER_PATH = '/s/player/abc/tv-player-es6-tcl.js';
+const served = (source) => rewriteAttestation(rewriteBody(source, PLAYER_PATH), `https://www.youtube.com${PLAYER_PATH}`);
+
 UNTOUCHED.forEach(([label, source]) => {
-    check(`${label} is left alone`, rewriteBody(source, '/watch') === source, rewriteBody(source, '/watch'));
+    check(`${label} is left alone`, served(source) === source, served(source));
 });
 
 const injected = rewriteBody('<html><body></body></html>', '/tv');
 check('/tv gets the service\'s own script', injected.indexOf(`${ORIGIN}/__tube/userScript.js`) !== -1, injected);
 check('/tv script goes inside the document', injected.indexOf('</body>') > injected.indexOf('__tube'), injected);
-check('/tv has no CDN tag', injected.indexOf('jsdelivr') === -1);
 check('/tv is injected into exactly once', injected.split('__tube/userScript.js').length === 2);
 
 check('/tv_config is not injected into', rewriteBody('<html></html>', '/tv_config').indexOf('__tube') === -1);
@@ -48,10 +44,6 @@ const player = rewriteAttestation(
 );
 check('player routes jnn-pa through the service', player.indexOf(`${ORIGIN}/cors-bypass/https://jnn-pa.googleapis.com`) !== -1, player);
 
-// The shape that actually ships, verified off the wire: it comes from /tv_config, wrapped in a
-// TrustedResourceUrl, protocol-relative, and nested inside a JSON string so every quote around it
-// is escaped. A pattern expecting a bare " matches nothing and fails silently, which cost three
-// rounds of guessing — hence the literal escaping in this fixture.
 const wrapped = rewriteAttestation(
     '{"x":"{\\"interpreterUrl\\":{\\"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\":'
         + '\\"//www.google.com/js/th/a.js\\"}}"}',

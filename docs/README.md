@@ -50,7 +50,7 @@ npm run package    # release/tube.wgt, for Tizen Homebrew
 | --- | --- |
 | `npm run doctor` | Check prerequisites when something looks wrong |
 | `npm run build` | Boot screen, the userscript bundle, the service |
-| `npm test` | Lint, waitFor, rewrite parity, routing, loader, update flow |
+| `npm test` | Lint, waitFor, injection, routing, proxying, loader, update flow |
 | `npm run package` | Build a `.wgt` — signed by nobody, which is what a release carries |
 | `npm run release` | Stage `release/origin/` — the bundle and `latest.json` |
 | `npm run dev` | The whole app in a browser, no hardware needed |
@@ -68,12 +68,10 @@ available. With Developer Mode on, `shell:0 debug <appId>` over the TV's own sdb
 daemon relaunches this app under the Chrome DevTools Protocol, and the
 userscript is evaluated straight into youtube.com with `Page.setBypassCSP` — no
 proxying, no rewriting. With it off, youtube.com is proxied through
-`localhost:8099` so a plain script tag can inject instead; that path rewrites
-media and static hosts and renames the `__Secure-` / `__Host-` cookie prefixes,
-because the page is now plain HTTP. `service/lib/proxy.js` carries that rewrite
-table **unchanged** from the reference — it is empirically derived, every rule
-is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
-diverges.
+`localhost:8099` so a plain script tag can inject instead. The page is then
+plain HTTP, so the `__Secure-` / `__Host-` cookie prefixes are renamed, and
+requests to the Google hosts that will not answer that origin go through the
+service's `/cors-bypass/` route.
 
 **One bundle.** Polyfills in a browser bundle are parsed on *every* launch, and
 the sets that needed them are gone: the floor is Chrome 63, so the ES5 downlevel,
@@ -113,7 +111,7 @@ to develop and package against.
 ```sh
 npm run dev          # the whole app in a browser
 npm run dev:boot     # just the boot screen, held on screen
-npm run dev:service  # the proxy, rewrite table and loader, headless on :8099
+npm run dev:service  # the proxy and loader, headless on :8099
 npm test
 ```
 
@@ -146,7 +144,7 @@ looking at it needs a stand-in that answers and never hands over. That is
 | `mods/ui/` | The settings panel drawn over YouTube's own |
 | `service/index.js` | Routes, and the once-per-launch update check |
 | `service/lib/injector.js` | CDP injection over loopback sdb |
-| `service/lib/proxy.js` | The rewrite table, carried unchanged |
+| `service/lib/proxy.js` | Script injection, cookie renaming, and `/cors-bypass/` |
 | `service/lib/loader.js` | Which bundle a TV runs, and from where |
 | `service/lib/ports.js` | 8099 proxy, 8097 dev |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |

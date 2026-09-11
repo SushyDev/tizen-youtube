@@ -75,26 +75,28 @@ app.get('/__tube/quit', (_, res) => {
 
 // Which experiment flags the page is served with, changeable while the set is running:
 //   ?html5_onesie=false   set one (repeatable), then reload    ?clear=1   back to what YouTube sent
-app.get('/__tube/dev/flags', (req, res) => {
+if (process.env.TUBE_DEV_INJECT) app.get('/__tube/dev/flags', (req, res) => {
     if (req.query.clear) proxy.flagOverrides.clear();
 
     Object.keys(req.query).forEach((name) => {
         if (name === 'clear' || !/^[a-z0-9_]{3,64}$/.test(name)) return;
-        proxy.flagOverrides.set(name, String(req.query[name]).slice(0, 32));
+
+        const value = String(req.query[name]).slice(0, 32);
+        if (/^[A-Za-z0-9_.-]*$/.test(value)) proxy.flagOverrides.set(name, value);
     });
 
     res.json({ flags: Object.fromEntries(proxy.flagOverrides) });
 });
 
-// /__tube/dev/upstream?origin=pass|drop|<url>&abr=service&onesie=off|fail&patches=off
-app.get('/__tube/dev/upstream', (req, res) => {
+// /__tube/dev/upstream?origin=pass|drop|<url>&abr=service&onesie=fail&patches=off
+if (process.env.TUBE_DEV_INJECT) app.get('/__tube/dev/upstream', (req, res) => {
     if (req.query.origin) proxy.upstream.origin = String(req.query.origin).slice(0, 128);
     if (req.query.abr) proxy.upstream.abrThroughService = req.query.abr === 'service';
     if (req.query.patches) proxy.upstream.nativeProxyPatches = req.query.patches !== 'off';
 
     if (req.query.onesie) {
         const asked = String(req.query.onesie);
-        proxy.upstream.onesie = ['off', 'fail'].indexOf(asked) === -1 ? 'auto' : asked;
+        proxy.upstream.onesie = asked === 'fail' ? asked : 'auto';
     }
 
     res.json({

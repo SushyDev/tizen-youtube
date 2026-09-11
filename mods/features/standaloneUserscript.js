@@ -1,17 +1,4 @@
-// The page is served from a private address, so anything Google will not answer to that origin has
-// to come back through the service. Which hosts those are was established by measurement:
-//
-//   - videoplayback grants Access-Control-Allow-Origin only to https://www.youtube.com. From any
-//     other origin the answer carries no CORS headers at all. (generate_204 on the same host echoes
-//     whatever Origin it is given — a trap; it is not evidence that media is reachable.)
-//   - jnn-pa answers our origin, but without Access-Control-Allow-Credentials, which it does send
-//     to youtube.com. A credentialed fetch rejects that, the integrity token never arrives, and
-//     media then goes out with no proof-of-origin token at all.
-//   - BotGuard's program comes from www.google.com; without it window.trayride never appears.
-//
-// Dropping the scheme to http instead of carrying the URL in the path does not work either: a gold
-// Cobalt build refuses plain HTTP to any host that is not loopback or a private address.
-
+// Hosts that refuse the page's origin are fetched through the service's /cors-bypass/ route.
 const PROXIED = [
     'googlevideo.com',
     'googleapis.com',
@@ -33,8 +20,7 @@ function redirectUrl(originalUrl) {
         const text = String(originalUrl);
         const url = new URL(text.indexOf('//') === 0 ? `https:${text}` : text, window.location.origin);
 
-        // Built by hand, because Cobalt's URL setters are broken: assigning protocol keeps the colon
-        // from the value ("http%3a://host"), and assigning host after it empties the URL.
+        // Cobalt's URL setters corrupt the URL, so results are concatenated.
         if (OURS.indexOf(url.hostname) !== -1) {
             return `${window.location.origin}${url.pathname}${url.search}${url.hash}`;
         }
@@ -89,15 +75,10 @@ export default function installProxyPatches() {
             async === undefined ? true : async, user, password);
     };
 
-    // Scripts only. An <img> is never read by script, so it never faces CORS and needs no help.
     redirectOnAssignment(HTMLScriptElement, 'src');
 }
 
-// Self-installing on import: ES module imports are hoisted, so an `if (...) initPatches()` in the
-// entry file runs after every other module's top-level code, and anything that captured
-// window.fetch got the unpatched original.
+// Installs at import so fetch is patched before any other module captures it.
 if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
     installProxyPatches();
 }
-
-export { redirectUrl };

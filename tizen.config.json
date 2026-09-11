@@ -1,5 +1,5 @@
 {
-  "version": "0.4.1",
+  "version": "1.0.0",
 
   "comment": "Versioned paths under this origin are cached as immutable, so a version republished with different content fails its digest check on every TV.",
   "origin": "https://cdn.example.com/tube",

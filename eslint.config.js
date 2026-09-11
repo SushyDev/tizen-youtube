@@ -79,25 +79,18 @@ const CORRECTNESS_RULES = {
 };
 
 
-// The shape the shipped code is held to: const only, no loops, no classes, and no anonymous block
-// wearing a variable's name. Nothing enforced these until 2026-09-06 and the code drifted for it.
-//
-// Four files are exempt because live sibling branches own them and a reshape here would conflict
-// on every restack. They are the follow-up, not an exception in principle.
+// TODO: reshape SIBLING_OWNED files once their branches land.
 const SIBLING_OWNED = [
-    'mods/ui/customUI.js',
     'mods/features/pictureInPicture.js',
-    'mods/ui/settingsModel.js',
     'mods/youtube/commands.js'
 ];
 
 const SHIPPED = ['service/**/*.js', 'mods/**/*.js', 'ui/src/**/*.js'];
 
-const NOT_SHIPPED = SIBLING_OWNED.concat([
+const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
     'mods/test/**/*.js',
     'service/build/**/*.js',
-    'service/vite.config.mjs',
     'mods/rollup.config.js'
 ]);
 
@@ -173,7 +166,7 @@ module.exports = [
     },
     {
         files: SHIPPED,
-        ignores: NOT_SHIPPED,
+        ignores: UNSTYLED,
         rules: STYLE_RULES
     },
     {

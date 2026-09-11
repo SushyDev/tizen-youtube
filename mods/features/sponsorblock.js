@@ -1,5 +1,5 @@
 import sha256 from '../tiny-sha256.js';
-import { SEGMENTS as barTypes } from './segments.js';
+import { SEGMENTS } from './segments.js';
 import { waitFor } from '../utils/waitFor.js';
 import { configRead } from '../config.js';
 import { showToast } from '../ui/ytUI.js';
@@ -31,7 +31,6 @@ const SLIDER_EVERY = 500;
 const WAIT_EVERY = 100;
 
 function sponsorBlockFor(videoID) {
-    // One record of everything that changes, so the handlers below can stay pure functions of it.
     const held = {
         video: null,
         active: true,
@@ -40,6 +39,7 @@ function sponsorBlockFor(videoID) {
         segmentsoverlay: null,
         observer: null,
         stopWaitingForVideo: null,
+        stopWaitingForSlider: null,
         nextSkipTimeout: null,
         sliderInterval: null,
         onScheduleSkip: null,
@@ -53,9 +53,7 @@ function sponsorBlockFor(videoID) {
         .filter(([setting]) => configRead(setting))
         .map(([, category]) => category);
 
-    // -- the overlay ------------------------------------------------------------------------------
-
-    const barFor = (segment) => barTypes[segment.category] || { color: 'blue', opacity: 0.7 };
+    const barFor = (segment) => SEGMENTS[segment.category] || { color: 'blue', opacity: 0.7 };
 
     const segmentElement = (segment, videoDuration) => {
         const [start, end] = segment.segment;
@@ -100,11 +98,16 @@ function sponsorBlockFor(videoID) {
     });
 
     const buildOverlay = () => {
-        if (held.segmentsoverlay) return undefined;
+        if (!held.active || held.segmentsoverlay) return undefined;
         if (!held.video || !held.video.duration) return undefined;
 
         const slider = document.querySelector(SLIDER);
-        if (!slider) return waitFor(() => document.querySelector(SLIDER), buildOverlay, { everyMs: WAIT_EVERY });
+        if (!slider) {
+            held.stopWaitingForSlider = waitFor(
+                () => document.querySelector(SLIDER), buildOverlay, { everyMs: WAIT_EVERY }
+            );
+            return undefined;
+        }
 
         held.segmentsoverlay = document.createElement('div');
         held.segmentsoverlay.classList.add('ytLrProgressBarSlider', 'ytLrProgressBarSliderRectangularProgressBar');
@@ -134,8 +137,6 @@ function sponsorBlockFor(videoID) {
 
         return undefined;
     };
-
-    // -- skipping ---------------------------------------------------------------------------------
 
     // A segment the viewer keeps landing back inside is one they meant to watch, so after a repeat
     // inside a second it is announced once and then left alone.
@@ -167,7 +168,7 @@ function sponsorBlockFor(videoID) {
 
     const skipOver = (segment) => {
         const [, end] = segment.segment;
-        const skipName = barTypes[segment.category]?.name || segment.category;
+        const skipName = SEGMENTS[segment.category]?.name || segment.category;
 
         if (held.manualOnly.includes(segment.category)) return;
         if (skippedTooOften(segment, skipName)) return;
@@ -201,8 +202,6 @@ function sponsorBlockFor(videoID) {
             skipOver(segment);
         }, (start - held.video.currentTime) * 1000);
     }
-
-    // -- the video ---------------------------------------------------------------------------------
 
     function attachVideo() {
         if (held.stopWaitingForVideo) held.stopWaitingForVideo();
@@ -262,6 +261,9 @@ function sponsorBlockFor(videoID) {
 
         if (held.stopWaitingForVideo) held.stopWaitingForVideo();
         held.stopWaitingForVideo = null;
+
+        if (held.stopWaitingForSlider) held.stopWaitingForSlider();
+        held.stopWaitingForSlider = null;
 
         clearInterval(held.sliderInterval);
         held.sliderInterval = null;

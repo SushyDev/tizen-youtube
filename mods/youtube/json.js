@@ -16,8 +16,6 @@ const onRequest = (name, keys, write) => {
     writers.push({ name, handle: write });
 };
 
-// Runs on every JSON.parse in the app, so the early-outs are load bearing. Object.keys().some()
-// measured at 0.8x the cost of for...in here — the prototype walk is not free.
 const isInteresting = (value, index) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
 

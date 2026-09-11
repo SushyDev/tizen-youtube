@@ -245,9 +245,9 @@ onRequest('playback context', ['playbackContext'], (value) => {
 });
 
 function processShelves(shelves, shouldAddPreviews = true) {
-  // Splicing during the walk skips whatever followed each removal, so two adjacent shorts shelves
-  // left the second one on screen. Collect them and take them out afterwards.
-  const shorts = [];
+  const isShortsShelf = (shelve) => shelve.shelfRenderer?.content?.horizontalListRenderer?.items
+    && shelve.shelfRenderer.tvhtml5ShelfRendererType === 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS';
+  const shorts = configRead('enableShorts') ? [] : shelves.filter(isShortsShelf);
 
   shelves.forEach((shelve) => {
     if (shelve.shelfRenderer) {
@@ -260,10 +260,7 @@ function processShelves(shelves, shouldAddPreviews = true) {
       }
       shelve.shelfRenderer.content.horizontalListRenderer.items = hideVideo(shelve.shelfRenderer.content.horizontalListRenderer.items);
       if (!configRead('enableShorts')) {
-        if (shelve.shelfRenderer.tvhtml5ShelfRendererType === 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS') {
-          shorts.push(shelve);
-          return;
-        }
+        if (shorts.indexOf(shelve) !== -1) return;
         shelve.shelfRenderer.content.horizontalListRenderer.items = shelve.shelfRenderer.content.horizontalListRenderer.items.filter(item => item.tileRenderer?.tvhtml5ShelfRendererType !== 'TVHTML5_TILE_RENDERER_TYPE_SHORTS');
 
         shelve.shelfRenderer.content.horizontalListRenderer.items = shelve.shelfRenderer.content.horizontalListRenderer.items.filter(item => !item.tileRenderer?.onSelectCommand?.reelWatchEndpoint);
@@ -299,7 +296,6 @@ function addPreviews(items) {
 }
 
 function deArrowify(items) {
-  // Removed first and separately: splicing mid-walk let a second adjacent advert through.
   items.filter((item) => item.adSlotRenderer)
     .forEach((advert) => items.splice(items.indexOf(advert), 1));
 

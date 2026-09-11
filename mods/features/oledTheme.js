@@ -38,19 +38,16 @@ function lift(value) {
     return (alpha ? 'rgba(' : 'rgb(') + LIFTED_LABEL + alpha + ')';
 }
 
-const changed = [];
-
 export function rewrites() {
-    return changed.map(([style, property, original]) => ({
+    return held.changed.map(([style, property, original]) => ({
         property,
         was: original,
         now: style.getPropertyValue(property),
         lostAlpha: /rgba\(/.test(original) && !/rgba\(/.test(style.getPropertyValue(property))
     }));
 }
-const scanned = [];
 
-const held = { ground: null, curtain: null, observer: null, pending: null };
+const held = { ground: null, curtain: null, observer: null, pending: null, changed: [], scanned: [] };
 
 function key(value) {
     const match = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value);
@@ -93,7 +90,7 @@ function rewriteDeclarations(style) {
 
         const priority = style.getPropertyPriority(declaration.property);
 
-        changed.push([style, declaration.property, declaration.original, priority]);
+        held.changed = held.changed.concat([[style, declaration.property, declaration.original, priority]]);
         style.setProperty(declaration.property, next, priority);
     });
 }
@@ -116,15 +113,14 @@ const rulesOf = (sheet) => {
 
 function rewriteSheets() {
     Array.from(document.styleSheets)
-        .filter((sheet) => scanned.indexOf(sheet) === -1)
+        .filter((sheet) => held.scanned.indexOf(sheet) === -1)
         .forEach((sheet) => {
             const rules = rulesOf(sheet);
 
-            if (rules === null) return scanned.push(sheet);
-            if (!rules.length) return undefined;
+            if (rules !== null && !rules.length) return;
 
-            scanned.push(sheet);
-            return walkRules(rules);
+            held.scanned = held.scanned.concat([sheet]);
+            if (rules !== null) walkRules(rules);
         });
 }
 
@@ -148,8 +144,6 @@ function blackenSplash() {
         .exec(window.getComputedStyle(loader).backgroundImage || '');
     if (!match) return;
 
-    // Transparent if the ground behind it is already the colour we are removing, and repainted
-    // black otherwise.
     const repainted = () => {
         try {
             const bytes = decodeBase64(match[1]);
@@ -157,7 +151,7 @@ function blackenSplash() {
 
             if (lifted) return lifted;
 
-            return repaintPalette(bytes, SPLASH_GROUND, [0, 0, 0]) ? bytes : null;
+            return repaintPalette(bytes, SPLASH_GROUND, [0, 0, 0]);
         } catch (e) {
             return null;
         }
@@ -242,14 +236,13 @@ function watchForStylesheets() {
     const ours = (node) => node === held.ground || node === held.curtain;
     const isStylesheet = (node) => node.nodeName === 'STYLE' || node.nodeName === 'LINK';
 
-    // The first new stylesheet is enough — the rescan is debounced and covers whatever else arrived.
     held.observer = new MutationObserver((records) => {
         const added = records.reduce((all, record) => all.concat(Array.from(record.addedNodes)), []);
-        const found = added.find((node) => !ours(node) && isStylesheet(node));
+        const found = added.filter((node) => !ours(node) && isStylesheet(node));
 
-        if (!found) return;
+        if (!found.length) return;
 
-        if (found.nodeName === 'LINK') found.addEventListener('load', schedule);
+        found.filter((node) => node.nodeName === 'LINK').forEach((link) => link.addEventListener('load', schedule));
 
         schedule();
     });
@@ -282,7 +275,7 @@ function disable() {
 
     fade(() => {
         // Newest first, so a property rewritten more than once ends on the value it started with.
-        changed.slice().reverse().forEach(([style, property, original, priority]) => {
+        held.changed.slice().reverse().forEach(([style, property, original, priority]) => {
             style.setProperty(property, original, priority);
         });
 
@@ -291,8 +284,8 @@ function disable() {
         restoreSplash();
     });
 
-    changed.length = 0;
-    scanned.length = 0;
+    held.changed = [];
+    held.scanned = [];
     held.ground = null;
 }
 

@@ -78,7 +78,6 @@ const defaultConfig = {
 
   launchToOnStartup: '{"browseEndpoint":{"browseId":"FEtopics"}}',
   reloadHomeOnStartup: true,
-
 };
 
 function readStoredSettings() {

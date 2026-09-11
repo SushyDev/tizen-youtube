@@ -13,7 +13,6 @@ global.btoa = (binary) => Buffer.from(binary, 'binary').toString('base64');
 
 const SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
-// colourType 3 is paletted, which is what the splash is.
 const ihdr = (colourType) => {
     const data = new Uint8Array(13);
     writeUint32(data, 0, 4);
@@ -55,18 +54,25 @@ check('a chunk carries a CRC the reader agrees with', (() => {
     return stored === crc32(paletted, plte.at + 4, plte.at + 8 + plte.length);
 })(), 'the CRC did not verify');
 
-check('base64 survives a round trip',
-    encodeBase64(decodeBase64(encodeBase64(paletted))) === encodeBase64(paletted));
+check('an empty IEND chunk carries the reference CRC',
+    readUint32(chunk('IEND', new Uint8Array(0)), 8) === 0xae426082,
+    readUint32(chunk('IEND', new Uint8Array(0)), 8).toString(16));
+
+check('base64 survives a round trip', (() => {
+    const bytes = Uint8Array.from({ length: 5000 }, (_, index) => (index * 7) % 256);
+    const back = decodeBase64(encodeBase64(bytes));
+
+    return back.length === bytes.length && back.every((value, index) => value === bytes[index]);
+})(), 'the bytes changed');
 
 {
-    const bytes = png(3, [...GROUND, 1, 2, 3, ...GROUND]);
-    const painted = repaintPalette(bytes, GROUND, [0, 0, 0]);
+    const bytes = repaintPalette(png(3, [...GROUND, 1, 2, 3, ...GROUND]), GROUND, [0, 0, 0]);
     const plte = chunks(bytes).find((entry) => entry.type === 'PLTE');
     const first = plte.at + 8;
 
     // Three entries of three bytes: the first and the third are the ground colour.
-    check('every palette entry of that colour is repainted', painted
-        && bytes[first] === 0 && bytes[first + 1] === 0 && bytes[first + 2] === 0
+    check('every palette entry of that colour is repainted',
+        bytes[first] === 0 && bytes[first + 1] === 0 && bytes[first + 2] === 0
         && bytes[first + 3] === 1 && bytes[first + 4] === 2 && bytes[first + 5] === 3
         && bytes[first + 6] === 0 && bytes[first + 7] === 0 && bytes[first + 8] === 0,
         Array.from(bytes.subarray(first, first + 9)).join(','));
@@ -76,7 +82,7 @@ check('base64 survives a round trip',
         'the CRC was left stale');
 
     check('a colour that is not there repaints nothing',
-        repaintPalette(png(3, [9, 9, 9]), GROUND, [0, 0, 0]) === false);
+        repaintPalette(png(3, [9, 9, 9]), GROUND, [0, 0, 0]) === null);
 }
 
 {

@@ -1,22 +1,22 @@
 const ASSIGNMENT = /([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*=(?![=>])/g;
 
-// replace() as the visitor, not matchAll(): matchAll is Chrome 73 and the floor is Cobalt 3.2.1.
-// replace resets the /g cursor itself, which is what the hand-rolled while loop was really for.
 function extractAssignments(code) {
     if (typeof code !== 'string' || !code) return [];
 
-    const found = [];
+    const from = (at) => {
+        ASSIGNMENT.lastIndex = at;
+        const match = ASSIGNMENT.exec(code);
+        if (!match) return [];
 
-    code.replace(ASSIGNMENT, (whole, left, property, at) => {
-        found.push({
-            left: `${left}.${property}`,
-            property,
-            start: at,
-            rhsStart: at + whole.length
-        });
+        return [{
+            left: `${match[1]}.${match[2]}`,
+            property: match[2],
+            start: match.index,
+            rhsStart: match.index + match[0].length
+        }].concat(from(ASSIGNMENT.lastIndex));
+    };
 
-        return whole;
-    });
+    const found = from(0);
 
     return found.map((entry, index) => ({
         left: entry.left,

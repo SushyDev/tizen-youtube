@@ -1,7 +1,4 @@
 // Just enough PNG to make one splash image transparent, or repaint its background.
-//
-// The splash arrives as a base64 data URL in a computed style, so it has to be taken apart and put
-// back together in the page. Nothing here touches the DOM, which is what makes it testable.
 
 function buildCrcTable() {
     const step = (c) => ((c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1));
@@ -12,13 +9,8 @@ function buildCrcTable() {
 
 const crcTable = buildCrcTable();
 
-// The one loop kept on purpose. Measured over a 64KB image, `subarray().reduce()` is 2.5x the cost
-// of the index walk, and this runs over every byte of the splash.
 export function crc32(bytes, from, to) {
-    /* eslint-disable no-restricted-syntax */
-    let c = -1;
-    for (let i = from; i < to; i += 1) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-    /* eslint-enable no-restricted-syntax */
+    const c = bytes.subarray(from, to).reduce((crc, byte) => crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8), -1);
 
     return (c ^ -1) >>> 0;
 }
@@ -43,8 +35,6 @@ export const encodeBase64 = (bytes) => btoa(
         .apply(null, bytes.subarray(block * BLOCK, (block + 1) * BLOCK))).join('')
 );
 
-// The chunk table, walked by following each length field. Recursion rather than a cursor: the
-// position of the next chunk is only knowable from the one before it.
 export function chunks(bytes) {
     const at = (position) => {
         if (position + 12 > bytes.length) return [];
@@ -73,7 +63,7 @@ export function chunk(type, data) {
     return made;
 }
 
-export function spliced(bytes, made, at, dropping) {
+function spliced(bytes, made, at, dropping) {
     const out = new Uint8Array(bytes.length - dropping + made.length);
 
     out.set(bytes.subarray(0, at), 0);
@@ -87,7 +77,6 @@ const COLOUR_TYPE = 25;
 const PALETTED = 3;
 const TRUECOLOUR = 2;
 
-// Every palette index painted in `ground`, so those entries can be made fully transparent.
 const paletteMatches = (bytes, plte, ground) => Array
     .from({ length: Math.floor(plte.length / 3) }, (_, index) => index)
     .filter((index) => {
@@ -135,7 +124,7 @@ export function transparentGround(bytes, ground) {
 
 export function repaintPalette(bytes, from, to) {
     const plte = chunks(bytes).find((entry) => entry.type === 'PLTE');
-    if (!plte) return false;
+    if (!plte) return null;
 
     const first = plte.at + 8;
 
@@ -143,15 +132,11 @@ export function repaintPalette(bytes, from, to) {
         .from({ length: Math.floor(plte.length / 3) }, (_, index) => first + index * 3)
         .filter((at) => bytes[at] === from[0] && bytes[at + 1] === from[1] && bytes[at + 2] === from[2]);
 
-    if (!painted.length) return false;
+    if (!painted.length) return null;
 
-    painted.forEach((at) => {
-        bytes[at] = to[0];
-        bytes[at + 1] = to[1];
-        bytes[at + 2] = to[2];
-    });
+    const colours = Uint8Array.from(bytes.subarray(first, first + plte.length), (value, index) => (
+        painted.indexOf(first + index - (index % 3)) === -1 ? value : to[index % 3]
+    ));
 
-    writeUint32(bytes, first + plte.length, crc32(bytes, plte.at + 4, first + plte.length));
-
-    return true;
+    return spliced(bytes, chunk('PLTE', colours), plte.at, 12 + plte.length);
 }

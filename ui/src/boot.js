@@ -26,8 +26,6 @@ const onTv = !!application;
 
 const BASE = onTv ? `http://localhost:${PORT}` : '';
 
-// -- the log on screen ---------------------------------------------------------------------------
-
 const clock = () => ((window.performance && window.performance.now) ? window.performance.now() : Date.now());
 
 const startedAt = clock();
@@ -35,10 +33,21 @@ const now = () => clock() - startedAt;
 
 const logElement = document.getElementById('log');
 
-const shown = { handedOver: false };
+const startup = {
+    handedOver: false,
+    shellReady: 0,
+    serviceUp: 0,
+    keysTook: 0,
+    asks: 0,
+    firstAsk: 0,
+    foundBy: 'ask',
+    portState: 'not tried',
+    toldAt: 0,
+    toldBy: ''
+};
 
 const say = (facility, message, tone) => {
-    if (shown.handedOver) return;
+    if (startup.handedOver) return;
 
     const line = document.createElement('div');
 
@@ -57,11 +66,11 @@ const say = (facility, message, tone) => {
 
     Array.from(logElement.childNodes)
         .slice(0, Math.max(0, logElement.childNodes.length - MAX_LINES))
-        .forEach((line) => logElement.removeChild(line));
+        .forEach((stale) => logElement.removeChild(stale));
 };
 
 const handOver = () => {
-    shown.handedOver = true;
+    startup.handedOver = true;
     document.body.className = 'done';
 };
 
@@ -75,8 +84,6 @@ const canHandOver = (state) => onTv || !!(state && state.handOver);
 
 window.onerror = (message, _source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
 
-// -- talking to the service ----------------------------------------------------------------------
-
 const report = (line) => {
     if (!onTv) return;
 
@@ -84,7 +91,7 @@ const report = (line) => {
         const request = new XMLHttpRequest();
         request.open('GET', `${BASE}/__tube/booted?t=${encodeURIComponent(line)}`, true);
         request.send();
-    } catch (e) { /* the service is not up; the screen already says so */ }
+    } catch (e) { }
 };
 
 const ask = (path, timeout) => new Promise((resolve, reject) => {
@@ -108,8 +115,6 @@ const ask = (path, timeout) => new Promise((resolve, reject) => {
 });
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// -- what this set is ----------------------------------------------------------------------------
 
 const engine = () => {
     const agent = navigator.userAgent || '';
@@ -145,31 +150,38 @@ const isPlaceholder = (origin) => {
 
 const localProxyUrl = () => `${BASE}/tv`;
 
-const paintThen = (act) => {
-    const once = { done: false };
+const runOnce = (act) => {
+    const record = { ran: false };
 
-    const go = () => {
-        if (once.done) return;
-        once.done = true;
+    return () => {
+        if (record.ran) return;
+        record.ran = true;
         act();
     };
+};
+
+const paintThen = (act) => {
+    const go = runOnce(act);
 
     setTimeout(go, 250);
     if (window.requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(go));
 };
 
-const claimMediaKeys = () => (onTv ? MEDIA_KEYS : []).reduce((result, key) => {
-    try {
-        platform.tvinputdevice.registerKey(key);
-        result.claimed.push(key);
-    } catch (e) {
-        result.refused.push(key);
-    }
+const claimMediaKeys = () => {
+    const tried = (onTv ? MEDIA_KEYS : []).map((key) => {
+        try {
+            platform.tvinputdevice.registerKey(key);
+            return { key, ok: true };
+        } catch (e) {
+            return { key, ok: false };
+        }
+    });
 
-    return result;
-}, { claimed: [], refused: [] });
-
-// -- starting the service ------------------------------------------------------------------------
+    return {
+        claimed: tried.filter((one) => one.ok).map((one) => one.key),
+        refused: tried.filter((one) => !one.ok).map((one) => one.key)
+    };
+};
 
 const launchService = () => new Promise((resolve) => {
     if (!onTv) {
@@ -180,7 +192,7 @@ const launchService = () => new Promise((resolve) => {
     const serviceId = `${application.appInfo.packageId}.TubeService`;
     say('service', `launching ${serviceId}`);
 
-    return platform.application.launchAppControl(
+    platform.application.launchAppControl(
         new platform.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
         serviceId,
         () => { say('service', 'launch accepted', 'ok'); resolve(); },
@@ -192,36 +204,21 @@ const launchService = () => new Promise((resolve) => {
     );
 });
 
-// Everything the summary needs, gathered rather than scattered across the module.
-const timings = {
-    shellReady: 0,
-    serviceUp: 0,
-    keysTook: 0,
-    asks: 0,
-    firstAsk: 0,
-    foundBy: 'ask',
-    portState: 'not tried',
-    toldAt: 0,
-    toldBy: ''
-};
-
 const awaitAnnouncement = () => {
     if (!onTv) return null;
 
     if (!platform.messageport) {
-        timings.portState = 'no tizen.messageport in the shell';
+        startup.portState = 'no tizen.messageport in the shell';
         say('state', 'this webview has no message port; asking instead', 'warn');
         return null;
     }
 
-    const registered = [];
-
-    const promise = new Promise((resolve) => {
+    return new Promise((resolve) => {
         const listen = (label, open) => {
             try {
                 open().addMessagePortListener((data) => {
-                    timings.toldAt = now();
-                    timings.toldBy = label;
+                    startup.toldAt = now();
+                    startup.toldBy = label;
 
                     const carried = (data || []).filter((item) => item.key === 'state')[0];
 
@@ -232,18 +229,17 @@ const awaitAnnouncement = () => {
                     }
                 });
 
-                registered.push(label);
+                return label;
             } catch (e) {
-                registered.push(`${label} refused ${e.name || e.message}`);
+                return `${label} refused ${e.name || e.message}`;
             }
         };
 
-        listen('trusted', () => platform.messageport.requestTrustedLocalMessagePort(READY_PORT));
-        listen('open', () => platform.messageport.requestLocalMessagePort(READY_PORT_OPEN));
+        startup.portState = [
+            listen('trusted', () => platform.messageport.requestTrustedLocalMessagePort(READY_PORT)),
+            listen('open', () => platform.messageport.requestLocalMessagePort(READY_PORT_OPEN))
+        ].join('+');
     });
-
-    timings.portState = registered.join('+');
-    return promise;
 };
 
 const reachService = async () => {
@@ -251,11 +247,11 @@ const reachService = async () => {
     const deadline = started + GIVE_UP_AFTER;
     const announced = awaitAnnouncement();
 
-    const tries = { asks: 0, launched: false, saidWaiting: false, nextNudge: started + NUDGE_EVERY };
+    const tries = { launched: false, saidWaiting: false, nextNudge: started + NUDGE_EVERY };
 
     const askOnce = async () => {
-        tries.asks += 1;
-        if (tries.asks === 1) timings.firstAsk = now();
+        startup.asks += 1;
+        if (startup.asks === 1) startup.firstAsk = now();
 
         const left = Math.max(deadline - now(), 500);
 
@@ -283,7 +279,6 @@ const reachService = async () => {
         tries.nextNudge = now() + NUDGE_EVERY;
     };
 
-    // Recursion rather than a loop: each attempt is one pass, and the tail is the next attempt.
     const attempt = async () => {
         const state = await askOnce().catch((failure) => {
             explainTheWait(failure);
@@ -291,52 +286,50 @@ const reachService = async () => {
         });
 
         if (state) {
-            timings.serviceUp = now();
-            return { state, asks: tries.asks, by: 'ask' };
+            startup.serviceUp = now();
+            return { state, by: 'ask' };
         }
 
         nudgeIfItHasBeenAWhile();
 
-        if (now() > deadline) return { state: null, asks: tries.asks, by: 'gave up' };
+        if (now() > deadline) return { state: null, by: 'gave up' };
 
         const backstop = wait(Math.max(Math.min(BACKSTOP, deadline - now()), 0)).then(() => null);
         const told = announced ? await Promise.race([announced, backstop]) : await backstop;
 
         if (!told) return attempt();
 
-        timings.serviceUp = now();
-        return { state: told, asks: tries.asks, by: 'announcement' };
+        startup.serviceUp = now();
+        return { state: told, by: 'announcement' };
     };
 
     return attempt();
 };
-
-// -- what happened -------------------------------------------------------------------------------
 
 const summarise = () => {
     const total = now();
     const seconds = (ms) => (ms / 1000).toFixed(3);
 
     const line = [
-        `shell ${seconds(timings.shellReady)}s`,
-        `keys ${seconds(timings.keysTook)}s`,
-        `asked at ${seconds(timings.firstAsk)}s`,
-        timings.serviceUp ? `service ${seconds(timings.serviceUp)}s` : 'service never answered',
-        `${timings.asks} ${timings.asks === 1 ? 'ask' : 'asks'}`,
-        `by ${timings.foundBy}`,
-        `port ${timings.portState}`,
-        timings.toldAt ? `told by ${timings.toldBy} at ${seconds(timings.toldAt)}s` : 'never told',
+        `shell ${seconds(startup.shellReady)}s`,
+        `keys ${seconds(startup.keysTook)}s`,
+        `asked at ${seconds(startup.firstAsk)}s`,
+        startup.serviceUp ? `service ${seconds(startup.serviceUp)}s` : 'service never answered',
+        `${startup.asks} ${startup.asks === 1 ? 'ask' : 'asks'}`,
+        `by ${startup.foundBy}`,
+        `port ${startup.portState}`,
+        startup.toldAt ? `told by ${startup.toldBy} at ${seconds(startup.toldAt)}s` : 'never told',
         `total ${seconds(total)}s`
     ].join(', ');
 
-    say('tube', `startup finished in ${seconds(total)}s (${line})`, timings.serviceUp ? 'ok' : 'warn');
+    say('tube', `startup finished in ${seconds(total)}s (${line})`, startup.serviceUp ? 'ok' : 'warn');
 
     report(line);
 };
 
-const describe = (state, asks) => {
-    say('state', `up after ${asks} ${asks === 1 ? 'ask' : 'asks'}, `
-        + `${(timings.serviceUp / 1000).toFixed(3)}s`, 'ok');
+const describe = (state) => {
+    say('state', `up after ${startup.asks} ${startup.asks === 1 ? 'ask' : 'asks'}, `
+        + `${(startup.serviceUp / 1000).toFixed(3)}s`, 'ok');
 
     if (state.platformVersion) say('state', `tizen ${state.platformVersion}`);
 
@@ -356,8 +349,6 @@ const describe = (state, asks) => {
         say('loader', 'set tube.origin in tizen.config.json and rebuild', 'warn');
     }
 };
-
-// -- handing over --------------------------------------------------------------------------------
 
 // This screen only ever runs in a build without the container metadata: a package carrying
 // nativeID never runs its own content, and the platform launches Cobalt in its place.
@@ -379,8 +370,6 @@ const useProxy = (state) => {
     });
 };
 
-// Nothing is served without the service: the proxy is the service, so navigating there only
-// replaces this log with its error page and takes the reason with it.
 const giveUp = () => {
     say('state', `gave up after ${GIVE_UP_AFTER / 1000}s`, 'bad');
     say('state', 'the service never came up, or came up without opening its port', 'bad');
@@ -395,13 +384,7 @@ const giveUp = () => {
 };
 
 const stopEverything = () => {
-    const left = { yes: false };
-
-    const leave = () => {
-        if (left.yes) return;
-        left.yes = true;
-        application.exit();
-    };
+    const leave = runOnce(() => application.exit());
 
     say('tube', 'stopping the service and closing', 'note');
 
@@ -418,8 +401,6 @@ const stopEverything = () => {
     setTimeout(leave, QUIT_TIMEOUT);
     return undefined;
 };
-
-// -- boot ------------------------------------------------------------------------------------------
 
 const boot = async () => {
     const reaching = reachService();
@@ -443,10 +424,10 @@ const boot = async () => {
     if (onTv) {
         const beforeKeys = now();
         const keys = claimMediaKeys();
-        timings.keysTook = now() - beforeKeys;
+        startup.keysTook = now() - beforeKeys;
 
         say('tvinputdevice',
-            `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered in ${timings.keysTook.toFixed(1)}ms`,
+            `${keys.claimed.length}/${MEDIA_KEYS.length} keys registered in ${startup.keysTook.toFixed(1)}ms`,
             keys.refused.length ? 'warn' : 'ok');
 
         if (keys.refused.length) say('tvinputdevice', `not on this model: ${keys.refused.join(' ')}`);
@@ -454,15 +435,14 @@ const boot = async () => {
         say('tvinputdevice', 'no platform, keys not claimed', 'warn');
     }
 
-    timings.shellReady = now();
+    startup.shellReady = now();
 
     const reached = await reaching;
-    timings.asks = reached.asks;
-    timings.foundBy = reached.by;
+    startup.foundBy = reached.by;
 
     if (!reached.state) return giveUp();
 
-    describe(reached.state, reached.asks);
+    describe(reached.state);
 
     return useProxy(reached.state);
 };

@@ -11,54 +11,79 @@ const commaParts = (text) => {
     return parsed.parts.concat([parsed.current]).map((part) => part.trim()).filter((part) => part);
 };
 
+const CARRIED = ['opacity', 'transform', 'visibility', 'all'];
+
+const secondsIn = (time) => {
+    const found = /^(-?[\d.]+)(m?s)$/.exec(String(time).trim());
+    if (!found) return 0;
+
+    return found[2] === 'ms' ? Number(found[1]) / 1000 : Number(found[1]);
+};
+
+const cycled = (list, index) => (list.length ? list[index % list.length] : '');
+
+// Normalised, because it is compared every frame and rewritten only when it differs.
 const transitionOf = (style) => {
-    const names = commaParts(style.transitionProperty);
     const times = commaParts(style.transitionDuration);
     const curves = commaParts(style.transitionTimingFunction);
     const waits = commaParts(style.transitionDelay);
-    const at = (list, index) => list[index] || list[0] || '';
 
-    return names
-        .map((name, index) => [name, at(times, index), at(curves, index), at(waits, index)].join(' ').trim())
-        .join(', ');
+    const kept = commaParts(style.transitionProperty)
+        .map((name, at) => ({ name, time: cycled(times, at), curve: cycled(curves, at), wait: cycled(waits, at) }))
+        .filter(({ name }) => CARRIED.indexOf(name) !== -1)
+        .filter(({ time, wait }) => secondsIn(time) > 0 || secondsIn(wait) > 0)
+        .map(({ name, time, curve, wait }) => [name, time, curve, wait].join(' ').trim());
+
+    return kept.length ? kept.join(', ') : 'none';
 };
 
-const MOVING = ['opacity', 'transform', 'all'];
+const SLIDE = /^translate[XY]?\(\s*-?[\d.]+px\s*(,\s*-?[\d.]+px\s*)?\)$/;
 
-const animatesMotion = (style) => {
-    const names = commaParts(style.transitionProperty);
-    const times = commaParts(style.transitionDuration);
-
-    return names.some((name, at) => MOVING.indexOf(name) !== -1
-        && (times[at] || times[0]) && (times[at] || times[0]) !== '0s');
+// A translation lands the same on a box of no size in the corner of the screen; a scale or a
+// percentage does not. YouTube hides the bar before it scales the player behind a panel.
+const slideOf = (transform) => {
+    const parts = String(transform || '').match(/[\w-]+\([^)]*\)/g) || [];
+    return parts.length && parts.every((part) => SLIDE.test(part)) ? parts.join(' ') : 'none';
 };
 
-// Cobalt's getComputedStyle reports a transition's end value, so ancestor transitions are
-// mirrored, not sampled.
+const nameOf = (node) => {
+    const key = node.getAttribute('idomkey');
+    const tag = node.tagName.toLowerCase();
+
+    return key ? `${tag}[${key}]` : tag;
+};
+
+// Every ancestor, not only the moving ones, because YouTube also hides the bar with no transition
+// at all. Cobalt's getComputedStyle reports a transition's end value, so they are mirrored, not
+// sampled.
 const layersAbove = (node, found) => {
     if (!node || !node.tagName || node === document.body) return found;
 
     const style = getComputedStyle(node);
-    if (!animatesMotion(style)) return layersAbove(node.parentNode, found);
 
     return layersAbove(node.parentNode, [{
+        name: nameOf(node),
         opacity: style.opacity,
-        transform: style.transform,
+        transform: slideOf(style.transform),
+        visibility: style.visibility,
         transition: transitionOf(style)
     }].concat(found));
 };
 
-const translateOf = (transform) => {
-    const text = String(transform || '');
-    const pair = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(text);
-    const across = /translateX\((-?[\d.]+)px\)/.exec(text);
-    const down = /translateY\((-?[\d.]+)px\)/.exec(text);
+const PIXELS = /-?[\d.]+(?=px)/g;
 
-    return {
-        x: pair ? Number(pair[1]) : (across ? Number(across[1]) : 0),
-        y: pair ? Number(pair[2]) : (down ? Number(down[1]) : 0)
-    };
+const stepOf = (part) => {
+    const values = (part.match(PIXELS) || []).map(Number);
+
+    if (part.indexOf('translateX(') === 0) return { x: values[0] || 0, y: 0 };
+    if (part.indexOf('translateY(') === 0) return { x: 0, y: values[0] || 0 };
+
+    return { x: values[0] || 0, y: values[1] || 0 };
 };
+
+const translateOf = (transform) => (String(transform || '').match(/translate[XY]?\([^)]*\)/g) || [])
+    .map(stepOf)
+    .reduce((all, step) => ({ x: all.x + step.x, y: all.y + step.y }), { x: 0, y: 0 });
 
 // Taken off each chapter's measured position, because the mirror applies it again.
 const shiftOf = (layers) => layers.reduce((all, layer) => {
@@ -66,4 +91,4 @@ const shiftOf = (layers) => layers.reduce((all, layer) => {
     return { x: all.x + step.x, y: all.y + step.y };
 }, { x: 0, y: 0 });
 
-export { commaParts, transitionOf, animatesMotion, layersAbove, translateOf, shiftOf };
+export { commaParts, transitionOf, slideOf, layersAbove, translateOf, shiftOf };

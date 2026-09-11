@@ -12,8 +12,6 @@ const SUITES = [
 
 ui.heading('test');
 
-let failures = 0;
-
 const gate = (name, command, args, detail) => {
     const started = Date.now();
     try {
@@ -30,8 +28,8 @@ const gate = (name, command, args, detail) => {
     }
 };
 
-failures += gate('lint', 'npx', ['eslint', '.'], 'no errors');
-failures += gate('types', 'npx', ['tsc', '--noEmit'], 'no errors');
+let failures = gate('lint', 'npx', ['eslint', '.'], 'no errors')
+    + gate('types', 'npx', ['tsc', '--noEmit'], 'no errors');
 
 SUITES.forEach((suite) => {
     const started = Date.now();

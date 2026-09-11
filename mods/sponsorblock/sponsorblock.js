@@ -32,6 +32,8 @@ const SLIDER_GIVE_UP = 30000;
 const WAIT_EVERY = 100;
 
 function sponsorBlockFor(videoID) {
+    const sliderTimer = `sponsorblock slider ${videoID}`;
+
     const held = {
         video: null,
         active: true,
@@ -125,11 +127,11 @@ function sponsorBlockFor(videoID) {
         held.observer = watchOverlay();
 
         // Ran until it found the bar, and so ran for ever on a page where the bar never appeared.
-        until('sponsorblock slider', SLIDER_EVERY, () => {
+        until(sliderTimer, SLIDER_EVERY, () => {
             held.slider = document.querySelector(PROGRESS_BAR);
             if (!held.slider) return;
 
-            stop('sponsorblock slider');
+            stop(sliderTimer);
 
             held.observer.observe(held.slider, { childList: true, subtree: true });
             held.slider.appendChild(held.segmentsoverlay);
@@ -227,6 +229,7 @@ function sponsorBlockFor(videoID) {
         const asked = encodeURIComponent(JSON.stringify(ASKED_FOR));
         const response = await fetch(`${sponsorblockAPI}/skipSegments/${videoHash}?categories=${asked}`);
         const results = await response.json();
+        if (!held.active) return;
 
         const result = results.find((entry) => entry.videoID === videoID);
         if (!result || !result.segments || !result.segments.length) return;
@@ -265,7 +268,7 @@ function sponsorBlockFor(videoID) {
         if (held.stopWaitingForSlider) held.stopWaitingForSlider();
         held.stopWaitingForSlider = null;
 
-        stop('sponsorblock slider');
+        stop(sliderTimer);
 
         if (held.observer) held.observer.disconnect();
         held.observer = null;

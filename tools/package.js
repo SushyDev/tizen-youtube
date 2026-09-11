@@ -8,6 +8,7 @@ const JSZip = require('jszip');
 const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
 const paths = require('./paths.js');
+const { PROXY } = require('../service/lib/ports.js');
 
 const APP = { output: paths.WGT, include: paths.WIDGET };
 
@@ -101,6 +102,13 @@ function addCobaltProfile(staging) {
 // the container is launched pointing at a port the service is not on. Cheap to check, and the
 // failure it prevents costs an install and a reboot to diagnose.
 function checkThePortsAgree(staging, expected) {
+    if (PROXY !== Number(expected)) {
+        throw friendly(
+            `service/lib/ports.js binds the proxy on ${PROXY}, but tizen.config.json says it is on\n` +
+            `  ${expected}. One of the two is wrong, and the set would show nothing.`
+        );
+    }
+
     const xml = readFileSync(join(staging, 'config.xml'), 'utf8');
     const named = /--proxy=http:\/\/[^:\s"]+:(\d+)/.exec(xml);
 

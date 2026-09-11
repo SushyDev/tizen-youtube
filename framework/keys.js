@@ -1,8 +1,4 @@
-// The remote, in one place.
-//
-// Two features each took three capturing listeners on document — six in all, on every keystroke,
-// for two features that between them care about four key codes. Neither removed them. Here there
-// are three, taken once, and a feature says which codes it wants.
+// Routes remote key codes to registered handlers through three capturing listeners.
 
 const TYPES = ['keydown', 'keypress', 'keyup'];
 
@@ -37,7 +33,6 @@ const listen = () => {
     TYPES.forEach((type) => document.addEventListener(type, dispatch, true));
 };
 
-// Returns the way to take it back off again, which nothing did before.
 const onKey = (name, keyCodes, handle) => {
     listen();
 

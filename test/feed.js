@@ -1,9 +1,4 @@
-// The walk in mods/feed.js against the nested helpers it replaced.
-//
-// The oracle below is a verbatim copy of processShelves/addPreviews/deArrowify/hqify/addLongPress/
-// hideVideo as they stood before the rewrite. Both are run over the same fixture and the results
-// compared, so "eight traversals became one" is a claim with a test behind it rather than an
-// argument. When this file and mods/feed.js disagree, the oracle is what shipped.
+// Diffs the registered feed visitors against the pre-rewrite helpers.
 
 import assert from 'assert';
 

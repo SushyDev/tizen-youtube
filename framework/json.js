@@ -1,10 +1,7 @@
-import { until, running } from './schedule.js';
+import { until } from './schedule.js';
 import { booted } from './register.js';
 
-// Every handler's keys used to be merged into one set, and a root carrying any key in that union
-// ran every handler — so a browse response woke the quality settler and the guide filter alike,
-// and each re-checked its own shape by hand. The keys are a dispatch index now: a handler is
-// called only for a root that actually carries one of the keys it asked for.
+// Handlers are indexed by key so a response reaches only the handlers that asked for one of its keys.
 const readers = Object.create(null);
 const writers = Object.create(null);
 
@@ -20,37 +17,35 @@ const file = (index, name, keys, handle) => {
 };
 
 const onResponse = (name, keys, read) => {
-    if (booted()) console.warn(`[json] ${name} registered after interception began; it will not run`);
+    if (booted()) {
+        console.warn(`[json] ${name} registered after interception began; it will not run`);
+        return;
+    }
+
     file(readers, name, keys, read);
 };
 
 const onRequest = (name, keys, write) => {
-    if (booted()) console.warn(`[json] ${name} registered after interception began; it will not run`);
+    if (booted()) {
+        console.warn(`[json] ${name} registered after interception began; it will not run`);
+        return;
+    }
+
     file(writers, name, keys, write);
 };
 
 const matching = (value, index) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
 
-    const keys = Object.keys(value);
-    const seen = Object.create(null);
-
-    const found = keys.reduce((got, key) => {
-        const bucket = index[key];
-        if (!bucket) return got;
-
-        return got.concat(bucket.filter((entry) => {
-            if (seen[entry.id]) return false;
-            seen[entry.id] = true;
-            return true;
-        }));
-    }, []);
+    const found = Object.keys(value)
+        .reduce((got, key) => got.concat(index[key] || []), [])
+        .filter((entry, position, all) => all.indexOf(entry) === position);
 
     if (!found.length) return null;
 
     // Registration order, not the order the keys happened to appear in. The writer pipeline
     // reduces, so for those it is the difference between a rewrite landing and being overwritten.
-    return found.sort((a, b) => a.id - b.id);
+    return found.slice().sort((a, b) => a.id - b.id);
 };
 
 const guarded = (handler, value, fallback) => {
@@ -95,8 +90,7 @@ const ADOPTION_WINDOW = 60000;
 const ADOPTION_INTERVAL = 250;
 
 // Navigating loads modules that did not exist at boot, so each one reopens a short window. until()
-// extends the window already running rather than starting a second interval beside it, which is
-// what rapid navigation used to do.
+// extends the window already running rather than starting a second interval beside it.
 const AFTER_NAVIGATION = 5000;
 
 const keepAdopting = (forMs) => {
@@ -138,6 +132,4 @@ const interceptJson = () => {
     window.addEventListener('hashchange', () => keepAdopting(AFTER_NAVIGATION));
 };
 
-const adopting = () => running('json adoption');
-
-export { onResponse, onRequest, interceptJson, adopting };
+export { onResponse, onRequest, interceptJson };

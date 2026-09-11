@@ -2,9 +2,7 @@ import { waitFor } from './waitFor.js';
 
 const registry = () => window._yttv || {};
 
-// Materialising 3116 pairs was the floor cost of every find, and findBySource then called
-// toString() on all of them. The registry only ever grows, so its size is enough to know whether
-// the last answer is still the whole of it.
+// The registry only grows, so an unchanged size means the cached pairs are complete.
 const held = { size: -1, pairs: [] };
 
 const entries = () => {
@@ -76,31 +74,19 @@ const findResolver = () => {
     return match ? match[1].instance : null;
 };
 
-// Remembered, because resolve() used to scan the whole registry on every command the app sent.
-// Only a live answer is kept: a null would otherwise mean "never found" for the life of the page,
-// and a resolver replaced by a soft reload would mean every command silently vanishing.
-const remembered = { resolver: null };
-
-const theResolver = () => {
-    if (remembered.resolver && typeof remembered.resolver.resolveCommand === 'function') {
-        return remembered.resolver;
-    }
-
-    remembered.resolver = findResolver();
-    return remembered.resolver;
-};
-
 const resolve = (command, context) => {
-    const resolver = theResolver();
+    const resolver = findResolver();
     return resolver ? resolver.resolveCommand(command, context) : undefined;
 };
 
-// Keep looking until the registry yields, then hand it over once.
-//
-// This is the primitive four files were missing: ui.js counted to forty, nativeSettings.js stepped
-// 250ms twenty times then 500ms for ever, customUI.js never gave up at all, and moreSubtitles.js
-// polled every second. waitFor already knew how to stop; nothing had joined the two together.
-const whenFound = (name, look, onFound, options) => waitFor(look, onFound, options);
+const whenFound = (name, look, onFound, options) => waitFor(look, (found) => {
+    try {
+        return onFound(found);
+    } catch (failure) {
+        console.error(`[whenFound:${name}] failed:`, failure);
+        return undefined;
+    }
+}, options);
 
 const ROUTER_MARKER = 'ytlrActionRouter';
 const ACTION_MARKER = 'this.actionName';
@@ -160,5 +146,5 @@ const reloadGuide = () => {
 
 export {
     findBySource, findByPrototype, findComponent, findMap, findResolver, resolve, reloadGuide,
-    sourceOf, entries, whenFound
+    sourceOf, whenFound
 };

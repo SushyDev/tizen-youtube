@@ -163,9 +163,21 @@ check('a handler that throws does not stop the rest', () => {
     assert.deepStrictEqual(seen, ['after']);
 });
 
-check('an unwanted key code costs nothing', () => {
+check('an unwanted key code is neither handled nor swallowed', () => {
+    const seen = [];
+    const swallowed = { yes: false };
+    onKey('elsewhere', [45], () => { seen.push('elsewhere'); return true; });
+
     const dispatch = listeners.find((entry) => entry.type === 'keyup').handle;
-    dispatch({ keyCode: 9999, type: 'keyup' });
+    dispatch({
+        keyCode: 9999,
+        type: 'keyup',
+        preventDefault: () => { swallowed.yes = true; },
+        stopPropagation: () => { swallowed.yes = true; }
+    });
+
+    assert.deepStrictEqual(seen, [], 'a handler ran for a code it never asked for');
+    assert.strictEqual(swallowed.yes, false, 'a key nobody asked for was swallowed');
 });
 
 // -- register ----------------------------------------------------------------------------------
@@ -175,22 +187,32 @@ check('features run in phase order, not registration order', () => {
 
     register('late phase', 'ui', () => order.push('ui'));
     register('early phase', 'network', () => order.push('network'));
-    register('middle phase', 'feed', () => order.push('feed'));
+    register('middle phase', 'settings', () => order.push('settings'));
 
     boot();
 
-    assert.deepStrictEqual(order, ['network', 'feed', 'ui']);
-    assert.ok(PHASES.indexOf('network') < PHASES.indexOf('intercept'), 'intercept must be last');
+    assert.deepStrictEqual(order, ['network', 'settings', 'ui']);
+    assert.strictEqual(PHASES[PHASES.length - 1], 'intercept', 'intercept must be last');
 });
 
-check('a feature that throws does not stop the others', () => {
-    // boot() has run, so this proves the seal as well: both of these are refused.
+check('a registration after boot is refused', () => {
     const order = [];
     register('throws', 'ui', () => { throw new Error('deliberate'); });
     register('after', 'ui', () => order.push('after'));
 
     assert.strictEqual(booted(), true);
     assert.deepStrictEqual(order, [], 'a registration after boot must not run');
+});
+
+await asyncCheck('a feature that throws does not stop the others', async () => {
+    const fresh = await import('../framework/register.js?throws');
+    const order = [];
+
+    fresh.register('throws', 'ui', () => { throw new Error('deliberate'); });
+    fresh.register('after', 'ui', () => order.push('after'));
+    fresh.boot();
+
+    assert.deepStrictEqual(order, ['after'], 'the feature after the one that threw never ran');
 });
 
 const failed = results.filter((ok) => !ok).length;

@@ -3,6 +3,7 @@
 
 import { redrawSettingRows } from './settingComponents.js';
 import { COMMIT, TREE, VERSION, sourceOf } from '../../framework/index.js';
+
 const PANEL = 'ytlr-setting-app-version';
 const LABEL = 'Patch';
 const STAMP = `${VERSION}-${COMMIT}-${TREE}`;

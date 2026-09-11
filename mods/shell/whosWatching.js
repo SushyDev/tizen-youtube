@@ -1,4 +1,5 @@
 import { configChangeEmitter, configRead, waitFor } from '../../framework/index.js';
+
 const RECURRING_ACTIONS = 'yt.leanback.default::recurring_actions';
 
 const WAIT_WINDOW = 15000;

@@ -11,11 +11,9 @@ const BUNDLE = 'dist/userScript.js';
 
 const SERVICE_DIST = 'service/dist';
 const SERVICE_BUNDLE = 'service/dist/index.js';
-const SERVICE_ASSETS = 'service/dist/assets';
 
 const RELEASE = 'release';
 const WGT = 'release/tube.wgt';
-const ORIGIN_STAGING = 'release/origin';
 
 // app/ is a source directory, not an archive path. Tizen resolves <content src> and <icon src>
 // relative to the archive root, and service/lib/cobalt.js reads ../../config.xml at runtime from
@@ -27,14 +25,11 @@ const WIDGET = [
     { from: 'service/dist', to: 'service/dist' }
 ];
 
-// Published to the CDN rather than packaged: the userscript fetches it at runtime.
-const OTA_ASSETS = [{ from: 'app/assets/language-names.json', to: 'language-names.json' }];
-
 const ARTEFACTS = [DIST, SERVICE_DIST, RELEASE];
 
 module.exports = {
     DIST, BUNDLE,
-    SERVICE_DIST, SERVICE_BUNDLE, SERVICE_ASSETS,
-    RELEASE, WGT, ORIGIN_STAGING,
-    WIDGET, OTA_ASSETS, ARTEFACTS
+    SERVICE_DIST, SERVICE_BUNDLE,
+    RELEASE, WGT,
+    WIDGET, ARTEFACTS
 };

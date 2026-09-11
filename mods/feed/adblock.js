@@ -52,8 +52,7 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
           );
       }
 
-      // Only the section level is gated: advert slots inside a shelf are taken out by the walk's
-      // own keeper, which has never been gated and used to sit inside deArrowify.
+      // Only section-level advert slots are gated; the walk's keeper removes the ones inside shelves.
       if (adBlockEnabled) {
         r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents =
           r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents.filter(
@@ -234,8 +233,6 @@ onRequest('playback context', ['playbackContext'], (value) => {
   });
 });
 
-// -- what the walk does to a tile ------------------------------------------------------------
-
 const addPreviews = (item) => {
   if (!configRead('enablePreviews')) return;
   if (!item.tileRenderer) return;
@@ -258,10 +255,7 @@ const addPreviews = (item) => {
   };
 };
 
-// Remembered per video, because a fetch went out for every tile on every response — the same
-// video appears in several shelves and again on every navigation back to the feed. The answer is
-// applied straight away when it is already held, which is the only way it lands before the tile
-// is drawn rather than changing the title under the viewer.
+// Cached per video so a held answer dresses the tile before it is drawn.
 const branding = new Map();
 const BRANDING_REMEMBERED = 512;
 
@@ -387,8 +381,6 @@ const addLongPress = (item) => {
   item.tileRenderer.onLongPressCommand = data;
 };
 
-// -- what the walk keeps ---------------------------------------------------------------------
-
 const unwatched = (item) => {
   if (!item.tileRenderer) return true;
   const progressBar = item.tileRenderer.header?.tileHeaderRenderer?.thumbnailOverlays?.find(overlay => overlay.thumbnailOverlayResumePlaybackRenderer)?.thumbnailOverlayResumePlaybackRenderer;
@@ -416,20 +408,12 @@ const notAShortsShelf = (shelf) => {
   return shelf.shelfRenderer.tvhtml5ShelfRendererType !== 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS';
 };
 
-// The order the surfaces used to encode positionally, in one table. A grid gets long press and
-// nothing else, and the watch-next pivot gets no previews — both of which were only ever visible
-// in which helper each of the nine call sites happened to call.
 onTile('deArrow', [SHELF, PIVOT, TILES, GRID], deArrowify);
 onTile('hq thumbnails', [SHELF, PIVOT, TILES, GRID], hqify);
 onTile('long press', [SHELF, PIVOT, TILES, GRID], addLongPress);
 
-// Previews stay a shelf affordance: the watch-next pivot asked not to have them, and no grid or
-// continuation ever did. That one is a decision rather than an accident.
 onTile('previews', [SHELF], addPreviews);
 
-// GRID used to get long press and nothing else — not because anyone decided that, but because
-// the three call sites that reach a grid happened to call only addLongPress. A grid is a page of
-// videos like any other, so "hide watched" and "no shorts" mean there what they mean everywhere.
 keepTile('advert slots', [SHELF, PIVOT, TILES, GRID], (item) => !item.adSlotRenderer);
 keepTile('watched', [SHELF, PIVOT, TILES, GRID], unwatched);
 keepTile('shorts tiles', [SHELF, PIVOT, GRID], notAShortTile);

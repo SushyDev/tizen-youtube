@@ -175,121 +175,115 @@ function createSectionTitle(title) {
     };
 }
 
-// Wrapped resolveCommand itself, latched by its own flag and armed by its own waitFor, so which
-// of the two patches ran first depended on which poll won. It dresses the menu in place and
-// declines, which is exactly what returning PASS means.
 const dressSubtitleMenu = (cmd) => {
-    {
-        if (
-            cmd?.openPopupAction?.uniqueId ===
-            "CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE"
-        ) {
-            const showUserLanguage = configRead("enableShowUserLanguage");
-            const showOtherLanguages = configRead("enableShowOtherLanguages");
+    if (
+        cmd?.openPopupAction?.uniqueId ===
+        "CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE"
+    ) {
+        const showUserLanguage = configRead("enableShowUserLanguage");
+        const showOtherLanguages = configRead("enableShowOtherLanguages");
 
-            if (!showUserLanguage && !showOtherLanguages) return PASS;
+        if (!showUserLanguage && !showOtherLanguages) return PASS;
 
-            const items =
-                cmd.openPopupAction.popup.overlaySectionRenderer.overlay
-                    .overlayTwoPanelRenderer.actionPanel.overlayPanelRenderer
-                    .content.overlayPanelItemListRenderer.items;
+        const items =
+            cmd.openPopupAction.popup.overlaySectionRenderer.overlay
+                .overlayTwoPanelRenderer.actionPanel.overlayPanelRenderer
+                .content.overlayPanelItemListRenderer.items;
 
-            const existingLanguages = getExistingLanguages(items);
+        const existingLanguages = getExistingLanguages(items);
 
-            if (showUserLanguage) {
-                const userCountryCode = getUserCountryCode();
-                const userLanguage = getCountryLanguage(userCountryCode);
+        if (showUserLanguage) {
+            const userCountryCode = getUserCountryCode();
+            const userLanguage = getCountryLanguage(userCountryCode);
 
-                if (userLanguage) {
-                    if (
-                        !languageExistsInMenu(items, userLanguage.code, userLanguage.name)
-                    ) {
-                        console.log(
-                            `%c[subtitles] Adding user's local language: ${userLanguage.name} (${userLanguage.code})`,
-                            "background: #2196F3; color: #ffffff; font-size: 14px; font-weight: bold;"
+            if (userLanguage) {
+                if (
+                    !languageExistsInMenu(items, userLanguage.code, userLanguage.name)
+                ) {
+                    console.log(
+                        `%c[subtitles] Adding user's local language: ${userLanguage.name} (${userLanguage.code})`,
+                        "background: #2196F3; color: #ffffff; font-size: 14px; font-weight: bold;"
+                    );
+
+                    const userLanguageOption = createLanguageOption(
+                        userLanguage.code,
+                        userLanguage.name
+                    );
+
+                    const recommendedIndex = items.findIndex(
+                        (item) =>
+                            item.overlayMessageRenderer?.subtitle
+                                ?.simpleText === "Recommended languages"
+                    );
+
+                    if (recommendedIndex > -1) {
+                        items.splice(
+                            recommendedIndex + 1,
+                            0,
+                            userLanguageOption
                         );
-
-                        const userLanguageOption = createLanguageOption(
-                            userLanguage.code,
-                            userLanguage.name
-                        );
-
-                        const recommendedIndex = items.findIndex(
+                        existingLanguages.add(userLanguage.code);
+                        existingLanguages.add(userLanguage.name);
+                    } else {
+                        const otherLanguagesIndex = items.findIndex(
                             (item) =>
                                 item.overlayMessageRenderer?.subtitle
-                                    ?.simpleText === "Recommended languages"
+                                    ?.simpleText === "Other languages"
                         );
 
-                        if (recommendedIndex > -1) {
+                        if (otherLanguagesIndex > -1) {
                             items.splice(
-                                recommendedIndex + 1,
+                                otherLanguagesIndex,
                                 0,
                                 userLanguageOption
                             );
-                            existingLanguages.add(userLanguage.code);
-                            existingLanguages.add(userLanguage.name);
                         } else {
-                            const otherLanguagesIndex = items.findIndex(
-                                (item) =>
-                                    item.overlayMessageRenderer?.subtitle
-                                        ?.simpleText === "Other languages"
-                            );
-
-                            if (otherLanguagesIndex > -1) {
-                                items.splice(
-                                    otherLanguagesIndex,
-                                    0,
-                                    userLanguageOption
-                                );
-                            } else {
-                                items.unshift(userLanguageOption);
-                            }
-                            existingLanguages.add(userLanguage.code);
-                            existingLanguages.add(userLanguage.name);
+                            items.unshift(userLanguageOption);
                         }
-                    } else {
-                        console.log(
-                            `%c[subtitles] User's language ${userLanguage.name} already exists in menu`,
-                            "background: #4CAF50; color: #ffffff; font-size: 12px;"
-                        );
+                        existingLanguages.add(userLanguage.code);
+                        existingLanguages.add(userLanguage.name);
                     }
                 } else {
-                    console.warn(
-                        `Subtitles: No language mapping found for country code: ${userCountryCode}`
-                    );
-                }
-            }
-
-            if (showOtherLanguages) {
-                const missingLanguages = Object.entries(getComprehensiveLanguageList())
-                    .filter(([code, name]) => !existingLanguages.has(code) && !existingLanguages.has(name))
-                    .sort(([, a], [, b]) => a.localeCompare(b));
-
-                if (missingLanguages.length > 0) {
                     console.log(
-                        `%c[subtitles] Adding "More languages" section with ${missingLanguages.length} additional languages`,
-                        "background: #FF9800; color: #ffffff; font-size: 12px;"
-                    );
-
-                    items.push(createSectionTitle("Other Languages"));
-
-                    missingLanguages.forEach(([code, name]) => {
-                        items.push(createLanguageOption(code, name));
-                    });
-
-                    console.log(
-                        `%c[subtitles] Added "More languages" section`,
-                        "background: #FF9800; color: #ffffff; font-size: 12px;"
-                    );
-                } else {
-                    console.log(
-                        `%c[subtitles] All languages already present in menu`,
+                        `%c[subtitles] User's language ${userLanguage.name} already exists in menu`,
                         "background: #4CAF50; color: #ffffff; font-size: 12px;"
                     );
                 }
+            } else {
+                console.warn(
+                    `Subtitles: No language mapping found for country code: ${userCountryCode}`
+                );
             }
         }
 
+        if (showOtherLanguages) {
+            const missingLanguages = Object.entries(getComprehensiveLanguageList())
+                .filter(([code, name]) => !existingLanguages.has(code) && !existingLanguages.has(name))
+                .sort(([, a], [, b]) => a.localeCompare(b));
+
+            if (missingLanguages.length > 0) {
+                console.log(
+                    `%c[subtitles] Adding "More languages" section with ${missingLanguages.length} additional languages`,
+                    "background: #FF9800; color: #ffffff; font-size: 12px;"
+                );
+
+                items.push(createSectionTitle("Other Languages"));
+
+                missingLanguages.forEach(([code, name]) => {
+                    items.push(createLanguageOption(code, name));
+                });
+
+                console.log(
+                    `%c[subtitles] Added "More languages" section`,
+                    "background: #FF9800; color: #ffffff; font-size: 12px;"
+                );
+            } else {
+                console.log(
+                    `%c[subtitles] All languages already present in menu`,
+                    "background: #4CAF50; color: #ffffff; font-size: 12px;"
+                );
+            }
+        }
     }
 
     return PASS;

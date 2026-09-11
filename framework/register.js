@@ -1,17 +1,9 @@
-// What runs, and when.
-//
-// This replaces sixteen side-effecting imports in core.js whose order was the boot order. Nothing
-// said so: reordering that list silently reordered the writer pipeline and could start the JSON
-// interception before the handlers that wanted it had registered. Here the order is a list of
-// names, and a feature says which one it belongs to.
+// Runs registered features in phase order.
 
-// network first, because it takes over fetch and XHR before anything asks the network for
-// anything. paint second, because the theme has to be up before the frame it would otherwise
-// flash through. intercept last, because taking over JSON.parse seals registration.
-const PHASES = ['network', 'paint', 'settings', 'feed', 'player', 'ui', 'intercept'];
+// network first, because it takes over fetch and XHR before anything asks the network for anything.
+const PHASES = ['network', 'paint', 'settings', 'ui', 'intercept'];
 
-const features = [];
-const state = { booted: false };
+const state = { booted: false, features: [] };
 
 const register = (name, phase, start) => {
     if (PHASES.indexOf(phase) === -1) {
@@ -26,12 +18,12 @@ const register = (name, phase, start) => {
         return;
     }
 
-    features.push({ name, phase, start });
+    state.features = state.features.concat([{ name, phase, start }]);
 };
 
 // One feature failing must not take the rest of the app down with it: on a set we have not seen,
 // half a userscript beats none of it.
-const runPhase = (phase) => features
+const runPhase = (phase) => state.features
     .filter((feature) => feature.phase === phase)
     .forEach((feature) => {
         try {
@@ -41,9 +33,6 @@ const runPhase = (phase) => features
         }
     });
 
-// Must be called synchronously at the end of the bundle. preferredVideoQuality seeds localStorage
-// before kabuki's async script reads it, which works only because our script is parser-inserted;
-// waiting for DOMContentLoaded would move the quality decision to after the first frame.
 const boot = () => {
     if (state.booted) return;
 

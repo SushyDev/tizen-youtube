@@ -88,9 +88,7 @@ const SHIPPED = ['service/**/*.js', 'framework/**/*.js', 'mods/**/*.js'];
 const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
     'test/**/*.js',
-    'service/build/**/*.js',
-    'service/vite.config.mjs',
-    'tools/rollup.config.mjs'
+    'service/vite.config.mjs'
 ]);
 
 const STYLE_RULES = {
@@ -170,9 +168,6 @@ module.exports = [
         rules: STYLE_RULES
     },
 
-    // The layering, as a rule rather than as a convention. This is what the directory split is
-    // for: without it, `../mods/y.js` from inside the framework resolves perfectly well and the
-    // separation is back to being a habit.
     {
         files: ['framework/**/*.js'],
         rules: {

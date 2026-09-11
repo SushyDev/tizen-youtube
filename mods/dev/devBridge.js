@@ -1,4 +1,5 @@
 import { configChangeEmitter, configRead } from '../../framework/index.js';
+
 const REPORT_EVERY = 1000;
 const LISTEN_EVERY = 200;
 const AWAIT_FOR = 25000;

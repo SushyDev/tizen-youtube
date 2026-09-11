@@ -40,9 +40,7 @@ function cleanOutput(raw) {
 
 function runStep(step) {
     const started = Date.now();
-    const commands = step.workspace
-        ? [['npm', ['run', 'build', '--workspace', step.workspace]]]
-        : [step.command].concat(step.after ? [step.after] : []);
+    const commands = [step.command].concat(step.after ? [step.after] : []);
 
     try {
         commands.forEach(([command, args]) => execFileSync(command, args, {

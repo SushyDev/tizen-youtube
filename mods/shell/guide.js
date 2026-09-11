@@ -1,4 +1,5 @@
 import { configChangeEmitter, configRead, onResponse, reloadGuide } from '../../framework/index.js';
+
 const GUIDE_KEYS = ['items'];
 
 onResponse('guide', GUIDE_KEYS, (response) => {

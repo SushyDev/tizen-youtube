@@ -73,6 +73,7 @@ const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'rollup.c
 const runTheService = () => start('svc', process.execPath, ['index.js'], {
     cwd: join(ROOT, 'service'),
     env: {
+        TUBE_PROXY_PORT: String(ports.proxy),
         TUBE_DEV_UA: process.env.TUBE_DEV_UA || TV_USER_AGENT,
         TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
         TUBE_CACHE_DIR: join(ROOT, '.dev', 'cache'),

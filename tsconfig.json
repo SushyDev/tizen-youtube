@@ -1,5 +1,5 @@
 {
-  "//": "Types without a TypeScript step. checkJs reads the JSDoc in framework/shapes.js and the annotations that reference it, so the renderer descents are checked; nothing here touches what the build emits, and no file is renamed.",
+  "//": "Types without a TypeScript step; nothing here touches what the build emits, and no file is renamed.",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

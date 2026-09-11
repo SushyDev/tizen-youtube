@@ -1,5 +1,4 @@
-// @ts-nocheck — owned by a live sibling branch; reshaping it here would conflict on every
-// restack. It comes under the type checker when those branches land.
+// @ts-nocheck TODO: type-check once the sibling branches land.
 import { PASS, buttonItem, configRead, configWrite, onCommand, resolve, showToast } from '../../framework/index.js';
 import { openOptions, OPTIONS_ACTION } from '../settings/settingsOptions.js';
 import { openSpeedOptions } from '../player/speed.js';
@@ -199,32 +198,19 @@ const skipWhosWatchingOnArrival = (command) => {
     return false;
 };
 
-const INTERPRETERS = [
-    applyOurSettings,
-    runCustomActions,
-    dressPlaybackSettings,
-    forgetMiniPlayer,
-    runCommandBatch,
-    skipWhosWatchingOnExit,
-    skipWhosWatchingOnArrival
-];
-
 // Named here rather than taken from each function, because terser mangles our own names and an
 // error would otherwise be reported as coming from `t`.
-const NAMES = [
-    'our settings',
-    'custom actions',
-    'playback settings',
-    'mini player',
-    'command batch',
-    'whos watching on exit',
-    'whos watching on arrival'
+const INTERPRETERS = [
+    { name: 'our settings', interpret: applyOurSettings },
+    { name: 'custom actions', interpret: runCustomActions },
+    { name: 'playback settings', interpret: dressPlaybackSettings },
+    { name: 'mini player', interpret: forgetMiniPlayer },
+    { name: 'command batch', interpret: runCommandBatch },
+    { name: 'whos watching on exit', interpret: skipWhosWatchingOnExit },
+    { name: 'whos watching on arrival', interpret: skipWhosWatchingOnArrival }
 ];
 
-// The patch itself moved to the framework, which owns the one wrapper. These only say what they
-// want to be asked about; the sentinel and the order are unchanged.
-const claimInterpreters = () => INTERPRETERS.forEach((interpret, index) =>
-    onCommand(NAMES[index] || `interpreter ${index}`, (command, at) =>
-        interpret(command, at.original, at.self, at.context)));
+const claimInterpreters = () => INTERPRETERS.forEach(({ name, interpret }) =>
+    onCommand(name, (command, at) => interpret(command, at.original, at.self, at.context)));
 
 export { claimInterpreters, APP_NAME };

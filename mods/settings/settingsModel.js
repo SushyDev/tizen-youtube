@@ -1,6 +1,6 @@
-// @ts-nocheck — owned by a live sibling branch; reshaping it here would conflict on every
-// restack. It comes under the type checker when those branches land.
+// @ts-nocheck TODO: type-check once the sibling branches land.
 import { configRead } from '../../framework/index.js';
+
 const ART = 'https://www.gstatic.com/ytlr/img/';
 
 const BLOCKING = ART + 'restricted_mode.png';

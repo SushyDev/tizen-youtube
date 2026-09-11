@@ -4,6 +4,7 @@ window.queuedVideos = {
 };
 
 import { resolve as resolveCommand, whenPlayer } from '../../framework/index.js';
+
 function addListener() {
     whenPlayer('queue', (videoPlayer) => {
         videoPlayer.addEventListener('onStateChange', () => {

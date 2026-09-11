@@ -1,4 +1,5 @@
 import { configRead, findByPrototype, findBySource, findComponent, sourceOf } from '../../framework/index.js';
+
 const getterOf = (prototype, name) => {
     const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
     return descriptor && typeof descriptor.get === 'function' ? descriptor.get : null;

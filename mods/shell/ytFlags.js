@@ -1,4 +1,5 @@
 import { configChangeEmitter, configRead, findMap, whenFound } from '../../framework/index.js';
+
 const PREVIEWS = 'ENABLE_PREVIEWS_WITH_SOUND';
 
 // Started a fresh poll on every config write, whatever the key, so changing an unrelated setting

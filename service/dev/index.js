@@ -26,10 +26,9 @@ const spoofUserAgent = (text) => {
     return text.indexOf('<head>') === -1 ? text : text.replace('<head>', `<head>${shim}`);
 };
 
-const upstreamHeaders = (headers) => {
-    if (DEV_USER_AGENT) headers['user-agent'] = DEV_USER_AGENT;
-    return headers;
-};
+const upstreamHeaders = (headers) => (DEV_USER_AGENT
+    ? Object.assign({}, headers, { 'user-agent': DEV_USER_AGENT })
+    : headers);
 
 // The extra tag the dev page carries: the remote, so a keyboard can press a TV button.
 const pageScripts = (origin, stamp) => (DEV_INJECT_PATH
@@ -49,8 +48,6 @@ const pageRoutes = (app) => {
     });
 };
 
-// The knobs behind these ship — rewriteBody reads them on every page — but the routes that turn
-// them do not.
 const routes = (app, { policies, state, knobs }) => {
     app.get('/__tube/dev/csp', (req, res) => {
         const asked = String((req.query && req.query.policy) || '');

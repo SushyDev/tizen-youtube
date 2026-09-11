@@ -80,10 +80,6 @@ export default function installProxyPatches() {
     redirectOnAssignment(HTMLScriptElement, 'src');
 }
 
-// Self-installing on import: ES module imports are hoisted, so an `if (...) initPatches()` in the
-// entry file runs after every other module's top-level code, and anything that captured
-// window.fetch got the unpatched original. Under the phase list nothing runs at import, so the
-// hazard is gone by construction and this is simply the first phase.
 const start = () => {
     if (typeof window === 'undefined' || window.location.protocol !== 'http:') return;
     installProxyPatches();

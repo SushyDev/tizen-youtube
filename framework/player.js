@@ -1,12 +1,6 @@
-// The player, found once.
-//
-// Nine features waited for it separately — six through waitFor, one through a hand-rolled retry
-// with no give-up, one through a document-wide MutationObserver, one by re-querying on every tick
-// — and they did not agree on what they were waiting for: `video`, `.html5-video-player`, and
-// `#movie_player, .html5-video-player`. The union is the right answer, because it is what the
-// widest of them already used.
+// Tracks the player and video elements and re-announces them when the page swaps them.
 
-import { waitFor } from './waitFor.js';
+import { until, stop } from './schedule.js';
 
 const PLAYER = '#movie_player, .html5-video-player';
 
@@ -26,8 +20,7 @@ const say = (entry, subject) => {
 
 const tell = (bucket, subject) => wanted[bucket].forEach((entry) => say(entry, subject));
 
-// The page swaps both elements out without ending playback, so this re-arms rather than resolving
-// once. preferredVideoQuality hand-rolled exactly this and left the old listener attached.
+// The page swaps both elements without ending playback, so subscribers are told again.
 const settle = () => {
     const player = findPlayer();
     const video = findVideo();
@@ -49,9 +42,12 @@ const watch = () => {
     if (held.watching) return;
     held.watching = true;
 
-    // waitFor gives up, which is the point: a page that never grows a player stops costing
+    // until() gives up, which is the point: a page that never grows a player stops costing
     // anything. A navigation re-arms it, because that is when a new one appears.
-    const look = () => waitFor(settle, () => undefined, { everyMs: 250 });
+    const look = () => {
+        if (settle()) return;
+        until('player watch', 250, () => { if (settle()) stop('player watch'); }, 60000);
+    };
 
     look();
     window.addEventListener('hashchange', look);
@@ -61,7 +57,7 @@ const whenPlayer = (name, onPlayer) => {
     watch();
 
     const entry = { name, run: onPlayer };
-    wanted.player.push(entry);
+    wanted.player = wanted.player.concat([entry]);
 
     // A late subscriber is told at once about a player that is already there, and only it is.
     if (held.player) say(entry, held.player);
@@ -73,7 +69,7 @@ const whenVideo = (name, onVideo) => {
     watch();
 
     const entry = { name, run: onVideo };
-    wanted.video.push(entry);
+    wanted.video = wanted.video.concat([entry]);
     if (held.video) say(entry, held.video);
 
     return () => { wanted.video = wanted.video.filter((one) => one !== entry); };

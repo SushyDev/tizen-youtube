@@ -1,10 +1,4 @@
-// Timers, one per name.
-//
-// Three features hand-rolled this and each leaked differently: a 3000 ms heartbeat that was never
-// cleared and ran whether or not a video existed, a 500 ms hunt for a progress bar that leaked
-// whenever the bar never appeared, and an adoption window that started a fresh interval on every
-// navigation instead of extending the one already running. Registering the same name twice now
-// replaces the old timer rather than stacking a second.
+// Named timers: rescheduling a name replaces its timer rather than stacking a second.
 
 const timers = Object.create(null);
 
@@ -14,7 +8,7 @@ const stop = (name) => {
 
     clearTimeout(held.timer);
     clearInterval(held.timer);
-    delete timers[name];
+    timers[name] = null;
 };
 
 const guarded = (name, run) => {
@@ -35,7 +29,7 @@ const after = (name, ms, run) => {
     stop(name);
     timers[name] = {
         timer: setTimeout(() => {
-            delete timers[name];
+            timers[name] = null;
             guarded(name, run);
         }, ms)
     };

@@ -1,4 +1,5 @@
 import { buttonItem, configRead, onKey, overlayPanelItemListRenderer, showModal, whenVideo } from '../../framework/index.js';
+
 const SPEED_KEYS = [406, 191];
 
 const MAX_SPEED = 5;

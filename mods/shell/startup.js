@@ -2,6 +2,7 @@ import css from './ui.css';
 import { claimCommands, configRead, onKey, reloadGuide, resolve, whenFound, whenVideo } from '../../framework/index.js';
 import { claimInterpreters } from '../commands/interpreters.js';
 import { pipToFullscreen } from '../player/pictureInPicture.js';
+
 const RIGHT = 39;
 
 const once = { started: false };
@@ -10,15 +11,13 @@ const start = () => {
   claimInterpreters();
   takeOverKeys();
 
-  // This file used to wait for a video before doing anything at all. whenVideo says so again, but
-  // it also fires when the page swaps the element mid-session — and none of this wants doing twice.
+  // Runs once, although whenVideo fires again when the page swaps the element.
   whenVideo('ui shell', () => {
     if (once.started) return;
     once.started = true;
 
     addStyles();
 
-    // Counted to forty and then gave up quietly. whenFound already knows how to stop, and says so.
     whenFound('command resolver', () => claimCommands() || null, () => undefined, { everyMs: 250 });
 
     goToStartPage();
@@ -39,7 +38,6 @@ function addStyles() {
 }
 
 function takeOverKeys() {
-  // Never swallowed the key, so it still does not: returning nothing lets it through.
   onKey('pip fullscreen', [RIGHT], (event) => {
     if (event.type !== 'keydown') return undefined;
 
@@ -61,8 +59,6 @@ function onWelcomeScreen() {
   return !!welcome && welcome.getBoundingClientRect().height > 0;
 }
 
-// Polled for the welcome screen to go away and never stopped: a viewer who left it up kept a timer
-// running four times a second for as long as the app was open. whenFound gives up.
 function goToStartPage() {
   if (!configRead('reloadHomeOnStartup')) return;
 

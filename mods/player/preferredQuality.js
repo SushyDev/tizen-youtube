@@ -1,4 +1,4 @@
-import { configChangeEmitter, configRead, every, onResponse, stop, until, whenPlayer } from '../../framework/index.js';
+import { PLAYER, configChangeEmitter, configRead, every, onResponse, stop, until, waitFor, whenPlayer } from '../../framework/index.js';
 import { chooseQuality, shouldAsk } from './quality.js';
 
 const QUALITY = 'preferredVideoQuality';
@@ -168,21 +168,23 @@ function watchPreferredQuality() {
         }
     };
 
-    // The player element is replaced on some navigations, and the old code added a fresh
-    // onStateChange listener each time without ever removing the last. whenPlayer hands over the
-    // new element, so the listener goes on that one and the detached node is simply dropped.
-    const attachToPlayer = () => whenPlayer('preferred quality', (player) => {
+    const adopt = (player) => {
+        if (player === held.player) return;
+
         held.player = player;
         player.addEventListener('onStateChange', tick);
         pinNamed(player);
         forget();
         tick();
-    });
+    };
+
+    const attachToPlayer = () => whenPlayer('preferred quality', adopt);
 
     function tick() {
         if (!held.player) return;
         if (held.player.isConnected === false) {
             held.player = null;
+            waitFor(() => document.querySelector(PLAYER), adopt);
             return;
         }
 
@@ -217,7 +219,6 @@ function watchPreferredQuality() {
 
     onResponse('preferred quality', ['streamingData'], settleQuickly);
 
-    // Ran for the life of the page whether or not a video existed, and nothing could stop it.
     every('quality heartbeat', CHECK_INTERVAL, tick);
     attachToPlayer();
 }

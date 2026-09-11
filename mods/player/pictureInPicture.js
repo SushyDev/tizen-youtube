@@ -1,5 +1,4 @@
-// @ts-nocheck — owned by a live sibling branch; reshaping it here would conflict on every
-// restack. It comes under the type checker when those branches land.
+// @ts-nocheck TODO: type-check once the sibling branches land.
 import { resolve as resolveCommand } from "../../framework/index.js";
 
 window.isPipPlaying = false;

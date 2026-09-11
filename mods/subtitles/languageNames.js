@@ -1,4 +1,5 @@
 import { assetUrl } from '../../framework/index.js';
+
 const CACHE_KEY = 'tube-display-names';
 
 function intlIsUsable() {

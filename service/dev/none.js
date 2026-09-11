@@ -1,13 +1,6 @@
 'use strict';
 
-// What the service is when there is nobody watching.
-//
-// vite resolves ./dev/index.js here for a ship build, so the bridge, the journal, the dev routes
-// and the page hooks never enter the bundle at all. That is the guarantee — not dead-code
-// elimination, which cannot be relied on here because the service is deliberately built
-// unminified so it can be read on a television when something has gone wrong.
-//
-// Every export below has to match service/dev/index.js, and be inert.
+// Inert stand-in for service/dev/index.js in a ship build; every export must match it.
 
 const nothing = () => undefined;
 

@@ -115,8 +115,6 @@ app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
 
-// The routes that turn the knobs are dev-only; the knobs themselves ship, because
-// rewriteBody reads them on every page. A release build resolves ./dev to a stub.
 dev.routes(app, { policies: POLICIES, state, knobs });
 
 dev.attach(app);

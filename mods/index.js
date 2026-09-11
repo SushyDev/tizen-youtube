@@ -33,7 +33,6 @@ register('native settings', 'settings', startSettings);
 register('ui shell', 'ui', startShell);
 register('start page', 'ui', startPage);
 
-// Before /tv_config lands, which is what the property watch is for.
 register('scroll speed', 'ui', startScrollSpeed);
 register('rapid press', 'ui', startRapidPress);
 register('smooth navigation', 'ui', startSmoothNavigation);

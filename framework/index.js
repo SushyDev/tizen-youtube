@@ -17,7 +17,7 @@ export {
 export { onResponse, onRequest, interceptJson, clone, nativeJson } from './json.js';
 export {
     findBySource, findByPrototype, findComponent,
-    resolve, reloadGuide, sourceOf, whenFound
+    resolve, reloadGuide, sourceOf, whenFound, virtualListPrototype, isListMoving
 } from './internals.js';
 
 export { waitFor } from './waitFor.js';

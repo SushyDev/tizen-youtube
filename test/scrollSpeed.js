@@ -1,20 +1,11 @@
-// The two settings that decide how fast the feed moves.
-//
-// Both reach past the response into the app, so what is checked here is the part that can be:
-// scrollSpeed pins two feature switches on an object that does not exist yet and gets replaced
-// once it does, and rapidPress hands a press back to YouTube's own handler rather than to one of
-// its own. The shapes below are the ones read off the set — `window.tectonicConfig.featureSwitches`
-// arriving late, and a component whose driver answers `isActive()`.
-
 import assert from 'assert';
 
 global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };
 global.window.JSON = JSON;
 
-const listeners = {};
 global.document = {
     querySelector: () => global.document.list,
-    addEventListener: (type, handle) => { listeners[type] = handle; },
+    addEventListener: () => undefined,
     removeEventListener: () => undefined,
     list: null
 };
@@ -60,7 +51,15 @@ const withSetting = (key, value, run) => {
     }
 };
 
-// -- scroll speed --------------------------------------------------------------------------
+const withSettingAsync = async (key, value, run) => {
+    const before = configRead(key);
+    configWrite(key, value);
+    try {
+        return await run();
+    } finally {
+        configWrite(key, before);
+    }
+};
 
 // tectonicConfig is built from /tv_config, which is fetched after kabuki's own script — so it is
 // absent when the mod starts, and the override has to survive its arrival.
@@ -106,32 +105,27 @@ check('Default answers with YouTube\u2019s own numbers', () => {
     withSetting('scrollSpeed', '', () => {
         startScrollSpeed();
         global.window.tectonicConfig = {
-            featureSwitches: { verticalListDurationMs: 300, horizontalListDurationMs: 200 }
+            featureSwitches: { verticalListDurationMs: 320, horizontalListDurationMs: 210 }
         };
 
         const switches = global.window.tectonicConfig.featureSwitches;
-        assert.strictEqual(switches.verticalListDurationMs, 300);
-        assert.strictEqual(switches.horizontalListDurationMs, 200);
+        assert.strictEqual(switches.verticalListDurationMs, 320);
+        assert.strictEqual(switches.horizontalListDurationMs, 210);
     });
 });
 
-// Every rung is a real speed, solved from speed = 381 / (duration + 81). Checked rather than
-// stated, because a table of numbers is exactly the thing that drifts from the comment above it.
-check('every rung is the multiplier it claims, within a millisecond of rounding', () => {
-    const speedOf = (duration, stock) => (stock + 81) / (duration + 81);
+check('every rung matches its multiplier on both axes', () => {
+    const stock = { vertical: 300, horizontal: 200 };
+    const durationOf = (speed, from) => (from + 81) / speed - 81;
 
-    Object.keys(SPEEDS).forEach((rung) => {
-        const wanted = Number(rung);
-        const vertical = speedOf(SPEEDS[rung].vertical, 300);
-        assert.ok(Math.abs(vertical - wanted) < 0.03,
-            `${rung}x vertical is ${vertical.toFixed(2)}x`);
-    });
+    Object.keys(SPEEDS).forEach((rung) => Object.keys(stock).forEach((axis) => {
+        const exact = durationOf(Number(rung), stock[axis]);
+        assert.ok(Math.abs(SPEEDS[rung][axis] - exact) <= 0.5,
+            `${rung}x ${axis} is ${SPEEDS[rung][axis]}ms rather than ${exact.toFixed(1)}ms`);
+    }));
 });
 
-// Read when the value is asked for, not written once at startup: this is the whole reason the
-// setting needs no restart, and writing it once is what made choosing a speed appear to do
-// nothing at all.
-check('changing the setting is answered on the next read, with no restart and no event', () => {
+check('a changed setting is answered on the next read', () => {
     freshWindow();
     withSetting('scrollSpeed', '', () => {
         startScrollSpeed();
@@ -150,11 +144,6 @@ check('changing the setting is answered on the next read, with no restart and no
     });
 });
 
-// -- smoother navigation -------------------------------------------------------------------
-
-// Three of YouTube's own render-path switches, all of which arrive off. Measured on the set with
-// them on, moves in the feed went from ~167ms apart to 47-92ms — near the 50ms key repeat, which is
-// the ceiling. Off, they must be indistinguishable from this mod not existing.
 check('the switches are answered only while the setting is on', () => {
     freshWindow();
     withSetting('enableSmoothNavigation', true, () => {
@@ -198,28 +187,40 @@ check('two features answering different switches do not displace each other', ()
     });
 });
 
-// -- rapid press ---------------------------------------------------------------------------
+const listClass = () => ({
+    onKeyDown(event) {
+        if (this.takes.indexOf(event.keyCode) === -1) return;
 
-const componentOf = (moving) => {
-    const seen = [];
-    const prototype = {
-        onKeyDown(event) { seen.push(event.keyCode); }
-    };
+        if (this.j.isActive()) this.overlapped += 1;
+        this.seen.push(event.keyCode);
+        this.until = Date.now() + this.moveFor;
+        event.stopPropagation();
+    }
+});
+
+const listOf = (prototype, moving, options) => {
     const component = Object.create(prototype);
+    const shape = Object.assign({ takes: [37, 38, 39, 40], moveFor: 0 }, options);
 
-    component.j = { isActive: () => moving.now };
-    component.seen = seen;
+    component.j = { isActive: () => moving.now || Date.now() < component.until };
+    component.seen = [];
+    component.overlapped = 0;
+    component.until = 0;
+    component.takes = shape.takes;
+    component.moveFor = shape.moveFor;
     return component;
 };
 
-// The whole rule, stated as arithmetic: what goes in comes out, once each. Two deliverers is what
-// got this wrong twice, so what is checked is the total rather than the mechanism.
-//
-// Presses are spaced the way a person presses. Timing is how a held key is told from a pressed one
-// — a synthesised event carries no `repeat`, and kabuki re-dispatches key events in exactly the
-// lists where this went wrong — so a burst fired in the same millisecond is not a fast viewer, it
-// is a key being held, and is read as one.
-const PRESS = { keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() {} };
+const componentOf = (moving, options) => listOf(listClass(), moving, options);
+
+const bubbleThrough = (event, lists) => lists.find((list) => {
+    list.onKeyDown(event);
+    return !!event.stopped;
+});
+
+const PRESS = {
+    keyCode: 40, repeat: false, preventDefault() {}, stopPropagation() { this.stopped = true; }
+};
 
 const pressing = async (component, times, apart) => {
     const one = async (n) => {
@@ -232,12 +233,12 @@ const pressing = async (component, times, apart) => {
     await one(0);
 };
 
-await asyncCheck('four presses during a move are four moves, not three and not six', async () => {
+await asyncCheck('three presses during a move land as three moves', async () => {
     const moving = { now: false };
-    const component = componentOf(moving);
+    const component = componentOf(moving, { moveFor: 60 });
     global.document.list = { __instance: component };
 
-    await withSetting('enableRapidPress', true, async () => {
+    await withSettingAsync('enableRapidPress', true, async () => {
         startRapidPress();
         await sleep(400);
 
@@ -252,21 +253,24 @@ await asyncCheck('four presses during a move are four moves, not three and not s
         assert.strictEqual(component.seen.length, 1, 'nothing reached the list while it was moving');
 
         moving.now = false;
-        await sleep(400);
+        await sleep(500);
         assert.strictEqual(component.seen.length, 4, 'and all three arrive once it is free');
+        assert.strictEqual(component.overlapped, 0, 'one per move, never during one');
     });
 });
 
-// The bug this was reported as: letting go of a held key and watching the list carry on without
-// you. Every repeat had been held, because a re-dispatched event says it is not one.
-await asyncCheck('a key held at the repeat rate is never held back, whatever the event claims', async () => {
-    const moving = { now: true };
+await asyncCheck('a released hold leaves nothing waiting', async () => {
+    const moving = { now: false };
     const component = componentOf(moving);
     global.document.list = { __instance: component };
 
-    await withSetting('enableRapidPress', true, async () => {
+    await withSettingAsync('enableRapidPress', true, async () => {
         startRapidPress();
         await sleep(400);
+
+        component.onKeyDown(Object.assign({}, PRESS));
+        moving.now = true;
+        await sleep(120);
 
         // Twelve repeats at 50ms, none of them admitting to being a repeat.
         await pressing(component, 12, 50);
@@ -285,7 +289,7 @@ await asyncCheck('a press made while the feed is still goes straight through', a
     const component = componentOf(moving);
     global.document.list = { __instance: component };
 
-    await withSetting('enableRapidPress', true, async () => {
+    await withSettingAsync('enableRapidPress', true, async () => {
         startRapidPress();
         await sleep(400);
         await pressing(component, 3, 120);
@@ -295,20 +299,83 @@ await asyncCheck('a press made while the feed is still goes straight through', a
     });
 });
 
-await asyncCheck('with the setting off nothing is held at all', async () => {
-    const moving = { now: true };
+await asyncCheck('a press delivered twice is held once', async () => {
+    const moving = { now: false };
     const component = componentOf(moving);
     global.document.list = { __instance: component };
 
-    await withSetting('enableRapidPress', false, async () => {
+    await withSettingAsync('enableRapidPress', true, async () => {
+        startRapidPress();
+        component.onKeyDown(Object.assign({}, PRESS));
+        moving.now = true;
+        await sleep(120);
+
+        component.onKeyDown(Object.assign({}, PRESS));
+        component.onKeyDown(Object.assign({}, PRESS));
+        assert.strictEqual(component.seen.length, 1, 'neither copy reached the list while it was moving');
+
+        moving.now = false;
+        await sleep(200);
+        assert.strictEqual(component.seen.length, 2, 'and the press lands once');
+    });
+});
+
+await asyncCheck('a press through a still shelf is held by the moving feed around it', async () => {
+    const prototype = listClass();
+    const feedMoving = { now: false };
+    const feed = listOf(prototype, feedMoving, { takes: [38, 40] });
+    const shelf = listOf(prototype, { now: false }, { takes: [37, 39] });
+    global.document.list = { __instance: feed };
+
+    await withSettingAsync('enableRapidPress', true, async () => {
+        startRapidPress();
+        bubbleThrough(Object.assign({}, PRESS), [shelf, feed]);
+        feedMoving.now = true;
+        await sleep(120);
+
+        bubbleThrough(Object.assign({}, PRESS), [shelf, feed]);
+        assert.strictEqual(feed.seen.length, 1, 'held while the feed was moving');
+
+        feedMoving.now = false;
+        await sleep(200);
+        assert.strictEqual(feed.seen.length, 2, 'and delivered to the feed once it was free');
+    });
+});
+
+await asyncCheck('a press across a moving shelf reaches the feed around it', async () => {
+    const prototype = listClass();
+    const shelfMoving = { now: false };
+    const feed = listOf(prototype, { now: false }, { takes: [38, 40] });
+    const shelf = listOf(prototype, shelfMoving, { takes: [37, 39] });
+    global.document.list = { __instance: feed };
+
+    await withSettingAsync('enableRapidPress', true, async () => {
+        startRapidPress();
+        bubbleThrough(Object.assign({}, PRESS, { keyCode: 39 }), [shelf, feed]);
+        shelfMoving.now = true;
+        await sleep(120);
+
+        bubbleThrough(Object.assign({}, PRESS), [shelf, feed]);
+        assert.strictEqual(feed.seen.length, 1, 'the feed moved at once');
+        assert.strictEqual(shelf.seen.length, 1, 'and the shelf kept only its own press');
+    });
+});
+
+await asyncCheck('with the setting off nothing is held at all', async () => {
+    const moving = { now: false };
+    const component = componentOf(moving);
+    global.document.list = { __instance: component };
+
+    await withSettingAsync('enableRapidPress', false, async () => {
         startRapidPress();
         await sleep(400);
 
         component.onKeyDown(Object.assign({}, PRESS));
-        moving.now = false;
-        await sleep(200);
+        moving.now = true;
+        await sleep(120);
 
-        assert.strictEqual(component.seen.length, 1, 'YouTube coalesces it, as it does by default');
+        component.onKeyDown(Object.assign({}, PRESS));
+        assert.strictEqual(component.seen.length, 2, 'YouTube coalesces it, as it does by default');
     });
 });
 

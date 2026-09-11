@@ -69,7 +69,7 @@ const defaultConfig = {
   // The browseId the app opens on, empty for wherever YouTube would have gone — which is home.
   startupPage: '',
 
-  // A key in scrollSpeed.js's table, empty for YouTube's own pacing.
+  // A rung such as '2', empty for YouTube's own pacing.
   scrollSpeed: '',
   enableRapidPress: true,
   enableSmoothNavigation: true,

@@ -1,112 +1,76 @@
-import { configRead, every, stop, whenFound } from '../../framework/index.js';
+import {
+    configRead, every, isListMoving, stop, virtualListPrototype, whenFound
+} from '../../framework/index.js';
 
-// Pressing a direction faster than the feed can move it.
-//
-// Unrelated to how fast a held key scrolls, which is scrollSpeed.js. This is about the presses
-// that are thrown away.
-//
-// While a move is in flight the virtual list stashes the index it was asked for instead of
-// applying it, and there is exactly one slot: press five times during one move and all five write
-// to that slot, so four are lost. That is the throttle.
-//
-// The rule this holds to is that one press is one move, and never more. Getting there took two
-// wrong turns worth writing down, because both look right:
-//
-//   replaying every held press   double-counted, because the slot is not stale — the committed
-//                                index advances the moment a move starts and only the animation
-//                                lags, so YouTube's stash lands a real move of its own.
-//   replaying all but the first  raced. Whether the slot or the replay arrived first decided
-//                                whether the total was right, so it was sometimes right.
-//
-// Both failed for the same reason: two things were delivering presses. So while a list is moving
-// its handler is not called at all — nothing reaches the slot, and there is one deliverer, which
-// is this. Each held press is handed to YouTube's own handler once the list is free, one per move,
-// and it computes the next index from a committed one that has moved on by then.
-//
-// Held presses are swallowed rather than passed on, because the handler that would have consumed
-// them is the one not being called. The case that would notice is a list at its own edge, where
-// the handler deliberately leaves the event alone so focus can move out — and read off the set, a
-// shelf does not have one: holding right runs off the end and wraps to the start, so the index it
-// is asked for is never the index it is on, and that path is never taken. A list that did stop at
-// its edge would be still rather than moving, so its presses would take the plain path above
-// anyway.
-//
-// Only presses, never a held key: a held key repeats every 50ms on this television (measured), and
-// holding those back would keep the list moving long after the viewer let go.
-//
-// KeyboardEvent.repeat is not enough to tell them apart, and trusting it is a bug that only shows
-// in some lists. kabuki re-dispatches key events in several places — it builds a fresh event at the
-// focused element and keeps the original on a side property — and a synthesised event carries no
-// `repeat`. So in exactly those lists every repeat of a held key arrives looking like a fresh
-// press, all of them were held, and letting go scrolled on for up to ten more moves. Reported from
-// the subscriptions list and the settings panel, where the feed and the player were fine.
-//
-// What cannot be synthesised away is when the events arrive. A held key repeats at a fixed 50ms on
-// this television, and a viewer pressing as fast as they can manages about 8 a second — 125ms
-// apart. So anything arriving within 90ms of the last press of the same key is the key being held,
-// whatever the event says about itself, and `repeat` is kept as a second opinion where it is
-// offered. Timing also disposes of the double delivery for free: a re-dispatched copy of a press
-// arrives in the same millisecond as the press, and is read as what it is rather than as a second
-// one.
+// Holds direction presses made while a list is still moving and hands them to YouTube's own
+// handler one move at a time.
 
-const DIRECTIONS = [37, 38, 39, 40, 176, 177];
+const ARROWS = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40 };
+
+const AXES = {
+    horizontal: [ARROWS.LEFT, ARROWS.RIGHT],
+    vertical: [ARROWS.UP, ARROWS.DOWN]
+};
 
 // Between the 50ms a held key repeats at and the ~125ms of someone pressing as fast as they can,
 // with room on both sides.
 const REPEAT_WINDOW = 90;
 
-// When each direction was last seen, read only here — so what the component was handed is what is
-// judged, whether or not anything re-dispatched it on the way.
-const lastSeen = new Map();
+const REDISPATCH_WINDOW = 10;
 
-// A burst nobody meant, capped. Ten presses ahead is already more than a viewer can be waiting on.
 const MOST_HELD = 10;
 
-// About a frame. It only runs while a press is waiting, and it is the only delay this adds — the
-// rest of what a burst costs is the moves themselves, which is what Scroll speed is for.
+// About one frame.
 const DRAIN_EVERY = 16;
 
-// Per component, because two lists move independently — a shelf inside a feed is its own list with
-// its own stash. Weak, so a list the page has dropped is not held here by its own accounting.
-const state = new WeakMap();
+const held = {
+    pumping: false,
+    queued: [],
+    lastSeen: new Map(),
+    judged: new WeakMap(),
 
-const held = { pumping: false, tracked: [] };
+    // Per component, because two lists move independently — a shelf inside a feed is its own list
+    // with its own stash.
+    lists: new WeakMap()
+};
 
 const stateOf = (component) => {
-    const found = state.get(component);
+    const found = held.lists.get(component);
     if (found) return found;
 
-    const fresh = { waiting: [] };
-    state.set(component, fresh);
-    held.tracked = held.tracked.filter((one) => one !== component).concat([component]);
+    const fresh = { waiting: [], axis: null };
+    held.lists.set(component, fresh);
     return fresh;
 };
 
 const wanted = () => configRead('enableRapidPress');
 
-// The list's own answer to "am I still moving?". Both names survive minification because the
-// driver is an interface; the fields around them do not, and this reads none of them.
-const isMoving = (component) => {
-    const driver = component && component.j;
-    return !!driver && typeof driver.isActive === 'function' && driver.isActive();
+const axisOf = (keyCode) => Object.keys(AXES).find((axis) => AXES[axis].indexOf(keyCode) !== -1);
+
+const movesAlong = (component, axis) => {
+    const one = held.lists.get(component);
+    return !!one && one.axis === axis;
 };
 
-// The first press of a held key is a press, until the repeat after it says otherwise. By then the
-// hold's own repeats are moving the list, so one still waiting from the moment the key went down
-// would land as a move too many once the viewer let go — which is what letting go and watching the
-// list carry on actually was.
+// A repeat of the same key cancels its queued first press, so releasing a hold adds no move.
 const forget = (component, keyCode) => {
-    const one = stateOf(component);
-    one.waiting = one.waiting.filter((press) => press.keyCode !== keyCode);
+    const one = held.lists.get(component);
+    if (one) one.waiting = one.waiting.filter((press) => press.keyCode !== keyCode);
 };
 
-// One per move: the handler moves the list, which makes it busy again, so the next tick to find it
-// free is the next move's turn. That is what keeps the count exact.
+const isHeldCopy = (component, keyCode, at) => {
+    const one = held.lists.get(component);
+    return !!one && one.waiting.some((press) =>
+        press.keyCode === keyCode && at - press.at < REDISPATCH_WINDOW);
+};
+
+// One press per tick at most, because delivering it makes the list busy again.
 const settle = (component) => {
     const one = stateOf(component);
-    const next = one.waiting.shift();
+    const next = one.waiting[0];
     if (!next) return;
 
+    one.waiting = one.waiting.slice(1);
     try {
         next.handle.call(component, next.event);
     } catch (failure) {
@@ -114,35 +78,36 @@ const settle = (component) => {
     }
 };
 
-const waiting = () => held.tracked.some((component) => {
-    const one = state.get(component);
-    return !!one && one.waiting.length > 0;
-});
-
 const pump = () => {
     if (held.pumping) return;
 
     held.pumping = true;
     every('rapid press', DRAIN_EVERY, () => {
-        held.tracked.filter((component) => !isMoving(component)).forEach(settle);
-
-        if (waiting()) return undefined;
+        held.queued.filter((component) => !isListMoving(component)).forEach(settle);
+        held.queued = held.queued.filter((component) => stateOf(component).waiting.length > 0);
+        if (held.queued.length) return;
 
         held.pumping = false;
-        return stop('rapid press');
+        stop('rapid press');
     });
 };
 
-const isDirection = (event) => !!event && DIRECTIONS.indexOf(event.keyCode) !== -1;
+const isDirection = (event) => !!event && axisOf(event.keyCode) !== undefined;
 
-// Records when the key was seen, so it must be asked exactly once per event and for every event —
-// skipping it would leave the next repeat looking like a fresh press.
-const isFreshPress = (event) => {
-    const now = Date.now();
-    const before = lastSeen.get(event.keyCode);
-    lastSeen.set(event.keyCode, now);
+// Every direction event is judged, since one skipped would leave the next repeat looking like a
+// fresh press.
+const judge = (event) => {
+    const known = held.judged.get(event);
+    if (known) return known;
 
-    return !event.repeat && (before === undefined || now - before > REPEAT_WINDOW);
+    const at = Date.now();
+    const before = held.lastSeen.get(event.keyCode);
+    held.lastSeen.set(event.keyCode, at);
+
+    const fresh = !event.repeat && (before === undefined || at - before > REPEAT_WINDOW);
+    const press = { at, fresh };
+    held.judged.set(event, press);
+    return press;
 };
 
 // What the handler being skipped would have done with it.
@@ -151,30 +116,47 @@ const consume = (event) => {
     if (typeof event.stopPropagation === 'function') event.stopPropagation();
 };
 
-// Wrapped, not replaced: a press that arrives while the list is still is handed straight to
-// YouTube's handler and nothing here touches it. Only the ones that would have been thrown away
-// take the other path.
+const hold = (component, handle, event, at) => {
+    const one = stateOf(component);
+    if (one.waiting.length < MOST_HELD) {
+        one.waiting = one.waiting.concat([{ handle, event, keyCode: event.keyCode, at }]);
+    }
+    if (held.queued.indexOf(component) === -1) held.queued = held.queued.concat([component]);
+
+    consume(event);
+    pump();
+};
+
 const patch = (prototype) => {
     const handle = prototype.onKeyDown;
-    if (typeof handle !== 'function' || handle.tubeRapidPress) return;
+    if (typeof handle !== 'function') {
+        console.warn('[rapid press] the feed list does not answer to onKeyDown on this'
+            + ' build; presses will be dropped as they always were.');
+        return;
+    }
+    if (handle.tubeRapidPress) return;
 
     const wrapped = function onKeyDown(event) {
         if (!wanted() || !isDirection(event)) return handle.call(this, event);
 
-        if (!isFreshPress(event)) {
-            forget(this, event.keyCode);
+        const press = judge(event);
+        const axis = axisOf(event.keyCode);
+
+        if (!press.fresh && isHeldCopy(this, event.keyCode, press.at)) {
+            consume(event);
+            return undefined;
+        }
+
+        if (!press.fresh) forget(this, event.keyCode);
+
+        if (!isListMoving(this)) {
+            stateOf(this).axis = axis;
             return handle.call(this, event);
         }
 
-        if (!isMoving(this)) return handle.call(this, event);
+        if (!press.fresh || !movesAlong(this, axis)) return handle.call(this, event);
 
-        const one = stateOf(this);
-        if (one.waiting.length < MOST_HELD) {
-            one.waiting.push({ handle, event, keyCode: event.keyCode });
-        }
-
-        consume(event);
-        pump();
+        hold(this, handle, event, press.at);
         return undefined;
     };
 
@@ -182,24 +164,9 @@ const patch = (prototype) => {
     prototype.onKeyDown = wrapped;
 };
 
-// The class is not in the module registry under any name we could ask for, but an instance of it
-// is on every list the page draws, and the element hands its component over.
-const listPrototype = () => {
-    const list = document.querySelector('yt-virtual-list');
-    const component = list && list.__instance;
-    return component ? Object.getPrototypeOf(component) : null;
-};
-
-// Armed whether or not the setting is on, because the wrapper asks on every press: turning it on
-// takes hold immediately rather than at the next launch. Reading it here instead is what made the
-// scroll-speed setting appear dead until the app was reopened.
+// Patched regardless of the setting, because the wrapper reads it on every press.
 const start = () => {
-    whenFound('rapid press', listPrototype, (prototype) => {
-        if (typeof prototype.onKeyDown === 'function') return patch(prototype);
-
-        return console.warn('[rapid press] the feed list does not answer to onKeyDown on this'
-            + ' build; presses will be dropped as they always were.');
-    }, { every: 250 });
+    whenFound('rapid press', virtualListPrototype, patch, { forMs: Infinity });
 };
 
 export { start };

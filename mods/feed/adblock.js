@@ -108,12 +108,6 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
     }
 
     if (r?.contents?.tvBrowseRenderer?.content?.tvSecondaryNavRenderer?.sections) {
-      const selectedFirstThenByTitle = (a, b) => {
-        if (a.tabRenderer.selected && !b.tabRenderer.selected) return -1;
-        if (!a.tabRenderer.selected && b.tabRenderer.selected) return 1;
-        return a.tabRenderer.title.localeCompare(b.tabRenderer.title);
-      };
-
       const dressTab = (tab) => {
         const content = tab.tabRenderer.content?.tvSurfaceContentRenderer?.content;
         if (content?.sectionListRenderer?.contents) walkShelves(content.sectionListRenderer.contents, SHELF);
@@ -123,8 +117,6 @@ onResponse('ads and shelves', RESPONSE_KEYS, (r) => {
       r.contents.tvBrowseRenderer.content.tvSecondaryNavRenderer.sections.forEach((entry) => {
         const section = entry.tvSecondaryNavSectionRenderer;
         if (!section || !section.tabs) return;
-
-        if (configRead('sortSubscriptionsByAlphabet')) section.tabs.sort(selectedFirstThenByTitle);
 
         section.tabs.forEach(dressTab);
       });

@@ -214,9 +214,7 @@ const GROUPS = [
       Set_('disabledSidebarContents', 'Sections',
         'Which entries the sidebar offers', CONTROLS, SIDEBAR, true),
       Switch('disableChannelsOnSidebar', 'Channels',
-        'The channels you are subscribed to, listed under the sections', CONTROLS, false),
-      Switch('sortSubscriptionsByAlphabet', 'Sort subscriptions A\u2013Z',
-        'Alphabetical rather than the order YouTube sends', CONTROLS)
+        'The channels you are subscribed to, listed under the sections', CONTROLS, false)
     ]
   },
   {

@@ -57,7 +57,6 @@ const defaultConfig = {
   enableHideWatchedVideos: false,
   hideWatchedVideosThreshold: 80,
   hideWatchedVideosPages: [],
-  sortSubscriptionsByAlphabet: true,
 
   enablePatchingVideoPlayer: true,
   enablePreviousNextButtons: true,

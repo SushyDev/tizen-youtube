@@ -20,7 +20,8 @@ const assetsDir = join(ROOT, 'assets');
 const outDir = join(ROOT, 'release', 'origin');
 
 const version = config.version;
-const VARIANTS = ['modern', 'legacy'];
+const BUNDLE = 'userScript.js';
+const BUNDLE_PATH = join(distDir, BUNDLE);
 
 function sha256(buffer) {
     return createHash('sha256').update(buffer).digest('hex');
@@ -32,10 +33,6 @@ function ensure(dir) {
 
 function friendly(message) {
     return Object.assign(new Error(message), { isFriendly: true });
-}
-
-function bundlePath(variant) {
-    return join(distDir, `userScript.${variant}.js`);
 }
 
 async function preflight() {
@@ -57,17 +54,12 @@ async function preflight() {
 
     if (!published || published.version !== version) return;
 
-    const changed = VARIANTS.filter((variant) => {
-        const already = published.bundles && published.bundles[variant];
-        const file = bundlePath(variant);
-        if (!already || !existsSync(file)) return false;
-        return sha256(readFileSync(file)) !== already.sha256;
-    });
+    const already = published.bundle;
+    const changed = already && existsSync(BUNDLE_PATH) && sha256(readFileSync(BUNDLE_PATH)) !== already.sha256;
 
-    if (changed.length) {
+    if (changed) {
         throw friendly(
-            `Version ${version} is already published, with different content ` +
-            `(${changed.join(', ')}).\n\n` +
+            `Version ${version} is already published, with different content.\n\n` +
             `  Versioned paths are cached as immutable, so republishing ${version}\n` +
             '  would leave every TV permanently stuck on the old bundle.\n\n' +
             '  Bump the version first:  npm run version:set <next>'
@@ -83,24 +75,17 @@ function stage() {
     const versionDir = join(outDir, version);
     ensure(versionDir);
 
-    const bundles = {};
-    VARIANTS.forEach((variant) => {
-        const file = bundlePath(variant);
-        if (!existsSync(file)) {
-            throw friendly(`Missing ${file}\n  Run: npm run build`);
-        }
+    if (!existsSync(BUNDLE_PATH)) throw friendly(`Missing ${BUNDLE_PATH}\n  Run: npm run build`);
 
-        const buffer = readFileSync(file);
-        const name = `userScript.${variant}.js`;
-        copyFileSync(file, join(versionDir, name));
+    const buffer = readFileSync(BUNDLE_PATH);
+    copyFileSync(BUNDLE_PATH, join(versionDir, BUNDLE));
 
-        bundles[variant] = {
-            path: `${version}/${name}`,
-            sha256: sha256(buffer),
-            bytes: buffer.length
-        };
-        ui.ok(variant, `${ui.bytes(buffer.length)} · ${bundles[variant].sha256.slice(0, 16)}`);
-    });
+    const bundle = {
+        path: `${version}/${BUNDLE}`,
+        sha256: sha256(buffer),
+        bytes: buffer.length
+    };
+    ui.ok('userscript', `${ui.bytes(buffer.length)} · ${bundle.sha256.slice(0, 16)}`);
 
     const namesFile = join(assetsDir, 'language-names.json');
     if (existsSync(namesFile)) {
@@ -112,7 +97,7 @@ function stage() {
         version,
         origin: config.origin,
         released: new Date().toISOString(),
-        bundles
+        bundle
     };
     writeFileSync(join(outDir, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     ui.ok('latest.json', `advertises ${version}`);

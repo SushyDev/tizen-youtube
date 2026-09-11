@@ -4,14 +4,13 @@ Ad-free YouTube on a Samsung TV, as an app of its own.
 
 <img src="icon.png" width="96" align="right">
 
-A rewrite of TizenTube Standalone. Both userscript bundles ship inside the
-package, so a first launch works with no network at all — the origin is an
-update path, not a dependency. No loading screen, and a 68% smaller script on
-modern sets.
+A rewrite of TizenTube Standalone. The userscript ships inside the package, so a
+first launch works with no network at all — the origin is an update path, not a
+dependency. No loading screen, and an 85% smaller script.
 
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
-- Tizen 3 and up — one bundle for modern sets, one for old ones
+- Tizen 5.5 and up — one bundle, no polyfills
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A
@@ -50,10 +49,10 @@ npm run package    # release/tube.wgt, for Tizen Homebrew
 | | |
 | --- | --- |
 | `npm run doctor` | Check prerequisites when something looks wrong |
-| `npm run build` | Boot screen, both userscript bundles, the service |
+| `npm run build` | Boot screen, the userscript bundle, the service |
 | `npm test` | Lint, rewrite parity, routing, loader, update flow |
 | `npm run package` | Build a `.wgt` — signed by nobody, which is what a release carries |
-| `npm run release` | Stage `release/origin/` — the bundles and `latest.json` |
+| `npm run release` | Stage `release/origin/` — the bundle and `latest.json` |
 | `npm run dev` | The whole app in a browser, no hardware needed |
 | `npm run dev:boot` | Just the boot screen, held on screen so it can be looked at |
 | `npm run dev:service` | The service off-TV, on `:8099` |
@@ -76,19 +75,15 @@ table **unchanged** from the reference — it is empirically derived, every rule
 is load bearing, and `service/test/rewrite-parity.js` fails if our output ever
 diverges.
 
-**Two bundles.** Polyfills in a browser bundle are parsed on *every* launch, so
-they ship only to the TVs that need them. `modern` (Chrome 63+ / Tizen 5.5+)
-drops core-js, the fetch polyfill and the ES5 downlevel; `legacy` (Chrome 47 /
-Tizen 3–4) keeps them. `service/lib/loader.js` picks from the platform version.
-Against the reference's 556,988 bytes: `modern` is 178,633, `legacy` 213,184 —
-369KB less to parse on modern sets. Most of it was 30 statically imported
-locales (~375KB, now fetched on demand), `esprima` + `estraverse` shipped for
-four call sites (~150KB, replaced by a marker-anchored scan), and a static
-language-name map (33KB, now `Intl.DisplayNames`). The spatial-navigation
-polyfill is **kept in both** — no Tizen webview ships it, and dropping it would
-break D-pad focus everywhere.
+**One bundle.** Polyfills in a browser bundle are parsed on *every* launch, and
+the sets that needed them are gone: the floor is Chrome 63, so the ES5 downlevel,
+core-js and the fetch polyfill go. Against the reference's 556,988 bytes
+the bundle is 83,072 — 474KB less to parse. Most of it was 30 statically
+imported locales (~375KB, now fetched on demand), `esprima` + `estraverse`
+shipped for four call sites (~150KB, replaced by a marker-anchored scan), and a
+static language-name map (33KB, now `Intl.DisplayNames`).
 
-**The CDN is never on the critical path.** Both bundles are inside the `.wgt`.
+**The CDN is never on the critical path.** The bundle is inside the `.wgt`.
 On launch `latest.json` is checked in the background; a newer bundle is
 SHA-256-verified against the manifest before it is written anywhere; load order
 is verified-cache → bundled, with the digest re-checked on every read. Every
@@ -128,13 +123,12 @@ TV client, through the real proxy, with the real userscript in it. Every
 feature is reachable, video included. Editing anything under `mods/` rebuilds
 the bundle in about half a second; reload the page and it is running.
 
-Three things are arranged for that to work off hardware, all of them
+Two things are arranged for that to work off hardware, both of them
 environment variables that nothing in a build sets:
 
 | | |
 | --- | --- |
 | `TUBE_DEV_UA` | youtube.com/tv serves a redirect notice to anything that is not a television, so the proxy presents itself as one — upstream, and to the page |
-| `TUBE_PLATFORM_VERSION` | With no platform to ask, every browser would look like a Tizen 3 and get the legacy bundle. Defaults to `6.5`; set it to `4.0` to work on the legacy one |
 | `TUBE_DEV_INJECT` | `ui/dev/remote.js`, injected after the userscript. A remote's colour and transport buttons are keyCodes no keyboard produces — this puts them on one. `b` is the blue button and opens the speed control, `Escape` is Return, and `tubeRemote(code)` presses anything else |
 
 Point the dev server's `/__tube` routes at a set with
@@ -156,7 +150,7 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `service/index.js` | Routes, and the once-per-launch update check |
 | `service/lib/injector.js` | CDP injection over loopback sdb |
 | `service/lib/proxy.js` | The rewrite table, carried unchanged |
-| `service/lib/loader.js` | Which bundle a TV gets, and from where |
+| `service/lib/loader.js` | Which bundle a TV runs, and from where |
 | `service/lib/ports.js` | 8099 proxy, 8097 dev |
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
@@ -179,7 +173,7 @@ that joins one made by hand. Exactly one `.wgt` per release, which matters:
 Homebrew's catalogue takes the first package asset it finds. Tag and version
 have to agree — `npm run version:set 1.2.0` sets it everywhere at once, the
 lockfile included. Set `TUBE_ORIGIN` as a repository **variable** to stage the
-origin bundles too; without it the release still builds, and the app simply
+origin bundle too; without it the release still builds, and the app simply
 never updates itself between releases.
 
 ---

@@ -11,45 +11,40 @@ import { load } from '../tools/config.js';
 const config = load();
 const version = config.version;
 
-function bundle({ name, input, target, ecma }) {
-    return {
-        input,
-        output: {
-            file: `../dist/userScript.${name}.js`,
-            format: 'iife',
-            banner: `/* tube ${version} (${name}) */`
-        },
-        plugins: [
-            json(),
-            string({ include: '**/*.css' }),
-            nodeResolve({ browser: true, preferBuiltins: false }),
-            commonjs({
-                include: [/node_modules/, /mods/],
-                transformMixedEsModules: true
-            }),
-            replace({
-                preventAssignment: true,
-                values: {
-                    __TUBE_ORIGIN__: config.origin,
-                    __TUBE_VERSION__: version,
-                    __TUBE_BUNDLE__: name
-                }
-            }),
-            getBabelOutputPlugin({
-                babelHelpers: 'bundled',
-                presets: [['@babel/preset-env', { targets: target }]]
-            }),
-            terser({ ecma, mangle: true }),
-            replace({
-                preventAssignment: false,
-                delimiters: ['', ''],
-                values: { '\uFFFF': '\u0000' }
-            })
-        ]
-    };
-}
+const ENGINE = 'Chrome 63';
+const ECMA = 2017;
 
-export default [
-    bundle({ name: 'modern', input: 'entry.modern.js', target: 'Chrome 63', ecma: 2017 }),
-    bundle({ name: 'legacy', input: 'entry.legacy.js', target: 'Chrome 47', ecma: 5 })
-];
+export default {
+    input: 'entry.js',
+    output: {
+        file: '../dist/userScript.js',
+        format: 'iife',
+        banner: `/* tube ${version} */`
+    },
+    plugins: [
+        json(),
+        string({ include: '**/*.css' }),
+        nodeResolve({ browser: true, preferBuiltins: false }),
+        commonjs({
+            include: [/node_modules/, /mods/],
+            transformMixedEsModules: true
+        }),
+        replace({
+            preventAssignment: true,
+            values: {
+                __TUBE_ORIGIN__: config.origin,
+                __TUBE_VERSION__: version
+            }
+        }),
+        getBabelOutputPlugin({
+            babelHelpers: 'bundled',
+            presets: [['@babel/preset-env', { targets: ENGINE }]]
+        }),
+        terser({ ecma: ECMA, mangle: true }),
+        replace({
+            preventAssignment: false,
+            delimiters: ['', ''],
+            values: { '\uFFFF': '\u0000' }
+        })
+    ]
+};

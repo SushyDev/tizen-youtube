@@ -317,7 +317,7 @@ const describe = (state, asks) => {
                  `${(serviceUpAt / 1000).toFixed(3)}s`, 'ok');
 
     if (state.platformVersion) {
-        say('state', `tizen ${state.platformVersion} takes the ${state.variant} userscript`);
+        say('state', `tizen ${state.platformVersion}`);
     }
 
     if (state.script && state.script.error) {
@@ -327,7 +327,7 @@ const describe = (state, asks) => {
     }
 
     if (state.script) {
-        say('loader', `userscript ${state.script.variant} ${state.script.version}`, 'ok');
+        say('loader', `userscript ${state.script.version}`, 'ok');
         say('loader', `origin ${state.script.origin}`);
 
         if (isPlaceholder(state.script.origin)) {

@@ -19,7 +19,7 @@ const origin = http.createServer((req, res) => {
     if (req.url === '/latest.json') {
         manifestRequests++;
         res.setHeader('content-type', 'application/json');
-        return res.end(JSON.stringify({ version: '0.0.0', bundles: {} }));
+        return res.end(JSON.stringify({ version: '0.0.0' }));
     }
     res.statusCode = 404;
     res.end('no');
@@ -81,8 +81,8 @@ origin.listen(0, '127.0.0.1', async () => {
             check('state reports which script this TV would run',
                 !!state.script && typeof state.script.version === 'string',
                 JSON.stringify(state.script));
-            check('state reports the bundle variant',
-                state.script.variant === 'legacy' || state.script.variant === 'modern',
+            check('state says where that script came from',
+                !!state.script && ['cache', 'bundled'].indexOf(state.script.origin) !== -1,
                 JSON.stringify(state.script));
 
             return wait(600);

@@ -15,10 +15,10 @@ const STEPS = [
         summarise: (sizes) => `${ui.bytes(sizes[0])} · single file`
     },
     {
-        label: 'userscript bundles',
+        label: 'userscript bundle',
         workspace: 'mods',
-        outputs: ['dist/userScript.modern.js', 'dist/userScript.legacy.js'],
-        summarise: (sizes) => `modern ${ui.bytes(sizes[0])} · legacy ${ui.bytes(sizes[1])}`
+        outputs: ['dist/userScript.js'],
+        summarise: (sizes) => ui.bytes(sizes[0])
     },
     {
         label: 'service bundle',

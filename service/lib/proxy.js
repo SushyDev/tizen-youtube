@@ -91,7 +91,7 @@ function restoreCookiePrefixes(cookieHeader) {
         .replace(/__LocalHost-/g, '__Host-');
 }
 
-function create(platformVersion) {
+function create() {
     const app = express();
 
     app.use((req, res, next) => {
@@ -104,7 +104,7 @@ function create(platformVersion) {
 
     app.get('/__tube/userScript.js', (_, res) => {
         try {
-            const script = loader.resolve(platformVersion);
+            const script = loader.resolve();
             res.type('application/javascript').send(script.source);
         } catch (e) {
             res.status(500).type('application/javascript')

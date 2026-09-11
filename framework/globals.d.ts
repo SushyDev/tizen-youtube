@@ -27,6 +27,12 @@ interface Window {
     /** Set by the proxy before our script runs; false means it patched the page itself. */
     __TUBE_NATIVE_PROXY_PATCHES__?: boolean;
 
+    /** Dev builds only: set when an inspector attaches and kept until reload; loosens parentNode. */
+    __tubeInspecting?: boolean;
+
+    /** Dev builds only: JSON.parse/stringify as they were before we took them over. */
+    __tubeNativeJSON?: { parse: typeof JSON.parse, stringify: typeof JSON.stringify };
+
     /** Ours. */
     queuedVideos: QueuedVideos;
     sponsorblock?: SponsorBlockState;

@@ -98,7 +98,12 @@ const keepAdopting = (forMs) => {
     until('json adoption', ADOPTION_INTERVAL, adopt, forMs);
 };
 
-const state = { intercepted: false };
+const state = { intercepted: false, parse: null, stringify: null };
+
+const nativeJson = () => ({
+    parse: state.parse || JSON.parse,
+    stringify: state.stringify || JSON.stringify
+});
 
 const interceptJson = () => {
     if (state.intercepted) return;
@@ -106,6 +111,9 @@ const interceptJson = () => {
 
     const parse = JSON.parse;
     const stringify = JSON.stringify;
+
+    state.parse = parse;
+    state.stringify = stringify;
 
     JSON.parse = function () {
         const response = parse.apply(this, arguments);
@@ -132,4 +140,4 @@ const interceptJson = () => {
     window.addEventListener('hashchange', () => keepAdopting(AFTER_NAVIGATION));
 };
 
-export { onResponse, onRequest, interceptJson };
+export { onResponse, onRequest, interceptJson, nativeJson };

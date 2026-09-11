@@ -42,6 +42,7 @@ const BROWSER_GLOBALS = {
     clearInterval: 'readonly',
     localStorage: 'readonly',
     Element: 'readonly',
+    Node: 'readonly',
     Event: 'readonly',
     CustomEvent: 'readonly',
     MutationObserver: 'readonly',

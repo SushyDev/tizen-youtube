@@ -8,8 +8,10 @@
 // server bound to 0.0.0.0.
 
 const bridge = require('./bridge.js');
+const chii = require('./chii.js');
 const journal = require('./journal.js');
 const { readFileSync } = require('fs');
+const postmortem = require('../lib/postmortem.js');
 
 const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
@@ -36,6 +38,7 @@ const pageScripts = (origin, stamp) => (DEV_INJECT_PATH
     : '');
 
 const pageRoutes = (app) => {
+    chii.routes(app);
     if (!DEV_INJECT_PATH) return;
 
     app.get('/__tube/dev.js', (_, res) => {
@@ -48,7 +51,19 @@ const pageRoutes = (app) => {
     });
 };
 
-const routes = (app, { policies, state, knobs }) => {
+const routes = (app, { policies, state, knobs, relaunch }) => {
+    app.get('/__tube/dev/relaunch', (_, res) => {
+        if (!relaunch) return res.status(501).json({ ok: false, why: 'no container route on this set' });
+
+        // Answered before the kill lands: this connection dies with the app it is restarting.
+        res.json({ ok: true, restarting: true });
+
+        return relaunch((error, result) => {
+            if (error) postmortem.note('relaunch', postmortem.describe(error));
+            else postmortem.note('relaunch', `done, ${result.killed} context(s) killed`);
+        });
+    });
+
     app.get('/__tube/dev/csp', (req, res) => {
         const asked = String((req.query && req.query.policy) || '');
         if (Object.prototype.hasOwnProperty.call(policies, asked)) state.policy = asked;
@@ -96,6 +111,7 @@ module.exports = {
     routes,
     pageRoutes,
     pageScripts,
+    upgradeRewrite: chii.upgradeRewrite,
     spoofUserAgent,
     upstreamHeaders,
     journal

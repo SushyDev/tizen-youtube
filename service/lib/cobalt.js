@@ -294,6 +294,42 @@ const stageOrFail = (content) => {
     }
 };
 
+const LAUNCH_AFTER_KILL = 1200;
+
+// Kills the cobalt-yt context as well as ours, because that context holds the running bundle.
+const relaunch = (done) => {
+    if (typeof tizen === 'undefined') return done(new Error('not on a television'));
+
+    const me = appId();
+    if (!me) return done(new Error('no appId in the manifest'));
+
+    return tizen.application.getAppsContext((contexts) => {
+        const running = contexts.filter((context) => context.appId === CONTAINER || context.appId === me);
+
+        const start = () => {
+            // Cleared so wake()'s own quiet period cannot swallow the launch that follows.
+            state.lastWake = 0;
+            note('relaunch', `starting ${me}`);
+            tizen.application.launch(me, () => done(null, { killed: running.length }),
+                (error) => done(new Error(`launch refused: ${error.message}`)));
+        };
+
+        if (!running.length) return start();
+
+        // The launch waits for every kill to answer, success or failure.
+        const remaining = { count: running.length };
+        const finished = () => {
+            remaining.count -= 1;
+            if (remaining.count <= 0) setTimeout(start, LAUNCH_AFTER_KILL);
+        };
+
+        return running.forEach((context) => {
+            note('relaunch', `killing ${context.appId} (${context.id})`);
+            tizen.application.kill(context.id, finished, finished);
+        });
+    }, (error) => done(new Error(`could not list contexts: ${error.message}`)));
+};
+
 const prepare = (done) => {
     const finish = (error, result) => {
         state.preparing = false;
@@ -367,4 +403,4 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-module.exports = { prepare, wake, served, material, container, appId, MITM_DIR };
+module.exports = { prepare, wake, served, relaunch, material, container, appId, MITM_DIR };

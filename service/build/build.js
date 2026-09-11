@@ -3,6 +3,7 @@
 const { execFileSync } = require('child_process');
 const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } = require('fs');
 const { join } = require('path');
+const { randomBytes } = require('crypto');
 
 const { load } = require('../../tools/config.js');
 const { injectTokens } = require('../../tools/inject.js');
@@ -22,9 +23,11 @@ const kb = (bytes) => `${Math.round(bytes / 1024)}kB`;
 console.log('[1/4] bundling for node 12');
 run('npx', ['vite', 'build']);
 
-console.log('[2/4] stamping the origin');
+console.log('[2/4] stamping the origin and the dev token');
+const devToken = process.env.TUBE_DEV_TOKEN || randomBytes(8).toString('hex');
 const stamped = injectTokens(readFileSync(bundle, 'utf8'), {
-    __TUBE_ORIGIN__: config.origin
+    __TUBE_ORIGIN__: config.origin,
+    __TUBE_DEV_TOKEN__: devToken
 }).code;
 
 writeFileSync(bundle, stamped);

@@ -9,8 +9,10 @@ const { readFileSync } = require('fs');
 
 const ports = require('./ports.js');
 const loader = require('./loader.js');
+const forward = require('./forward.js');
 const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
+const bigheaders = require('./bigheaders.js');
 
 const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000 };
 const httpsAgent = new https.Agent(AGENT_OPTIONS);
@@ -21,9 +23,8 @@ const DEV_USER_AGENT = process.env.TUBE_DEV_UA || '';
 const DEV_INJECT_PATH = process.env.TUBE_DEV_INJECT || '';
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
-const STRIPPED_HEADERS = [
-    'content-encoding', 'content-length', 'transfer-encoding', 'content-security-policy', 'alt-svc'
-];
+const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
+const CSP_HEADER = 'content-security-policy';
 const BODIED = ['POST', 'PUT', 'PATCH'];
 
 const YOUTUBE_HOST = 'www.youtube.com';
@@ -35,10 +36,18 @@ const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
 
 const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com|googleusercontent\.com)$/;
 
+// How many intercepted requests to write to the log on disk before falling quiet: inside the
+// container there is no console and no dev bridge, and a working page makes hundreds.
+const TRACE_LIMIT = 40;
+
+const state = { traced: 0 };
+
 const PROXY_HOST = process.env.TUBE_PROXY_HOST || 'localhost';
 
 const localOrigin = () => `http://${PROXY_HOST}:${ports.PROXY}`;
 const proxyPrefix = () => `${localOrigin()}/cors-bypass/`;
+
+const overOurTls = (req) => !!(req.socket && req.socket.encrypted);
 
 const flagOverrides = new Map();
 
@@ -48,6 +57,8 @@ const upstream = {
     onesie: 'auto',
     nativeProxyPatches: true
 };
+
+const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
 
 const spoofUserAgent = (text) => {
     const shim = '<script>try{Object.defineProperty(navigator,"userAgent",'
@@ -105,7 +116,7 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
-const rewriteBody = (text, url) => {
+const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
     const tuned = [
@@ -114,11 +125,12 @@ const rewriteBody = (text, url) => {
         upstream.nativeProxyPatches ? null : overrideInnertubeHost
     ].filter(Boolean).reduce((out, step) => step(out), text);
 
-    const origin = localOrigin();
+    const stamp = nonce ? ` nonce="${nonce}"` : '';
+    const origin = injectionOrigin || localOrigin();
 
-    const tag = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
-        + `<script src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
-        + (DEV_INJECT_PATH ? `<script src="${origin}/__tube/dev.js?v=${Date.now()}"></script>` : '');
+    const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
+        + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
+        + (DEV_INJECT_PATH ? `<script${stamp} src="${origin}/__tube/dev.js?v=${Date.now()}"></script>` : '');
 
     // Appended past </html> a browser still runs it; Cobalt's parser drops it.
     return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
@@ -151,12 +163,27 @@ const create = () => {
     const app = express();
 
     app.use((req, _, next) => {
-        if (!journal.wanted()) return next();
+        forward.normaliseSelf(req, PROXY_HOST, ports.PROXY);
+        next();
+    });
 
+    app.use((req, _, next) => {
+        const watching = journal.wanted();
+        const tracing = state.traced < TRACE_LIMIT;
+        if (!watching && !tracing) return next();
+
+        // req.url, not originalUrl: the forward-proxy form has already been put back to a path.
         const path = String(req.url || req.originalUrl);
+        const ours = path.indexOf('/__tube/') === 0;
+        const asked = `${req.method} ${path.slice(0, 150)}`;
 
         // Our own /__tube/ requests would drown the page's in the journal.
-        if (path.indexOf('/__tube/') !== 0) journal.service('asked', `${req.method} ${path.slice(0, 150)}`);
+        if (watching && !ours) journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
+
+        if (tracing && overOurTls(req) && !ours) {
+            state.traced += 1;
+            postmortem.note('req', `${req.method} ${req.headers.host || '?'}${path.slice(0, 120)}`);
+        }
 
         return next();
     });
@@ -200,9 +227,13 @@ const routeFor = (req) => {
         return raw.indexOf('http') === 0 ? raw : `https://${raw}`;
     };
 
-    const targetOf = (isBypass) => (
-        isBypass ? bypassTarget() : `${YOUTUBE_ORIGIN}${req.url}`
-    );
+    const targetOf = (forwarded, isBypass) => {
+        if (forwarded) return forwarded;
+        if (isBypass) return bypassTarget();
+        if (overOurTls(req) && req.headers.host) return `https://${req.headers.host}${req.url}`;
+
+        return `${YOUTUBE_ORIGIN}${req.url}`;
+    };
 
     const hostNamedBy = (target) => {
         try { return URL.parse(target).host || YOUTUBE_HOST; } catch (e) { return YOUTUBE_HOST; }
@@ -213,9 +244,10 @@ const routeFor = (req) => {
         forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target
     );
 
-    const isBypass = req.path.indexOf('/cors-bypass/') === 0;
+    const forwarded = forward.absoluteTarget(req.url);
+    const isBypass = !forwarded && req.path.indexOf('/cors-bypass/') === 0;
 
-    const target = targetOf(isBypass);
+    const target = targetOf(forwarded, isBypass);
     const host = hostNamedBy(target);
     const forGoogle = GOOGLE.test(host.split(':')[0]);
 
@@ -223,7 +255,8 @@ const routeFor = (req) => {
         url: upgradeScheme(target, forGoogle),
         host,
         forGoogle,
-        isBypass
+        isBypass,
+        asTheRealHost: !!forwarded || overOurTls(req)
     };
 };
 
@@ -239,8 +272,10 @@ const headersFor = (req, route) => {
 
     const copied = Object.keys(req.headers)
         .filter((key) => dropped.indexOf(key) === -1)
-        // The page carries renamed cookies, because we served it on plain HTTP.
-        .map((key) => [key, key === 'cookie' ? restoreCookiePrefixes(req.headers[key]) : req.headers[key]]);
+        // The page only carries renamed cookies when we served it as the service on plain HTTP.
+        .map((key) => [key, key === 'cookie' && !route.asTheRealHost
+            ? restoreCookiePrefixes(req.headers[key])
+            : req.headers[key]]);
 
     return Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
         DEV_USER_AGENT ? { 'user-agent': DEV_USER_AGENT } : {},
@@ -263,6 +298,11 @@ const send = (url, req, headers) => {
     };
 
     return fetch(url, options).catch((error) => {
+        if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {
+            postmortem.note('upstream', `header overflow on ${url.slice(0, 80)} — retrying over http2`);
+            return bigheaders.fetchOverHttp2(url, { method: req.method, headers });
+        }
+
         // A streamed body cannot be sent twice.
         if (!isRetriable(error) || body) throw error;
 
@@ -280,10 +320,13 @@ const copyHeaders = (req, res, response, route) => {
         const lower = key.toLowerCase();
 
         if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
+        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants.
+        if (lower === CSP_HEADER && !route.asTheRealHost) return;
         if (route.isBypass && lower === 'access-control-allow-origin') return;
 
+        // A page on the real host would reject a cookie rewritten to Domain=localhost.
         if (lower === 'set-cookie' && Array.isArray(raw[key])) {
-            res.setHeader('Set-Cookie', rewriteSetCookie(raw[key]));
+            res.setHeader('Set-Cookie', route.asTheRealHost ? raw[key] : rewriteSetCookie(raw[key]));
             return;
         }
 
@@ -350,7 +393,14 @@ const attachFallback = (app) => {
                 }
 
                 return response.text().then((text) => {
-                    const injected = rewriteAttestation(rewriteBody(text, req.url), route.url);
+                    const injectionOrigin = route.asTheRealHost && req.headers.host
+                        ? `https://${req.headers.host}`
+                        : null;
+                    const nonce = route.asTheRealHost ? nonceOf(response.headers.get(CSP_HEADER)) : null;
+
+                    const injected = rewriteAttestation(
+                        rewriteBody(text, req.url, injectionOrigin, nonce), route.url
+                    );
 
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
 

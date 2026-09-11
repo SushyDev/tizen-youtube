@@ -7,6 +7,7 @@ const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
 const devbridge = require('./lib/devbridge.js');
+const forward = require('./lib/forward.js');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -142,7 +143,7 @@ function announceReady() {
 
 const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
 
-app.listen(ports.PROXY, BIND, () => {
+const server = app.listen(ports.PROXY, BIND, () => {
     console.log(`tube service on 127.0.0.1:${ports.PROXY}`);
     if (!isTV) {
         console.log('Running off-TV: proxy and userscript are live.');
@@ -150,5 +151,9 @@ app.listen(ports.PROXY, BIND, () => {
 
     announceReady();
 });
+
+// A forward proxy sends TLS through CONNECT; without an answer to that a client pointed here has
+// no network at all.
+forward.tunnel(server);
 
 setTimeout(maybeCheckForUpdate, 5000);

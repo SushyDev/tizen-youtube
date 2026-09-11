@@ -14,8 +14,6 @@ const LIMITS = { maxAttempts: 3, retryDelay: 5000 };
 const RESTART_JUMP = 2;
 
 function watchPreferredQuality() {
-    // Everything that changes, in one place: which player we are attached to, which rung we last
-    // asked for, and whether the choice has settled.
     const held = {
         player: null,
         lastVideoId: null,
@@ -37,7 +35,7 @@ function watchPreferredQuality() {
     const startedOver = (player) => {
         const id = player.getVideoData?.()?.video_id;
         const time = player.getCurrentTime?.() ?? 0;
-        const looped = time + RESTART_JUMP < held.lastTime;
+        const looped = time < RESTART_JUMP && time + RESTART_JUMP < held.lastTime;
 
         held.lastTime = time;
 
@@ -56,20 +54,20 @@ function watchPreferredQuality() {
     };
 
     const askFor = (player, chosen, current) => {
-        const again = chosen.quality === held.target;
+        const again = chosen === held.target;
 
         const state = {
             current,
-            wanted: chosen.quality,
-            target: held.target,
+            wanted: chosen,
+            again,
             attempts: held.attempts,
             askedAt: held.askedAt
         };
 
         if (!shouldAsk(state, Date.now(), LIMITS)) return;
 
-        player.setPlaybackQualityRange(chosen.quality, chosen.quality);
-        held.target = chosen.quality;
+        player.setPlaybackQualityRange(chosen, chosen);
+        held.target = chosen;
         held.attempts = again ? held.attempts + 1 : 1;
         held.askedAt = Date.now();
     };
@@ -88,7 +86,7 @@ function watchPreferredQuality() {
 
         const current = player.getPlaybackQuality();
 
-        if (current === chosen.quality) {
+        if (current === chosen) {
             held.attempts = 0;
             held.settled = true;
             return;
@@ -137,9 +135,7 @@ function watchPreferredQuality() {
     attachToPlayer();
 }
 
-// Not inside Cobalt's container. Asking restarts the stream, and the container's player does not
-// report the rung back under the name we asked for, so the retry never settles — three asks, five
-// seconds apart, and the third wedges playback for good about fifteen seconds in.
+// Cobalt reports the rung under a different name, so asking never settles and wedges playback.
 const inCobalt = typeof navigator !== 'undefined' && /Cobalt/i.test(navigator.userAgent || '');
 
 if (typeof window !== 'undefined' && !inCobalt) watchPreferredQuality();

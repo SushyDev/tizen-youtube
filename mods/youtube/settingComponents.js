@@ -50,8 +50,7 @@ function claimBooleanRows() {
 
 const ACTION_ROW = 'ytlr-setting-action-renderer';
 
-// Action rows have no footer template; wFmJpd/vAMQc are YouTube's own note classes. Nodes are
-// stamped with a private symbol when built, so the footer must come from YouTube's hyperscript.
+// Nodes carry a private stamp, so the note must be built with YouTube's own hyperscript.
 const findHyperscript = () => findBySource('.type=', '.props=', '.children=');
 
 const noteFor = (H, note) => H(

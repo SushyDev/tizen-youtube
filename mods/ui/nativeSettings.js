@@ -147,24 +147,26 @@ function takeMoved(items) {
         if (found) reachable[found.categoryId] = true;
     });
 
-    const taken = {};
+    const categories = items.map(categoryOf).filter((found) => found && Array.isArray(found.items));
 
-    const keep = (row) => {
-        const move = moveFor(row, reachable);
-        if (!move) return true;
+    const moved = categories.reduce((all, found) => all.concat(found.items
+        .map((row) => ({ row, move: moveFor(row, reachable) }))
+        .filter((entry) => entry.move)), []);
 
-        (taken[move.to] = taken[move.to] || []).push({ row, move });
-        return false;
-    };
+    const taken = moved.reduce((byTarget, entry) => ({
+        ...byTarget,
+        [entry.move.to]: (byTarget[entry.move.to] || []).concat([entry])
+    }), {});
+
+    categories.forEach((found) => {
+        found.items = found.items.filter((row) => !moveFor(row, reachable));
+    });
 
     // Emptied categories are removed after the walk, not during it: splicing mid-iteration skips
     // whatever followed each removal.
     const emptied = items.filter((item) => {
         const found = categoryOf(item);
-        if (!found || !Array.isArray(found.items)) return false;
-
-        found.items = found.items.filter(keep);
-        return found.items.length === 0;
+        return found && Array.isArray(found.items) && found.items.length === 0;
     });
 
     emptied.forEach((item) => items.splice(items.indexOf(item), 1));
@@ -185,17 +187,22 @@ function putMoved(items, taken) {
     });
 }
 
-// The action row's code is only fetched when the first one is drawn, long after this response
-// is patched — so the search eases off instead of stopping, and gives up once the page is gone.
+const SETTLING_ATTEMPTS = 20;
+const PATIENT_ATTEMPTS = 120;
+const SETTLING_EVERY = 250;
+const PATIENT_EVERY = 500;
+
+// The action row's component loads only when the first row is drawn, after this response is patched.
 function claimRows(attempt = 0) {
     const claimed = claimBooleanRows();
     const annotated = claimActionRows();
     if (claimed && annotated) return;
 
-    const settling = attempt < 20;
+    const settling = attempt < SETTLING_ATTEMPTS;
     if (!settling && !document.querySelector(ROWS)) return;
+    if (attempt >= SETTLING_ATTEMPTS + PATIENT_ATTEMPTS) return;
 
-    setTimeout(() => claimRows(attempt + 1), settling ? 250 : 500);
+    setTimeout(() => claimRows(attempt + 1), settling ? SETTLING_EVERY : PATIENT_EVERY);
 }
 
 function PatchSettings(response) {

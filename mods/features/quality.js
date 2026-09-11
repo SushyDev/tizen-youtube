@@ -6,25 +6,24 @@ export function chooseQuality(preference, offered) {
 
     if (preference === 'highest') {
         const best = available.reduce((top, entry) => (pixels(entry) > pixels(top) ? entry : top));
-        return { quality: best.quality, pixels: pixels(best) };
+        return best.quality;
     }
 
     const target = parseInt(preference, 10) || 0;
     const match = available.find((entry) => pixels(entry) === target);
 
-    if (match) return { quality: match.quality, pixels: pixels(match) };
+    if (match) return match.quality;
 
     const below = available
         .filter((entry) => pixels(entry) <= target)
         .reduce((best, entry) => (!best || pixels(entry) > pixels(best) ? entry : best), null);
 
-    return below ? { quality: below.quality, pixels: pixels(below) } : null;
+    return below ? below.quality : null;
 }
 
-export function shouldAsk({ current, wanted, target, attempts, askedAt }, now, limits) {
+export function shouldAsk({ current, wanted, again, attempts, askedAt }, now, limits) {
     if (!wanted || current === wanted) return false;
 
-    const again = wanted === target;
     if (again && attempts >= limits.maxAttempts) return false;
     if (again && now - askedAt < limits.retryDelay) return false;
 

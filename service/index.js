@@ -6,7 +6,6 @@ postmortem.watch();
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
-const dial = require('./lib/dial.js');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -46,9 +45,7 @@ function describeState() {
         platformVersion,
         variant: loader.variantFor(platformVersion),
         script,
-        proxyUrl: `http://localhost:${ports.PROXY}/tv` + (isTV
-            ? `?additionalDataUrl=${encodeURIComponent(`http://localhost:${ports.DIAL}/dial/apps/YouTube`)}`
-            : '')
+        proxyUrl: `http://localhost:${ports.PROXY}/tv`
     };
 }
 
@@ -108,12 +105,10 @@ const BIND = process.env.TUBE_PROXY_HOST ? '0.0.0.0' : '127.0.0.1';
 app.listen(ports.PROXY, BIND, () => {
     console.log(`tube service on 127.0.0.1:${ports.PROXY} (${loader.variantFor(platformVersion)} bundle)`);
     if (!isTV) {
-        console.log('Running off-TV: proxy and userscript are live; DIAL is disabled.');
+        console.log('Running off-TV: proxy and userscript are live.');
     }
 
     announceReady();
 });
-
-if (isTV) dial.start();
 
 setTimeout(maybeCheckForUpdate, 5000);

@@ -1,7 +1,6 @@
 'use strict';
 
-// The fallback route, end to end against a local upstream: what comes back, what is rewritten on
-// the way out, and what happens when the upstream is not there.
+// The proxy end to end against a local upstream.
 
 process.env.TUBE_PROXY_HOST = 'tv.example';
 
@@ -70,7 +69,6 @@ upstream.listen(0, '127.0.0.1', () => {
         const get = (path) => ask(path);
         const bypass = (path) => get(`/cors-bypass/${target}${path}`);
 
-        // What a browser sends before a credentialed cross-origin request it is not sure about.
         const preflight = (path, headers) => ask(path, {
             method: 'OPTIONS',
             headers: Object.assign({
@@ -126,8 +124,6 @@ upstream.listen(0, '127.0.0.1', () => {
                 });
             })
             .then((res) => {
-                // `*` for either of these is a rejection once the request carries credentials, and
-                // the browser then never sends the request the preflight was asking about.
                 check('a preflight names the origin rather than wildcarding it',
                     res.headers['access-control-allow-origin'] === 'https://www.youtube.com',
                     res.headers['access-control-allow-origin']);

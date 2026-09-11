@@ -31,9 +31,8 @@ const guarded = (handler, value, fallback) => {
     }
 };
 
-// Reading a property off a module that is still initialising throws, and an unguarded walk ends
-// there. On the set the registry holds 3116 modules and exactly one of them carries its own JSON,
-// so a walk that stops early stops before the only one worth reaching.
+// A module still initialising throws on property access, so each is guarded rather than ending
+// the walk.
 const adopt = () => {
     window.JSON.parse = JSON.parse;
     window.JSON.stringify = JSON.stringify;
@@ -48,20 +47,16 @@ const adopt = () => {
                 module.JSON.parse = JSON.parse;
                 module.JSON.stringify = JSON.stringify;
             }
-        } catch (e) {
-            // Not ready to be patched. The next pass will find it.
-        }
+        } catch (e) {}
     });
 };
 
-// The module that parses innertube responses is not in the registry when the page starts — the app
-// is still fetching two megabytes of its own code through the proxy well past fifteen seconds, and
-// a window that closes before it arrives leaves every response going through YouTube's own JSON.
+// The module that parses innertube responses can arrive long after boot, and until it is adopted
+// no mod sees one.
 const ADOPTION_WINDOW = 60000;
 const ADOPTION_INTERVAL = 250;
 
-// Navigating loads modules that did not exist at boot, so each one reopens a short window instead
-// of a timer being left running for the life of the page.
+// Navigation loads modules that did not exist at boot, so each one reopens a short window.
 const AFTER_NAVIGATION = 5000;
 
 const keepAdopting = (forMs) => {

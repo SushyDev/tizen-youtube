@@ -116,16 +116,13 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
-// Cobalt asks its CSP delegate before it will so much as open an XMLHttpRequest, and a directive
-// the policy does not name is refused rather than allowed. YouTube's policy names no connect-src,
-// so under it every cross-origin request the userscript makes fails with SecurityError without
-// reaching the network. The rest of the policy is kept — the injected script needs the nonce in it.
+// Cobalt refuses any request type the policy has no directive for, and YouTube's policy has no
+// connect-src.
 const REACHABLE = 'connect-src * data: blob: ws: wss:';
 
 const CONNECT_SRC = /(^|;)(\s*)connect-src[^;]*/i;
 
-// YouTube sends two policies and they are enforced together, so widening one leaves the other
-// refusing. A comma separates policies in a combined header, so each side of it is one policy.
+// YouTube sends two policies and both are enforced, so each needs the directive.
 const withOurConnections = (policy) => {
     if (!policy) return policy;
 
@@ -206,20 +203,17 @@ const create = () => {
         return next();
     });
 
-    // A preflight decides whether the real request happens at all, and a credentialed one refuses
-    // `*` as the origin and reads `*` as a header named `*` — so a wildcard answer is a rejection,
-    // and the request behind it is never sent. This stands in for Google's own answer on every host
-    // we intercept, and Google's names the origin, allows credentials and lists the headers asked
-    // for. Answering the search-suggest preflight any other way is what silenced autocomplete.
+    // A credentialed preflight reads `*` as a refusal, so the origin of our own pages and the
+    // headers asked for are named back.
     app.use((req, res, next) => {
         const asked = req.get('origin');
+        const ours = asked === YOUTUBE_ORIGIN || asked === localOrigin();
 
-        res.setHeader('Access-Control-Allow-Origin', asked || '*');
-        if (asked) res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Origin', ours ? asked : '*');
+        if (ours) res.setHeader('Access-Control-Allow-Credentials', 'true');
 
         if (req.method !== 'OPTIONS') return next();
 
-        // Echoed rather than wildcarded for the same reason: with credentials `*` matches nothing.
         res.setHeader('Vary', 'Origin, Access-Control-Request-Headers');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
         res.setHeader('Access-Control-Allow-Headers', req.get('access-control-request-headers') || '*');
@@ -352,15 +346,11 @@ const copyHeaders = (req, res, response, route) => {
 
         if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
 
-        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants,
-        // with the one directive added that the userscript cannot reach anything without.
+        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants.
         if (lower === CSP_HEADER) {
             if (!route.asTheRealHost) return;
 
-            // Kept as the several headers they arrived as: joining them into one changes which
-            // policies apply, and each one has to carry the directive independently anyway.
-            const policies = Array.isArray(raw[key]) ? raw[key] : [response.headers.get(key)];
-            res.setHeader(key, policies.map(withOurConnections));
+            res.setHeader(key, raw[key].map(withOurConnections));
             return;
         }
         if (route.isBypass && lower === 'access-control-allow-origin') return;

@@ -30,7 +30,7 @@ built it installs on their set and nowhere else. Tizen Homebrew re-signs
 whatever it installs with the pair the TV itself holds, which is what makes a
 package written by somebody else installable at all.
 
-So nothing here signs. The widget on each [release](../../releases) is signed by
+So the widget on each [release](../../releases) is signed by
 nobody, and Homebrew's **GitHub** or **Upload** tab takes it as it is. A
 television refuses it over sdb, which is the expected half of the same fact.
 

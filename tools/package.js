@@ -39,9 +39,6 @@ function stageContents(staging) {
     });
 }
 
-// Nothing here signs. A Tizen signature names one television, so a widget signed by whoever built
-// it installs nowhere else; Tizen Homebrew re-signs what it installs with the pair the TV itself
-// holds, and takes this file as it is.
 async function writeWidget(staging, outPath) {
     const zip = new JSZip();
 
@@ -70,10 +67,6 @@ async function packageApp() {
         await writeWidget(staging, outPath);
     } finally {
         rmSync(staging, { recursive: true, force: true });
-    }
-
-    if (!existsSync(outPath)) {
-        throw friendly(`Packaging reported success but produced no file at ${APP.output}.`);
     }
 
     return { ms: Date.now() - started, size: statSync(outPath).size, path: APP.output };

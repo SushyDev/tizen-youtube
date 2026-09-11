@@ -1,5 +1,6 @@
 import { configRead } from '../config.js';
 import { DEV_TOOLS } from './tools.js';
+import { servedByService } from '../features/devBridge.js';
 
 const FLUSH_EVERY = 1000;
 const MOST_HELD = 200;
@@ -10,7 +11,7 @@ const wanted = () => {
     if (!DEV_TOOLS) return false;
 
     try {
-        return typeof window !== 'undefined' && configRead('enableDevBridge');
+        return typeof window !== 'undefined' && servedByService() && configRead('enableDevBridge');
     } catch (e) {
         return false;
     }
@@ -23,7 +24,8 @@ const flush = () => {
         return;
     }
 
-    const lines = state.held.splice(0, state.held.length);
+    const lines = state.held;
+    state.held = [];
 
     fetch(`${window.location.origin}/__tube/dev/log`, {
         method: 'POST',
@@ -35,8 +37,7 @@ const flush = () => {
 export function note(topic, text) {
     if (!wanted()) return;
 
-    state.held.push({ at: Date.now(), topic, text: String(text) });
-    state.held.splice(0, Math.max(0, state.held.length - MOST_HELD));
+    state.held = state.held.concat([{ at: Date.now(), topic, text: String(text) }]).slice(-MOST_HELD);
 
     if (!state.flushing) state.flushing = setInterval(flush, FLUSH_EVERY);
 }

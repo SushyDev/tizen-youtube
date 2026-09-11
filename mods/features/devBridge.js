@@ -5,16 +5,14 @@ import { measured } from './playbackStats.js';
 const REPORT_EVERY = 1000;
 const LISTEN_EVERY = 200;
 const AWAIT_FOR = 25000;
+const REPORTED_UP_TO = 32 * 1024;
 
 const PLAYER = '#movie_player, .html5-video-player';
 
-const timers = { report: null, listen: null };
-const held = { lastEval: null };
+const held = { report: null, listen: null, lastEval: null };
 
-// Any plain-HTTP origin with a port is this service: it is the only thing that serves the app. Not
-// just localhost — inside Cobalt's container the page arrives by the set's network address,
-// because one package cannot reach another's loopback.
-const servedByService = () => /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
+// Any plain-HTTP origin with a port is the service, whether loopback or the set's own address.
+export const servedByService = () => /^http:\/\/[^/]+:\d+$/.test(window.location.origin);
 
 const safely = (read, fallback) => {
     try {
@@ -68,7 +66,6 @@ const reading = () => {
         decoded: quality ? quality.totalVideoFrames : null,
         dropped: quality ? quality.droppedVideoFrames : null,
         corrupted: quality ? quality.corruptedVideoFrames : null,
-        derived: !!(quality && quality.tubeDerived),
 
         measured: measured(),
         evaluated: held.lastEval,
@@ -79,12 +76,12 @@ const reading = () => {
     };
 };
 
-const settle = (value) => {
+const settle = (value, wait) => {
     if (!value || typeof value.then !== 'function') return Promise.resolve(value);
 
     return Promise.race([
         Promise.resolve(value),
-        new Promise((_, fail) => setTimeout(() => fail(new Error('timed out waiting for a promise')), AWAIT_FOR))
+        new Promise((_, fail) => setTimeout(() => fail(new Error('timed out waiting for a promise')), wait))
     ]);
 };
 
@@ -96,8 +93,10 @@ const describe = (value) => {
 
 const reason = (failure) => String((failure && failure.message) || failure);
 
+const clipped = (text) => (typeof text === 'string' ? text.slice(0, REPORTED_UP_TO) : text);
+
 const answer = (id, source, outcome) => {
-    held.lastEval = Object.assign({ source }, outcome);
+    held.lastEval = { source: clipped(source), value: clipped(outcome.value), error: clipped(outcome.error) };
 
     if (!id) return undefined;
 
@@ -107,7 +106,7 @@ const answer = (id, source, outcome) => {
 const run = (command) => {
     const evaluate = (source) => {
         try {
-            return { ok: eval(source) };
+            return { ok: (0, eval)(source) };
         } catch (e) {
             return { failed: e };
         }
@@ -117,7 +116,7 @@ const run = (command) => {
 
     if (value.failed) return answer(command.id, command.source, { error: reason(value.failed) });
 
-    return settle(value.ok).then(
+    return settle(value.ok, command.wait || AWAIT_FOR).then(
         (settled) => answer(command.id, command.source, { value: describe(settled) }),
         (failure) => answer(command.id, command.source, { error: reason(failure) })
     );
@@ -143,14 +142,13 @@ const apply = (enabled) => {
         .then((state) => console.log(`[tube] diagnostics ${state.open ? `readable on :${state.port}` : 'closed'}`))
         .catch(() => { });
 
-    clearInterval(timers.report);
-    clearInterval(timers.listen);
+    clearInterval(held.report);
+    clearInterval(held.listen);
 
-    timers.report = enabled ? setInterval(report, REPORT_EVERY) : null;
-    timers.listen = enabled ? setInterval(collect, LISTEN_EVERY) : null;
+    held.report = enabled ? setInterval(report, REPORT_EVERY) : null;
+    held.listen = enabled ? setInterval(collect, LISTEN_EVERY) : null;
 };
 
-// Hung off the baked constant, not the setting, so a release build drops all of this.
 if (DEV_TOOLS) {
     apply(configRead('enableDevBridge'));
 

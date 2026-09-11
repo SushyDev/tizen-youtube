@@ -5,11 +5,9 @@ const STARTED = Date.now();
 
 const state = { listening: false, lines: [] };
 
-const trim = () => { state.lines.splice(0, Math.max(0, state.lines.length - KEEP)); };
-
 const open = (yes) => {
     state.listening = !!yes;
-    if (!yes) state.lines.length = 0;
+    if (!yes) state.lines = [];
 };
 
 const wanted = () => state.listening;
@@ -17,8 +15,8 @@ const wanted = () => state.listening;
 const note = (from, topic, text) => {
     if (!state.listening) return;
 
-    state.lines.push({ at: Date.now(), from, topic: String(topic), text: String(text) });
-    trim();
+    const line = { at: Date.now(), from, topic: String(topic), text: String(text) };
+    state.lines = state.lines.concat([line]).slice(-KEEP);
 };
 
 const service = (topic, text) => note('service', topic, text);
@@ -26,15 +24,12 @@ const service = (topic, text) => note('service', topic, text);
 const fromPage = (entries) => {
     if (!state.listening || !entries || !entries.length) return;
 
-    entries.forEach((entry) => state.lines.push({
+    state.lines = state.lines.concat(entries.map((entry) => ({
         at: Number(entry && entry.at) || Date.now(),
         from: 'page',
         topic: String((entry && entry.topic) || '?'),
         text: String((entry && entry.text) || '')
-    }));
-
-    state.lines.sort((a, b) => a.at - b.at);
-    trim();
+    }))).sort((a, b) => a.at - b.at).slice(-KEEP);
 };
 
 const read = (count) => (count > 0 ? state.lines.slice(-count) : state.lines)
@@ -44,6 +39,6 @@ const read = (count) => (count > 0 ? state.lines.slice(-count) : state.lines)
     })
     .join('\n');
 
-const clear = () => { state.lines.length = 0; };
+const clear = () => { state.lines = []; };
 
 module.exports = { clear, fromPage, open, read, service, wanted };

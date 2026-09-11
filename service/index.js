@@ -55,8 +55,6 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
-// The postmortem log over the network. On a set with no console and no dev bridge, this is the
-// only way to find out what the service did.
 app.get('/__tube/log', (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });

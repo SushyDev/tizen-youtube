@@ -8,23 +8,21 @@ const MAX_BYTES = 64 * 1024;
 
 const state = { ready: false };
 
-// Appending into a missing directory throws inside the catch below, so the log would read as
-// empty — which looks exactly like a service that never ran.
+// appendFileSync fails when the directory is missing, and note() swallows that failure.
 const ensure = () => {
     if (state.ready) return;
     state.ready = true;
 
-    try { mkdirSync(dirname(LOG), { recursive: true }); } catch (e) { /* there, or not ours */ }
+    try { mkdirSync(dirname(LOG), { recursive: true }); } catch (e) { }
 };
 
-// One shape for every error the service reports, so a log line always names the code.
 const describe = (detail) => {
     if (!detail) return String(detail);
     if (typeof detail === 'string') return detail;
 
     const code = detail.code || detail.name || 'Error';
 
-    if (detail.stack) return `${code}: ${detail.stack}`;
+    if (detail.stack) return detail.stack;
     if (detail.message) return `${code}: ${detail.message}`;
 
     return String(detail);
@@ -33,7 +31,7 @@ const describe = (detail) => {
 const note = (what, detail) => {
     try {
         ensure();
-        try { if (statSync(LOG).size > MAX_BYTES) renameSync(LOG, `${LOG}.1`); } catch (e) { /* new */ }
+        try { if (statSync(LOG).size > MAX_BYTES) renameSync(LOG, `${LOG}.1`); } catch (e) { }
         appendFileSync(LOG, `${new Date().toISOString()}  ${what}: ${describe(detail)}\n`);
     } catch (e) { /* logging must never be a reason to fail */ }
 };
@@ -47,8 +45,6 @@ const read = () => {
 };
 
 const watch = () => {
-    // Exit rather than linger: a dying process goes on holding the port, so every restart lands
-    // on EADDRINUSE and the service never recovers. The log outlives it.
     process.on('uncaughtException', (error) => {
         note('uncaught', error);
         process.exit(1);

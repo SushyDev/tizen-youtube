@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { once } = require('events');
 const express = require('express');
 const cors = require('cors');
 
@@ -9,7 +10,7 @@ const journal = require('./journal.js');
 const postmortem = require('./postmortem.js');
 
 const STALE_AFTER = 10000;
-const ANSWER_KEPT = 60000;
+const PAGE_LATENCY = 2000;
 const MOST_QUEUED = 64;
 
 // /eval runs whatever it is handed; this token is what keeps the network out of it.
@@ -17,50 +18,40 @@ const BUILD_TOKEN = '__TUBE_DEV_TOKEN__';
 const TOKEN = process.env.TUBE_DEV_TOKEN
     || (BUILD_TOKEN.indexOf('TUBE_DEV_TOKEN') === -1 ? BUILD_TOKEN : crypto.randomBytes(8).toString('hex'));
 
-const answers = new Map();
+const state = { server: null, latest: null, receivedAt: 0, queue: [], waiting: {} };
 
-const state = { server: null, latest: null, receivedAt: 0, queue: [] };
-
-const trusted = (req) => (req.get('x-tube-token') || '') === TOKEN;
+const trusted = (req, res, next) => ((req.get('x-tube-token') || '') === TOKEN
+    ? next()
+    : res.status(403).json({ error: 'wrong token' }));
 
 const enqueue = (command) => {
-    state.queue.push(command);
-    state.queue.splice(0, Math.max(0, state.queue.length - MOST_QUEUED));
+    state.queue = state.queue.concat([command]).slice(-MOST_QUEUED);
 
     return state.queue.length;
 };
 
-const ask = (source, seconds) => {
-    const id = crypto.randomBytes(8).toString('hex');
-    const deadline = Date.now() + (Math.min(Number(seconds) || 30, 120) * 1000);
+const settle = (id, answer) => {
+    const waiter = state.waiting[id];
+    if (!waiter) return;
 
-    enqueue({ action: 'eval', source, id });
-
-    return new Promise((resolve) => {
-        const look = () => {
-            const held = answers.get(id);
-
-            if (held) {
-                answers.delete(id);
-                return resolve(held.answer);
-            }
-
-            if (Date.now() > deadline) {
-                return resolve({ id, error: 'the page did not answer — is it open, with diagnostics on?' });
-            }
-
-            return setTimeout(look, 50);
-        };
-
-        look();
-    });
+    clearTimeout(waiter.timer);
+    state.waiting = Object.fromEntries(Object.entries(state.waiting).filter(([key]) => key !== id));
+    waiter.resolve(answer);
 };
 
-const forget = () => {
-    const now = Date.now();
+const ask = (source, seconds) => {
+    const id = crypto.randomBytes(8).toString('hex');
+    const wait = Math.min(Number(seconds) || 30, 120) * 1000;
 
-    answers.forEach((held, id) => {
-        if (now - held.at > ANSWER_KEPT) answers.delete(id);
+    enqueue({ action: 'eval', source, id, wait });
+
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            state.queue = state.queue.filter((command) => command.id !== id);
+            settle(id, { id, error: 'the page did not answer — is it open, with diagnostics on?' });
+        }, wait + PAGE_LATENCY);
+
+        state.waiting = Object.assign({}, state.waiting, { [id]: { resolve, timer } });
     });
 };
 
@@ -89,18 +80,15 @@ const start = () => {
 
     app.get('/postmortem', (_, res) => res.type('text/plain').send(postmortem.read() || 'nothing recorded'));
 
-    app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), (req, res) => {
-        if (!trusted(req)) return res.status(403).json({ error: 'wrong token' });
-
+    app.post('/eval', express.text({ limit: '256kb', type: '*/*' }), trusted, (req, res) => {
         const source = String(req.body || '').trim();
         if (!source) return res.status(400).json({ error: 'nothing to evaluate' });
 
         return ask(source, req.query.seconds).then((answer) => res.json(answer));
     });
 
-    app.post('/command', express.json({ limit: '64kb' }), (req, res) => {
-        if (!trusted(req)) return res.status(403).json({ error: 'bad token' });
-        if (!req.body || !req.body.action) return res.status(400).json({ error: 'no action' });
+    app.post('/command', express.json({ limit: '64kb' }), trusted, (req, res) => {
+        if (!req.body || req.body.action !== 'eval') return res.status(400).json({ error: 'not an eval' });
 
         return res.json({ queued: req.body.action, depth: enqueue(req.body) });
     });
@@ -109,8 +97,6 @@ const start = () => {
         console.log(`[devbridge] open on 0.0.0.0:${ports.DEV}; commands need token ${TOKEN}.`);
     });
 
-    // Closed, not just forgotten: dropping the handle leaks a server per failure, and the next
-    // /__tube/dev/enable builds a second app and listens on the same port again.
     state.server.on('error', (error) => {
         postmortem.note('devbridge', `could not open ${ports.DEV}: ${postmortem.describe(error)}`);
 
@@ -118,7 +104,7 @@ const start = () => {
         state.server = null;
         journal.open(false);
 
-        if (failed) try { failed.close(); } catch (e) { /* never listened */ }
+        if (failed) failed.close();
     });
 
     return state.server;
@@ -128,7 +114,7 @@ const stop = () => {
     if (!state.server) return;
 
     journal.open(false);
-    try { state.server.close(); } catch (e) { /* already going */ }
+    state.server.close();
 
     state.server = null;
     state.latest = null;
@@ -159,19 +145,21 @@ const attach = (app) => {
 
     app.post('/__tube/dev/result', express.json({ limit: '4mb' }), (req, res) => {
         const answer = req.body || {};
-        if (answer.id) answers.set(String(answer.id), { at: Date.now(), answer });
+        if (answer.id) settle(String(answer.id), answer);
 
-        forget();
         res.json({ received: true });
     });
 
     app.all('/__tube/dev/enable', (req, res) => {
         const asked = String((req.query && req.query.on) || '');
+        const reply = () => res.json({ open: !!state.server, port: ports.DEV });
 
         if (asked === '1' || asked === 'true') start();
         if (asked === '0' || asked === 'false') stop();
 
-        res.json({ open: !!state.server, port: ports.DEV });
+        if (!state.server || state.server.listening) return reply();
+
+        return once(state.server, 'listening').then(reply, reply);
     });
 };
 

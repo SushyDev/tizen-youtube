@@ -2,7 +2,7 @@ import { DEV_TOOLS } from './tools.js';
 import { note } from './journal.js';
 import { onRequest, onResponse } from '../youtube/json.js';
 
-const asked = new Map();
+const held = { asked: {} };
 
 const MOST_REMEMBERED = 32;
 
@@ -14,24 +14,25 @@ if (DEV_TOOLS && typeof window !== 'undefined') {
         const playback = (body.playbackContext || {}).contentPlaybackContext || {};
         const client = body.context.client || {};
 
-        // The licence exchange is shaped like a player request and arrives last; the one that
-        // names formats is the one carrying a playbackContext.
+        // The DRM licence request is shaped like the player request, so licenseRequest tells them apart.
         if (body.playbackContext && !body.licenseRequest) {
             try {
                 window.__tubeAsked = JSON.stringify(body);
             } catch (e) {
                 window.__tubeAsked = null;
             }
+
+            const remembered = Object.keys(held.asked).length >= MOST_REMEMBERED ? {} : held.asked;
+
+            held.asked = Object.assign({}, remembered, {
+                [body.videoId]: {
+                    token: integrity.poToken ? String(integrity.poToken).length : 0,
+                    sts: playback.signatureTimestamp || 0,
+                    drm: !!body.drmSystem,
+                    client: `${client.clientName || '?'} ${client.clientVersion || '?'}`
+                }
+            });
         }
-
-        if (asked.size >= MOST_REMEMBERED) asked.clear();
-
-        asked.set(body.videoId, {
-            token: integrity.poToken ? String(integrity.poToken).length : 0,
-            sts: playback.signatureTimestamp || 0,
-            drm: !!body.drmSystem,
-            client: `${client.clientName || '?'} ${client.clientVersion || '?'}`
-        });
 
         return undefined;
     });
@@ -42,12 +43,14 @@ if (DEV_TOOLS && typeof window !== 'undefined') {
         if (!formats.length) return;
 
         const videoId = (response.videoDetails || {}).videoId;
-        const how = asked.get(videoId);
-        asked.delete(videoId);
+        const how = held.asked[videoId];
+        held.asked = Object.keys(held.asked)
+            .filter((id) => id !== videoId)
+            .reduce((kept, id) => Object.assign({}, kept, { [id]: held.asked[id] }), {});
 
         const kinds = formats.reduce((counted, format) => {
             const kind = format.type === 'FORMAT_STREAM_TYPE_OTF' ? 'otf' : 'indexed';
-            return Object.assign(counted, { [kind]: (counted[kind] || 0) + 1 });
+            return Object.assign({}, counted, { [kind]: (counted[kind] || 0) + 1 });
         }, {});
 
         note('innertube', `${videoId}: asked as ${how ? how.client : 'unseen'} with `

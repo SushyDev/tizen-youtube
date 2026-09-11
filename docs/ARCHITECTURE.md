@@ -39,7 +39,7 @@ Each registry replaced something that had been written several times and leaked 
 | `player.js` — `whenPlayer` / `whenVideo` | Nine separate waits for the player, six of them `waitFor` polls, with three disagreeing selectors |
 | `schedule.js` — `every` / `after` / `until` | A 500 ms interval that leaked, and an adoption window that stacked a new timer per navigation |
 | `json.js` — `onResponse` / `onRequest` | One merged key set, so every handler ran for every response that matched any of them |
-| `internals.js` — `findBySource` / `findMap` / `whenFound` | A full scan of a 3116-entry registry per call, and four hand-rolled retry loops |
+| `internals.js` — `findBySource` / `whenFound` | A full scan of a 3116-entry registry per call, and four hand-rolled retry loops |
 
 ## Boot
 

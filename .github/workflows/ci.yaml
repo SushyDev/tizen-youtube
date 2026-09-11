@@ -1,3 +1,8 @@
+# Everything that can be checked without a television.
+#
+# The build runs here because `tools/check-output.js` refuses a built-in newer than the floor, and
+# `npm test` gates on eslint, `tsc --noEmit`, the userscript suites and the service suites.
+
 name: CI
 
 on:
@@ -34,3 +39,145 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Packaged on every change, not only on a tag: the widget is where staging, the manifest and
+      # the bundles meet, and none of the checks above opens one.
+      - name: Package
+        run: npm run package
+
+      - name: Audit the widget
+        run: npm run audit
+
+      # The bundle is self-contained, so it is the whole of what the matrix below needs.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-bundle
+          path: service/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  runtimes:
+    name: node ${{ matrix.node }}
+    needs: check
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '12.16.3'   # verified on hardware: Tizen 6.5, Cobalt 3.2.1
+          - node: '14.21.3'
+          - node: '16.20.2'
+          - node: '18.18.2'   # verified on hardware: Tizen 9.0, Cobalt 5.2.1
+          - node: '20.18.1'
+          - node: '22.12.0'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: service-bundle
+          path: service/dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Load and answer on node ${{ matrix.node }}
+        run: node service/test/smoke.js
+
+  browser:
+    name: Against real YouTube
+    needs: check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: test/e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Cobalt refuses a CSP directive the policy omits and Chromium does not, so only this job can see
+  # a request the set would refuse.
+  cobalt:
+    name: In Cobalt
+    needs: check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    # A package published from a workflow is private until someone says otherwise, so reading it
+    # needs the token even on a public repository.
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # A dev build, because the suite asks the page through the dev bridge.
+      - name: Build
+        run: npm run build
+        env:
+          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
+          TUBE_DEV: '1'
+          TUBE_DEV_TOKEN: cobalt-ci
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercased because GHCR refuses an uppercase repository name.
+      - name: Look for the image
+        id: image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/cobalt:latest"
+          if docker manifest inspect "$image" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "image=$image" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Cobalt image yet. Run the 'Cobalt image' workflow once to build it."
+          fi
+
+      - name: Test
+        if: steps.image.outputs.found == 'true'
+        run: npm run test:cobalt -- --image ${{ steps.image.outputs.image }}
+        env:
+          TUBE_DEV_TOKEN: cobalt-ci

@@ -1,6 +1,13 @@
 {
-  "version": "0.3.1",
+  "version": "0.4.0",
 
-  "comment": "Origin serving the userScript bundles, latest.json and the language-name fallback. Versioned paths under it are immutable and safe to cache forever; see README.md.",
-  "origin": "https://cdn.example.com/tube"
+  "comment": "Versioned paths under this origin are cached as immutable, so a version republished with different content fails its digest check on every TV.",
+  "origin": "https://cdn.example.com/tube",
+  "portsComment": "The proxy port is written in three places that must agree: here, service/lib/ports.js, and the --proxy switch in app/config.xml. npm run package fails if app/config.xml or service/lib/ports.js disagrees with this file.",
+  "ports": {
+    "proxy": 8099,
+    "dev": 8097,
+    "chii": 8711,
+    "matrix": 8400
+  }
 }

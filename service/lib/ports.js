@@ -1,9 +1,11 @@
 'use strict';
 
-// PROXY and DIAL are duplicated in ui/src/boot.js, which cannot require this.
+// The overrides exist so tests and the runtime matrix can run beside a dev service already
+// holding the default.
+const port = (name, fallback) => Number(process.env[name]) || fallback;
 
 module.exports = {
-    PROXY: 8099,
-    DIAL: 8095,
-    DEV: 8097
+    // config.xml hard-codes PROXY in its --proxy switch, and npm run package fails if the two disagree.
+    PROXY: port('TUBE_PROXY_PORT', 8099),
+    DEV: port('TUBE_DEV_PORT', 8097)
 };

@@ -1,5 +1,6 @@
 'use strict';
 
+const { execFileSync } = require('child_process');
 const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');
 
@@ -25,18 +26,45 @@ function readConfigFile() {
     }
 }
 
-function validUrl(value, field) {
-    let url;
+function parseUrl(value) {
     try {
-        url = new URL(value);
+        return new URL(value);
     } catch (e) {
-        fail(`${field} is not a valid URL: ${JSON.stringify(value)}`);
+        return null;
     }
+}
+
+function validUrl(value, field) {
+    const url = parseUrl(value);
+    if (!url) fail(`${field} is not a valid URL: ${JSON.stringify(value)}`);
     const isLoopback = ['localhost', '127.0.0.1', '::1'].indexOf(url.hostname) !== -1;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
         fail(`${field} must use https, got ${url.protocol.replace(':', '')}: ${value}`);
     }
     return url;
+}
+
+// Baked into the userscript so the About page can name the commit a set is running.
+function gitStamp() {
+    const git = (args) => {
+        try {
+            return execFileSync('git', args, {
+                cwd: ROOT,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore']
+            }).trim();
+        } catch (e) {
+            return null;
+        }
+    };
+
+    const commit = git(['rev-parse', '--short=7', 'HEAD']);
+    if (!commit) return { commit: 'nogit', tree: 'unknown' };
+
+    // Untracked files count: a mod not committed yet still ends up in the bundle.
+    const changes = git(['status', '--porcelain']);
+
+    return { commit, tree: changes === null ? 'unknown' : changes === '' ? 'clean' : 'dirty' };
 }
 
 function load(options) {
@@ -45,7 +73,8 @@ function load(options) {
 
     const config = {
         version: process.env.TUBE_VERSION || file.version,
-        origin: (process.env.TUBE_ORIGIN || file.origin || '').replace(/\/+$/, '')
+        origin: (process.env.TUBE_ORIGIN || file.origin || '').replace(/\/+$/, ''),
+        ports: file.ports
     };
 
     if (!/^\d+\.\d+\.\d+$/.test(String(config.version || ''))) {
@@ -66,4 +95,4 @@ function load(options) {
     return config;
 }
 
-module.exports = { load, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };
+module.exports = { load, gitStamp, parseUrl, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };

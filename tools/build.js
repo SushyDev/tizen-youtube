@@ -1,57 +1,59 @@
 'use strict';
 
 const { execFileSync } = require('child_process');
-const { existsSync, statSync } = require('fs');
+const { existsSync, statSync, readFileSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
+const paths = require('./paths.js');
+const { assertNoTokens } = require('./inject.js');
 
 const STEPS = [
     {
-        label: 'boot screen',
-        workspace: 'ui',
-        outputs: ['ui/dist/index.html'],
-        summarise: (sizes) => `${ui.bytes(sizes[0])} · single file`
-    },
-    {
-        label: 'userscript bundles',
-        workspace: 'mods',
-        outputs: ['dist/userScript.modern.js', 'dist/userScript.legacy.js'],
-        summarise: (sizes) => `modern ${ui.bytes(sizes[0])} · legacy ${ui.bytes(sizes[1])}`
+        label: 'userscript bundle',
+        command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
+        after: ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt3']],
+        outputs: [paths.BUNDLE],
+        summarise: (sizes) => ui.bytes(sizes[0])
     },
     {
         label: 'service bundle',
-        workspace: 'service',
-        outputs: ['service/dist/index.js'],
-        summarise: (sizes) => `${ui.bytes(sizes[0])} · syntax floor verified`
+        command: ['node', ['tools/build-service.js']],
+        outputs: [paths.SERVICE_BUNDLE],
+        summarise: (sizes) => `${ui.bytes(sizes[0])} · floor verified`
     }
 ];
 
+// npm's own chatter and stack frames from inside node_modules say nothing about why a build
+// failed. Predicates rather than patterns because only the first is judged on a trimmed line —
+// the second is looking for the leading whitespace of a stack frame.
+const NOISE = [
+    (line) => /^npm (error|notice|warn)\b/.test(line.trim()),
+    (line) => /^\s+at .*[\\/]node_modules[\\/]/.test(line)
+];
+
 function cleanOutput(raw) {
-    const lines = String(raw).split('\n');
-    const kept = [];
-
-    for (const line of lines) {
-        if (/^npm (error|notice|warn)\b/.test(line.trim())) continue;
-        if (/^\s+at .*[\\/]node_modules[\\/]/.test(line)) continue;
-        kept.push(line);
-    }
-
-    return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return String(raw).split('\n')
+        .filter((line) => !NOISE.some((noise) => noise(line)))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function runStep(step) {
     const started = Date.now();
+    const commands = [step.command].concat(step.after ? [step.after] : []);
+
     try {
-        execFileSync('npm', ['run', 'build', '--workspace', step.workspace], {
+        commands.forEach(([command, args]) => execFileSync(command, args, {
             cwd: ROOT,
             stdio: 'pipe',
             encoding: 'utf8'
-        });
+        }));
     } catch (e) {
         const error = new Error(
-            `${step.workspace} failed to build.\n\n${cleanOutput(`${e.stdout || ''}${e.stderr || ''}`) || e.message}`
+            `${step.label} failed to build.\n\n${cleanOutput(`${e.stdout || ''}${e.stderr || ''}`) || e.message}`
         );
         error.isFriendly = true;
         throw error;
@@ -59,10 +61,14 @@ function runStep(step) {
 
     const missing = step.outputs.filter((path) => !existsSync(join(ROOT, path)));
     if (missing.length) {
-        const error = new Error(`${step.workspace} reported success but did not produce:\n  ${missing.join('\n  ')}`);
+        const error = new Error(`${step.label} reported success but did not produce:\n  ${missing.join('\n  ')}`);
         error.isFriendly = true;
         throw error;
     }
+
+    step.outputs
+        .filter((path) => path.endsWith('.js'))
+        .forEach((path) => assertNoTokens(readFileSync(join(ROOT, path), 'utf8'), path));
 
     const sizes = step.outputs.map((path) => statSync(join(ROOT, path)).size);
     return { ms: Date.now() - started, detail: step.summarise(sizes) };

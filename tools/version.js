@@ -3,21 +3,19 @@
 const { readFileSync, writeFileSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { ROOT, CONFIG_PATH } = require('./config.js');
 
 const PACKAGE_FILES = [
     'package.json',
-    'mods/package.json',
-    'service/package.json',
-    'ui/package.json'
+    'service/package.json'
 ];
 
 const LOCK_FILES = ['package-lock.json'];
 
 const VERSION = /^\d+\.\d+\.\d+$/;
 
-const WIDGET_FILES = ['config.xml'];
+const WIDGET_FILES = ['app/config.xml'];
 const WIDGET_LINE = /^(\s*<widget\b[^>]*?\bversion=")([^"]*)(")/m;
 
 function lockKeys() {

@@ -8,7 +8,7 @@ import { reloadGuide } from '../youtube/internals.js';
 
 const RIGHT = 39;
 
-waitFor(() => document.querySelector('video'), () => start());
+waitFor(() => document.querySelector('video'), () => start(), { forMs: Infinity });
 
 function start() {
   addStyles();

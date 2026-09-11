@@ -4,7 +4,7 @@ import { waitFor } from '../utils/waitFor.js';
 
 const PREVIEWS = 'ENABLE_PREVIEWS_WITH_SOUND';
 
-configChangeEmitter.addEventListener('configChange', () => enableFeatures());
+configChangeEmitter.addEventListener('configChange', (event) => event.detail.key === 'enablePreviews' && enableFeatures());
 
 function enableFeatures() {
     waitFor(() => findMap(PREVIEWS), (flags) => flags.set(PREVIEWS, configRead('enablePreviews')));

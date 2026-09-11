@@ -3,10 +3,9 @@ import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
 import { waitFor } from '../utils/waitFor.js';
 
 const WAIT_INTERVAL = 1000;
-const WAIT_WINDOW = 60000;
 
 waitFor(() => document.querySelector('video'), execute_once_dom_loaded_speed,
-    { every: WAIT_INTERVAL, forMs: WAIT_WINDOW });
+    { everyMs: WAIT_INTERVAL, forMs: Infinity });
 
 function execute_once_dom_loaded_speed() {
     document.querySelector('video').addEventListener('canplay', () => {

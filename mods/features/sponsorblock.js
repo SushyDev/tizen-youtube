@@ -1,54 +1,7 @@
 import sha256 from '../tiny-sha256.js';
+import { SEGMENTS as barTypes } from './segments.js';
 import { configRead } from '../config.js';
 import { showToast } from '../ui/ytUI.js';
-
-const barTypes = {
-  sponsor: {
-    color: '#00d400',
-    opacity: '0.7',
-    name: 'sponsored segment' || 'sponsored segment'
-  },
-  intro: {
-    color: '#00ffff',
-    opacity: '0.7',
-    name: 'intro' || 'intro'
-  },
-  outro: {
-    color: '#0202ed',
-    opacity: '0.7',
-    name: 'outro' || 'outro'
-  },
-  interaction: {
-    color: '#cc00ff',
-    opacity: '0.7',
-    name: 'interaction reminder' || 'interaction reminder'
-  },
-  selfpromo: {
-    color: '#ffff00',
-    opacity: '0.7',
-    name: 'self-promotion' || 'self-promotion'
-  },
-  preview: {
-    color: '#008fd6',
-    opacity: '0.7',
-    name: 'recap or preview' || 'recap or preview'
-  },
-  filler: {
-    color: "#7300FF",
-    opacity: "0.9",
-    name: 'tangents' || 'tangents'
-  },
-  music_offtopic: {
-    color: '#ff9900',
-    opacity: '0.7',
-    name: 'non-music part' || 'non-music part'
-  },
-  poi_highlight: {
-    color: '#9b044c',
-    opacity: '0.7',
-    name: 'highlight' || 'highlight'
-  }
-};
 
 const sponsorblockAPI = 'https://sponsor.ajay.app/api';
 

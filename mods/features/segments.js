@@ -1,6 +1,3 @@
-// The SponsorBlock categories, in one place. The colours belong to the overlay and the names
-// to every label that mentions a segment; they were kept in two files and agreed only by luck.
-
 export const SEGMENTS = {
   sponsor: {
     color: '#00d400',

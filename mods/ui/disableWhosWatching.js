@@ -66,7 +66,7 @@ function disableWhosWatching(value) {
 
 // localStorage may not carry the record yet when this module loads.
 waitFor(
+    readActions,
     () => disableWhosWatching(configRead('enableWhoIsWatchingMenu')),
-    () => {},
-    { every: WAIT_INTERVAL, forMs: WAIT_WINDOW }
+    { everyMs: WAIT_INTERVAL, forMs: WAIT_WINDOW }
 );

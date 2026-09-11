@@ -49,7 +49,7 @@ function addListener() {
                 }
             }
         });
-    });
+    }, { forMs: Infinity });
 }
 
 addListener();

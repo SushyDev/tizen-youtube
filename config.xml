@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="0.4.0" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="9Ur5IzDKqV.TizenYouTube" package="9Ur5IzDKqV" required_version="5.0"/>
+    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
     <author>tube</author>
     <content src="ui/dist/index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
@@ -49,7 +49,7 @@
 
     <!-- Without auto-restart and on-boot nothing restarts the service after standby, because a
          package carrying nativeID never runs its own content. -->
-    <tizen:service id="9Ur5IzDKqV.TubeService" auto-restart="true" on-boot="true">
+    <tizen:service id="tUb3Xq7Lm9.TubeService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>
         <tizen:description>The proxy and userscript injection.</tizen:description>

@@ -34,6 +34,9 @@ const HOSTS = [
 
 const REISSUE_WITHIN = 30 * 86400000;
 const RELAUNCH_QUIET = 20000;
+const CLAIM_WITHIN = 10000;
+const LOOKUP_QUIET = 5000;
+const KILL_SETTLE = 1200;
 
 // OpenSSL steps <hash>.0, .1, .2 … when a name collides.
 const SLOTS = 8;
@@ -41,6 +44,7 @@ const SLOTS = 8;
 const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.describe(detail)}`);
 
 const state = { config: undefined, prepared: null, preparing: false, lastWake: 0, waiting: [] };
+const proxied = { context: null, at: 0, lookedAt: 0 };
 
 const config = () => {
     if (state.config === undefined) {
@@ -117,6 +121,38 @@ const checkAddress = () => {
     });
 };
 
+const served = () => {
+    const now = Date.now();
+    proxied.at = now;
+
+    if (typeof tizen === 'undefined' || now - proxied.lookedAt < LOOKUP_QUIET) return;
+    proxied.lookedAt = now;
+
+    try {
+        tizen.application.getAppsContext((contexts) => {
+            const up = contexts.find((context) => context.appId === CONTAINER);
+            if (up) proxied.context = up.id;
+        }, () => {});
+    } catch (e) {
+        note('served', e);
+    }
+};
+
+const launch = (me) => tizen.application.launch(me, () => {},
+    (error) => note('relaunch', `refused: ${error.message}`));
+
+const replaceUnlessOurs = (up, me, since) => {
+    if (up.id === proxied.context) return;
+
+    setTimeout(() => {
+        if (proxied.at >= since) proxied.context = up.id;
+        if (up.id === proxied.context) return;
+
+        note('woken', `the container is not ours; launching ${me}`);
+        tizen.application.kill(up.id, () => setTimeout(() => launch(me), KILL_SETTLE), () => launch(me));
+    }, CLAIM_WITHIN);
+};
+
 // Launched from the service because the container the platform starts on a reopen dies at once.
 const wake = () => {
     if (typeof tizen === 'undefined') return;
@@ -129,10 +165,11 @@ const wake = () => {
     state.lastWake = now;
 
     tizen.application.getAppsContext((contexts) => {
-        if (contexts.some((context) => context.appId === CONTAINER)) return;
+        const up = contexts.find((context) => context.appId === CONTAINER);
+        if (up) return replaceUnlessOurs(up, me, now);
 
         note('woken', `the container is not up; launching ${me}`);
-        tizen.application.launch(me, () => {}, (error) => note('relaunch', `refused: ${error.message}`));
+        return launch(me);
     }, () => {});
 };
 
@@ -330,4 +367,4 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-module.exports = { prepare, wake, material, container, appId, MITM_DIR };
+module.exports = { prepare, wake, served, material, container, appId, MITM_DIR };

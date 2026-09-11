@@ -1,12 +1,12 @@
 # YouTube for Tizen
 
-Ad-free YouTube on a Samsung TV, as an app of its own.
+Ad-free YouTube on a Samsung TV.
 
 <img src="../app/icon.png" width="96" align="right">
 
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
-- Tizen 6.5 and up, on sets with Samsung's Cobalt container — a Smart Monitor has none
+- Tizen 6.5 and up, on sets with Samsung's Cobalt container
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A

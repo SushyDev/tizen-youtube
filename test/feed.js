@@ -69,7 +69,6 @@ function oracleAddLongPress(items) {
             }));
             return;
         }
-        if (!configRead('enableLongPress')) return;
         if (!item.tileRenderer?.metadata?.tileMetadataRenderer) return;
         if (!item.tileRenderer?.header?.tileHeaderRenderer?.thumbnail?.thumbnails) return;
         if (!item.tileRenderer.onSelectCommand?.watchEndpoint) return;
@@ -174,8 +173,6 @@ const menuTile = (id) => tile(id, {
     onLongPressCommand: { showMenuCommand: { menu: { menuRenderer: { items: [{ existing: true }] } } } }
 });
 
-const focusedTile = (id) => tile(id, { onFocusCommand: { playbackEndpoint: { already: true } } });
-
 const shelf = (items, type) => ({
     shelfRenderer: Object.assign(
         { content: { horizontalListRenderer: { items } } },
@@ -240,8 +237,6 @@ const sameTiles = (name, items, settings) => check(name, () => {
     });
 });
 
-// A grid gets the same treatment a shelf does. Before the rewrite it got long press only, so
-// this oracle is the intended behaviour rather than a copy of the old.
 const oracleGrid = (items) => {
     oracleDeArrowify(items);
     oracleHqify(items);
@@ -262,7 +257,7 @@ const sameGrid = (name, items, settings) => check(name, () => {
     });
 });
 
-const ON = { enableLongPress: true, enableHqThumbnails: true, enablePreviews: true };
+const ON = { enableHqThumbnails: true };
 
 sameShelves('a plain shelf', [shelf([tile('a'), tile('b')])], ON);
 
@@ -294,7 +289,6 @@ sameShelves('shorts kept when the setting is on', [
 sameShelves('a shelf with no items array', [{ shelfRenderer: {} }, shelf([tile('a')])], ON);
 sameShelves('an entry that is not a shelf', [{ feedNudgeRenderer: {} }, shelf([tile('a')])], ON);
 
-sameShelves('a tile that already has a focus command', [shelf([focusedTile('f'), tile('a')])], ON);
 sameShelves('a tile that already has a long-press menu', [shelf([menuTile('m'), tile('a')])], ON);
 
 sameShelves('watched tiles either side of the threshold', [
@@ -313,7 +307,7 @@ sameShelves('watched tiles on a page that is not listed', [
     hideWatchedVideosThreshold: 80
 }));
 
-samePivot('the watch-next pivot', [shelf([tile('a'), advert()])], ON);
+samePivot('the watch-next pivot is dressed like a shelf', [shelf([tile('a'), advert()])], ON);
 samePivot('the pivot still drops shorts', [shelf([tile('a')], SHORTS_SHELF), shelf([tile('b')])], ON);
 
 sameTiles('a horizontal continuation', [tile('a'), advert(), watched('w', 95)], ON);

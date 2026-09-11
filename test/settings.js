@@ -1,16 +1,10 @@
-// Adopting YouTube's own settings rows into ours.
-//
-// The rule this pins: where YouTube already ships a switch for something, we move it into one of
-// our categories rather than shipping a second one beside it. That is not a tidiness preference —
-// the previews pair wrote the *same* ENABLE_PREVIEWS_WITH_SOUND flag from two places, and ours
-// re-forced it on every page load, so turning YouTube's off did not stay off.
-
 import assert from 'assert';
 
 global.window = { localStorage: { 'tube.settings': '{}' } };
 global.document = { querySelectorAll: () => [] };
 
 const { PatchSettings } = await import('../mods/settings/nativeSettings.js');
+const { GROUPS } = await import('../mods/settings/settingsModel.js');
 
 const results = [];
 
@@ -45,6 +39,11 @@ const category = (categoryId, title, items) => ({
     settingCategoryCollectionRenderer: { categoryId, title: { runs: [{ text: title }] }, items }
 });
 
+const titleOf = (row) => {
+    const title = row[Object.keys(row)[0]].title;
+    return (title && (title.simpleText || (title.runs && title.runs[0].text))) || '?';
+};
+
 const rowsIn = (items, categoryId) => {
     const found = items
         .map((item) => item.settingCategoryCollectionRenderer)
@@ -53,11 +52,7 @@ const rowsIn = (items, categoryId) => {
 
     if (!found) return null;
 
-    return found.items.map((row) => {
-        const renderer = row[Object.keys(row)[0]];
-        const title = renderer.title;
-        return (title && (title.simpleText || (title.runs && title.runs[0].text))) || '?';
-    });
+    return found.items.map(titleOf);
 };
 
 const response = () => ({
@@ -82,7 +77,7 @@ check('YouTube’s Previews row is adopted into our Interface category', () => {
         `Previews did not land in Interface — it holds ${JSON.stringify(ours)}`);
 });
 
-check('and it is moved, not copied', () => {
+check('the Previews row leaves General rather than being copied', () => {
     const r = response();
     PatchSettings(r);
 
@@ -93,32 +88,19 @@ check('and it is moved, not copied', () => {
     const everywhere = r.items
         .map((item) => item.settingCategoryCollectionRenderer)
         .filter(Boolean)
-        .reduce((count, c) => count + c.items.filter((row) => {
-            const renderer = row[Object.keys(row)[0]];
-            const title = renderer.title;
-            return ((title && (title.simpleText || (title.runs && title.runs[0].text))) || '') === 'Previews';
-        }).length, 0);
+        .reduce((count, c) => count + c.items.filter((row) => titleOf(row) === 'Previews').length, 0);
 
     assert.strictEqual(everywhere, 1, `Previews appears ${everywhere} times; there must be exactly one`);
 });
 
+const oursKeyed = (key) => GROUPS.some((group) => group.items.some((item) => item.key === key));
+
 check('we ship no second previews switch of our own', () => {
-    const r = response();
-    PatchSettings(r);
+    assert.ok(!oursKeyed('enablePreviews'), 'our duplicate previews switch is back');
+});
 
-    // Ours wrote the same flag from a row titled "Video previews". Both are gone; if either comes
-    // back, the flag has two owners again and the viewer's choice stops sticking.
-    const titles = r.items
-        .map((item) => item.settingCategoryCollectionRenderer)
-        .filter(Boolean)
-        .reduce((all, c) => all.concat(c.items.map((row) => {
-            const renderer = row[Object.keys(row)[0]];
-            const title = renderer.title;
-            return (title && (title.simpleText || (title.runs && title.runs[0].text))) || '';
-        })), []);
-
-    assert.strictEqual(titles.indexOf('Video previews'), -1, 'our duplicate previews row is back');
-    assert.strictEqual(titles.indexOf('Long press actions'), -1, 'the long press toggle is back');
+check('we ship no long press toggle of our own', () => {
+    assert.ok(!oursKeyed('enableLongPress'), 'the long press toggle is back');
 });
 
 check('the rows we do not claim are left where YouTube put them', () => {

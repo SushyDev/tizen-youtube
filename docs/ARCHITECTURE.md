@@ -47,12 +47,11 @@ Each registry replaced something that had been written several times and leaked 
 `boot()` runs the phases.
 
 ```
-network → paint → settings → ui → intercept
+network → settings → ui → intercept
 ```
 
 `network` first because it takes over `fetch` and `XHR` before anything asks the network for
-anything. `paint` second because the theme has to be up before the frame it would otherwise flash
-through. `intercept` last because taking over `JSON.parse` seals registration — a handler
+anything. `intercept` last because taking over `JSON.parse` seals registration — a handler
 registered afterwards warns instead of silently never firing.
 
 ## Dev and ship

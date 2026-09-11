@@ -15,7 +15,6 @@ const PRIVACY = ART + 'privacy_and_terms.png';
 const RESTART = ART + 'reset_app.png';
 const MESSAGE = ART + 'send_feedback.png';
 
-
 const Switch = (key, title, summary, image, on = true) =>
   ({ kind: 'switch', key, title, summary, image, on });
 

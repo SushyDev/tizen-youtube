@@ -43,7 +43,6 @@ const defaultConfig = {
   disabledSidebarContents: HIDDEN_SIDEBAR_ITEMS,
   disableChannelsOnSidebar: false,
 
-
   enableHqThumbnails: true,
 
   hideShoppingAction: true,
@@ -97,7 +96,7 @@ export function configWrite(key, value) {
   localConfig[key] = value;
 
   const changed = {};
-  Object.keys(localConfig).forEach((name) => {
+  Object.keys(defaultConfig).forEach((name) => {
     if (localConfig[name] !== defaultConfig[name]) changed[name] = localConfig[name];
   });
 

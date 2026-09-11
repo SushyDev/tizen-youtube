@@ -324,8 +324,6 @@ const addLongPress = (item) => {
   if (!item.tileRenderer) return;
   if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') return;
 
-  // A tile YouTube already gave a menu takes ours appended and never reaches the setting below —
-  // "Add to Queue" belongs to the queue, not to long press.
   if (item.tileRenderer.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
     const copiedItem = JSON.parse(JSON.stringify(item));
     item.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer('Add to Queue', {

@@ -1,6 +1,7 @@
 // One walk of the feed that every tile and shelf visitor registers against.
 
-// A visitor names the surfaces it applies to because the entry points are not interchangeable.
+// A visitor names the surfaces it wants because they differ: a horizontal continuation keeps its
+// shorts tiles.
 const SHELF = 'shelf';
 const PIVOT = 'pivot';
 const TILES = 'tiles';

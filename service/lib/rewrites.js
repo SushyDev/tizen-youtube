@@ -1,10 +1,6 @@
 'use strict';
 
-// Everything the proxy changes about a body or a header on its way through.
-//
-// All of it is text in, text out: nothing here reaches the network, holds state, or knows what an
-// express request is, which is why it is the part that can be exercised without a set. What
-// decides *whether* a rewrite applies is knobs.js; this only knows how.
+// Pure text rewrites of proxied bodies and headers.
 
 const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
@@ -60,18 +56,8 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
-// Cobalt asks its CSP delegate before it will so much as open an XMLHttpRequest or draw an image,
-// and a directive the policy does not name is refused rather than allowed. The policy served to a
-// Cobalt client carries `default-src 'none'`, so anything not listed is denied outright.
-//
-// Two directives have to be widened, and only widening one was a bug that looked like two
-// different bugs. connect-src is why every cross-origin request the userscript makes would
-// otherwise fail with SecurityError without reaching the network. img-src is why a substituted
-// thumbnail was refused: YouTube lists several hundred image hosts and DeArrow's is not among
-// them, so the picture never loaded while the fetch beside it worked — which made it look as
-// though the data were wrong rather than the policy.
-//
-// The rest of the policy is kept as it came; the injected script needs the nonce in it.
+// Cobalt refuses whatever the policy does not name, so connect-src and img-src are widened for
+// our fetches and DeArrow's images.
 const GRANTS = [
     { named: /(^|;)(\s*)connect-src[^;]*/i, widened: 'connect-src * data: blob: ws: wss:' },
     { named: /(^|;)(\s*)img-src[^;]*/i, widened: 'img-src * data: blob:' }

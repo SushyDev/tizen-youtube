@@ -74,11 +74,6 @@ const resolve = (command, context) => {
 };
 
 // Keep looking until the registry yields, then hand it over once.
-//
-// This is the primitive four features were missing, each of which had hand-rolled its own: one
-// counted to forty, one stepped 250ms twenty times then 500ms for ever, one never gave up at all,
-// and one polled every second. waitFor already knew how to stop; nothing had joined the two
-// together.
 const whenFound = (name, look, onFound, options) => waitFor(look, (found) => {
     try {
         return onFound(found);

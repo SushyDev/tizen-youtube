@@ -1,10 +1,6 @@
 'use strict';
 
-// A keyboard standing in for the TV remote, injected into the page by the dev service.
-//
-// A function declaration rather than the usual module shape: this is a classic script injected
-// afresh on every dev reload, and a top-level `const` would throw "already declared" the second
-// time. Function declarations may be redeclared, so re-injection is simply a reinstall.
+// A function declaration, because re-injection would redeclare a top-level const.
 
 function tubeRemoteInstall() {
     const KEYS = {

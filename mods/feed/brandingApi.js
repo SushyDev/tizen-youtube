@@ -1,18 +1,4 @@
-// What DeArrow says about a video, and which of its answers to believe.
-//
-// The API returns every submission with its vote count, and picking the highest-voted one is not
-// what DeArrow itself does — which is why this used to choose entries that could not be shown.
-//
-// Read off the live API for dQw4w9WgXcQ, the thumbnails are:
-//
-//   votes=2  locked=true   original=false  timestamp=3.92349     <- what DeArrow shows
-//   votes=9  locked=false  original=true   timestamp=null        <- what votes alone picked
-//   votes=6  locked=false  original=false  timestamp=3.742979
-//
-// The winner on votes is the *original* thumbnail, whose timestamp is null, so the caller's
-// `if (data.timestamp)` was false and no thumbnail was ever applied. A locked entry is a moderator
-// decision and outranks any number of votes; an original entry is YouTube's own and is not a
-// substitution at all.
+// Picks the entry DeArrow shows: locked beats votes; originals and downvoted entries never win.
 
 const API = 'https://sponsor.ajay.app/api/branding';
 

@@ -4,10 +4,6 @@ import { optionsCommand, storeCommand } from './settingsOptions.js';
 import { category, runs } from './settingsResponse.js';
 
 // Our own settings, drawn as YouTube's own rows.
-//
-// Nothing here is a custom widget: a switch of ours is the same settingBooleanRenderer the app
-// already knows how to draw and focus, so it behaves like the rest of the page rather than like
-// something bolted on.
 
 const picture = (url) => ({ thumbnails: [{ url }] });
 
@@ -38,13 +34,9 @@ const openerRow = (item, path, label) => {
         tubeNote: item.note,
         trackingParams: 'null',
         itemId: idFor(item),
-        thumbnail: picture(item.image)
+        thumbnail: picture(item.image),
+        get actionLabel() { return runs(label()); }
     };
-
-    Object.defineProperty(row, 'actionLabel', {
-        enumerable: true,
-        get: () => runs(label())
-    });
 
     return { settingActionRenderer: row };
 };

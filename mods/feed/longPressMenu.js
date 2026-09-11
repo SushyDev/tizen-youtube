@@ -1,10 +1,6 @@
 import { MenuNavigationItemRenderer, MenuServiceItemRenderer } from '../../framework/index.js';
 
 // What holding Select on a video tile offers.
-//
-// Separate from the mod that attaches it: this is the four choices, and longPress.js is when a
-// tile gets them. The container already puts a menu on most tiles, so this whole shape is only
-// built for the ones it leaves bare.
 
 const WATCH_LATER = 'WL';
 

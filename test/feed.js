@@ -299,12 +299,6 @@ sameShelves('shorts kept when the setting is on', [
 
 sameShelves('a shelf with no items array', [{ shelfRenderer: {} }, shelf([tile('a')])], ON);
 
-// An entry that is not a shelf is where the oracle and the walk now legitimately part company, so
-// this one is checked against the intended behaviour rather than against what shipped. The old
-// code reached a feed nudge and an advert section by descending to the browse surface by hand,
-// inside two different features; neither descent named the continuation the Refresh button
-// answers with, so a refreshed feed kept both. They are keepers on the walk now, which is why
-// these entries go and the oracle, which models only the walk, keeps them.
 checkShelves('a sign-in nudge is taken out wherever the walk finds it',
     [{ feedNudgeRenderer: {} }, shelf([tile('a')])], ON,
     (walked) => assert.strictEqual(walked.length, 1, 'the nudge survived the walk'));
@@ -345,10 +339,7 @@ samePivot('the pivot still drops shorts', [shelf([tile('a')], SHORTS_SHELF), she
 
 sameTiles('a horizontal continuation', [tile('a'), advert(), watched('w', 95)], ON);
 
-// Deliberately not the oracle. shorts.js named SHELF, PIVOT and GRID and not TILES, so scrolling
-// right along a row that mixes shorts with ordinary videos let every short through as soon as the
-// continuation loaded — the same row filtered at the start and unfiltered further along.
-// Reproduced on the set before this was changed.
+// Not the oracle, which lets shorts through on a continuation.
 check('a continuation drops shorts tiles like every other surface', () => {
     withConfig(ON, () => {
         const walked = walkTiles(copy([tile('a'), shortTile('s'), reelTile('r')]), TILES);
@@ -402,9 +393,6 @@ check('deArrow asks once per video, however many shelves carry it', () => {
     });
 });
 
-// Advert removal in the shelves was never gated — it came across from deArrowify, which spliced
-// unconditionally. So switching adverts back on returned the ones before a video and left the
-// feed untouched, which is exactly what the setting claims to control.
 check('adverts are removed from a shelf when blocking is on', () => {
     withConfig(Object.assign({}, ON, { enableAdBlock: true }), () => {
         const items = walkTiles(copy([advert(), tile('a')]), TILES);

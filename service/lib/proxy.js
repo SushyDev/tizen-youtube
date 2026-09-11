@@ -2,10 +2,6 @@
 
 // The proxy the app is served through. youtube.com comes back from here so the userscript can be
 // injected into it and the page can reach anything it needs to.
-//
-// What is left in this file is the express application itself: the middleware every request passes
-// through, and the fallback that stands in for youtube.com. Where a request is going is route.js,
-// what is changed on the way is rewrites.js, and getting it there is sending.js.
 
 const express = require('express');
 

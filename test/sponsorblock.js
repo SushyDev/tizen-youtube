@@ -1,9 +1,4 @@
-// SponsorBlock, in the two places it makes a decision.
-//
-// This was one 322-line file holding the API call, the overlay, the skipping and the session. The
-// overlay needs a screen and the session needs a video element, but the other two do not: what to
-// ask the server, and when to stop skipping something the viewer keeps seeking back into, are both
-// answerable here.
+// SponsorBlock: the repeat guard, the hash parse, and the overlay's geometry.
 
 import assert from 'assert';
 
@@ -85,9 +80,6 @@ check('a cleared guard has forgotten everything', () => {
     assert.strictEqual(guard.judge('uuid-1', 1100).repeated, false);
 });
 
-// Read off the set: navigating to the Library left `window.sponsorblock.videoID === "?c=FElibrary"`,
-// because the old parser trimmed a "?v=" prefix and handed back anything that did not start with
-// one. Exercised through the same listener the page uses.
 const hashes = [
     { hash: '#/watch?v=dQw4w9WgXcQ', expect: 'dQw4w9WgXcQ' },
     { hash: '#/watch?v=dQw4w9WgXcQ&list=WL&index=2', expect: 'dQw4w9WgXcQ' },
@@ -96,29 +88,16 @@ const hashes = [
     { hash: '#/', expect: null }
 ];
 
-// The shipped function, not a copy of it. The first version of this test reimplemented the parse
-// with `new URL(...).searchParams`, which works in node and does not exist in Cobalt — so the test
-// passed while the set had no SponsorBlock at all. A test that rewrites what it is testing is
-// testing itself.
 hashes.forEach((one) => {
     check(`${one.hash} is ${one.expect === null ? 'not a video' : one.expect}`, () => {
         assert.strictEqual(videoIdIn(one.hash), one.expect);
     });
 });
 
-// Whether the parse reaches for something the engine lacks is not checked here. A grep over the
-// source cannot tell code from the comment explaining it — this check first failed on its own
-// commentary. tools/check-output.js answers it properly, on the built bundle and on the AST:
-// `URLSearchParams` and `.searchParams` are both listed for the cobalt3 floor.
-
-// The timeline tint. One element outside the player's own tree, carrying every segment as one
-// gradient: appending into the track lost the node to the next incremental-DOM patch within
-// seconds, and ::after — which no patch could have removed — renders as nothing at all on Cobalt.
-// Both measured on the set.
-const {
-    gradientFor, gradientOver, stretches, chapterIn, spansFor,
-    commaParts, transitionOf, animatesMotion, translateOf, shiftOf
-} = await import('../mods/sponsorblock/segmentOverlay.js');
+const { gradientOver, stretches } = await import('../mods/sponsorblock/segmentGradient.js');
+const { chapterIn, spansFor } = await import('../mods/sponsorblock/drawnBar.js');
+const { commaParts, transitionOf, animatesMotion, translateOf, shiftOf } = await import('../mods/sponsorblock/transitions.js');
+const gradientFor = (segments, duration) => gradientOver(stretches(segments, duration), { from: 0, to: duration });
 
 const seg = (category, from, to) => ({ category, segment: [from, to], UUID: `${category}-${from}` });
 
@@ -130,17 +109,16 @@ check('a segment becomes a hard-edged band at its own position', () => {
     assert.ok(/rgba\(0, 212, 0, 0?\.7\) 50%/.test(gradient), gradient);
 });
 
-check('the colours carry alpha, so the timeline reads through them', () => {
+check('colours carry alpha', () => {
     const gradient = gradientFor([seg('sponsor', 0, 10)], 100);
     assert.strictEqual(gradient.indexOf('#00d400'), -1, 'an opaque hex would cover the bar');
     assert.ok(gradient.indexOf('rgba(') !== -1);
 });
 
-check('it is one gradient, which is all this engine can actually draw', () => {
+check('the whole timeline is one linear-gradient', () => {
     const gradient = gradientFor([seg('sponsor', 0, 10), seg('outro', 80, 95)], 100);
     assert.ok(gradient.indexOf('linear-gradient(to right,') === 0, gradient);
-    assert.strictEqual(gradient.indexOf('::after'), -1,
-        'Cobalt renders no pseudo-elements — a probe giving ::after a 37px box measured 0');
+    assert.strictEqual(gradient.split('linear-gradient(').length - 1, 1, gradient);
 });
 
 check('a highlight is a thin mark rather than a stretch', () => {
@@ -159,16 +137,6 @@ check('nothing to show is no gradient at all', () => {
     assert.strictEqual(gradientFor([], 100), '');
 });
 
-// Where the bands are placed, which is the part that was wrong on screen for real videos.
-//
-// YouTube's bar is one div per chapter with a 6px gap between them, and each chapter is drawn
-// `width` px wide for a stretch of timeline that is `width + gap` px. So it fits the chapter's
-// whole time range into the narrower box, and a position along that box is a fraction of the
-// chapter's own start and end — never of the video's duration. Placing bands by the timeline
-// instead put each one up to 6px right of where it belonged, drifting further with every chapter
-// passed. Settled against YouTube's own played fill on the set: at 58.871s of a 0-110s chapter
-// drawn 273px wide it measures 146px, and the chapter's rule gives 146.1 where the timeline's
-// gives 149.4.
 const spanOf = (from, to) => ({ from, to });
 
 check('a band is a fraction of its own chapter, not of the video', () => {
@@ -225,10 +193,6 @@ check('a video without chapters is one piece covering the whole of it', () => {
     assert.deepStrictEqual(spansFor(whole, { left: 96, width: 1728 }, 681), [{ from: 0, to: 681 }]);
 });
 
-// Moving with the bar. Cobalt's getComputedStyle answers with the value a transition is heading
-// for rather than the one it is showing — measured: `transitionend` at 399ms of a 400ms fade while
-// forty-three frames of sampling all read the final value — so the bands cannot follow by watching.
-// They are handed the same declarations instead, and the engine runs both.
 check('a timing function keeps its own commas', () => {
     assert.deepStrictEqual(
         commaParts('cubic-bezier(0.05,0,0.3,1), cubic-bezier(0.25,0.1,0.25,1)'),
@@ -264,7 +228,7 @@ check('an ancestor is mirrored for what it would move, not what it is moving', (
     }), false, 'a colour fade moves nothing this overlay has to keep up with');
 });
 
-check('the slide is taken off a measured position, because the mirror puts it back', () => {
+check('the mirrored translation is subtracted', () => {
     assert.deepStrictEqual(translateOf('translateY(48px)'), { x: 0, y: 48 });
     assert.deepStrictEqual(translateOf('translateY(0px)'), { x: 0, y: 0 });
     assert.deepStrictEqual(translateOf('none'), { x: 0, y: 0 });

@@ -1,12 +1,4 @@
-// The buttons around the video.
-//
-// What this replaced swapped a class in YouTube's module registry and was found doing nothing at
-// all — so the point of these checks is that the dressing happens in the response, where it can
-// be exercised without a television.
-//
-// The shapes are what the set actually sends, read off it: engagementActions holds LIKE_BUTTON,
-// COMMENTS and ADD_TO_PLAYLIST; settingActions holds CAPTIONS, PLAYBACK_SETTINGS, QUALITY and
-// eight more, SPEED_BUTTON among them.
+// Player buttons, dressed in the transport-controls response.
 
 import assert from 'assert';
 
@@ -80,13 +72,13 @@ check('and is left out when it is not wanted', () => {
 
 check('the mini player is never added twice', () => {
     withConfig({ enableMPButton: true }, () => {
-        const once = dressed();
-        const types = typesIn(once, 'settingActions').filter((t) => t === 'PIP');
+        const twice = JSON.parse(JSON.stringify(response())).transportControls.transportControlsRenderer;
+        const types = typesIn(twice, 'settingActions').filter((t) => t === 'PIP');
         assert.strictEqual(types.length, 1);
     });
 });
 
-check('no speed button is added, because the container already ships one', () => {
+check('no speed button is added', () => {
     withConfig({ enableMPButton: true }, () => {
         const types = typesIn(dressed(), 'settingActions');
         assert.strictEqual(types.filter((t) => t.indexOf('SPEED') !== -1).length, 1,

@@ -1,12 +1,4 @@
-// The shapes YouTube's own UI is made of.
-//
-// Every one of these returns a plain object and reaches nothing: they describe, they do not act.
-// What opens a toast or a modal lives beside this in toast.js and modal.js, because resolving a
-// command against the running app is a different thing from naming a shape.
-//
-// The names are YouTube's, not ours. A mod that builds a row builds the row the app already knows
-// how to draw, so a renderer here that stops matching the set is a shape to correct rather than a
-// helper to redesign.
+// Builders for YouTube's own renderer shapes; none touch the app.
 
 const overlayPanelItemListRenderer = (items, selectedIndex) => ({
     overlayPanelItemListRenderer: {
@@ -18,39 +10,18 @@ const overlayPanelItemListRenderer = (items, selectedIndex) => ({
 // The row style the settings and speed panels are built from. Title, icons and subtitle are all
 // optional, and each is left off entirely rather than sent empty — an empty `title` draws as a
 // blank line where no line was wanted.
-const buttonItem = (title, icon, commands) => {
-    const button = {
-        compactLinkRenderer: {
-            serviceEndpoint: {
-                commandExecutorCommand: {
-                    commands
-                }
-            }
-        }
-    };
+const buttonItem = (title, icon, commands) => ({
+    compactLinkRenderer: Object.assign(
+        { serviceEndpoint: { commandExecutorCommand: { commands } } },
+        title ? { title: { simpleText: title.title } } : {},
+        title && title.subtitle ? { subtitle: { simpleText: title.subtitle } } : {},
+        icon && icon.icon ? { icon: { iconType: icon.icon } } : {},
+        icon && icon.secondaryIcon ? { secondaryIcon: { iconType: icon.secondaryIcon } } : {}
+    )
+});
 
-    if (title) {
-        button.compactLinkRenderer.title = { simpleText: title.title };
-
-        if (title.subtitle) {
-            button.compactLinkRenderer.subtitle = { simpleText: title.subtitle };
-        }
-    }
-
-    if (icon && icon.icon) {
-        button.compactLinkRenderer.icon = { iconType: icon.icon };
-    }
-
-    if (icon && icon.secondaryIcon) {
-        button.compactLinkRenderer.secondaryIcon = { iconType: icon.secondaryIcon };
-    }
-
-    return button;
-};
-
-// A card that appears over the video at triggerTimeMs and leaves timeoutMs later. This is the
-// shape YouTube's own "Up next" and shopping prompts arrive in, which is why the player's overlay
-// mods recognise it.
+// A card that appears over the video at triggerTimeMs and leaves timeoutMs later, in the shape
+// YouTube's own "Up next" and shopping prompts arrive in.
 const timelyAction = (text, icon, command, triggerTimeMs, timeoutMs) => ({
     timelyActionRenderer: {
         actionButtons: [{
@@ -82,12 +53,6 @@ const MenuNavigationItemRenderer = (text, navigateEndpoint) => ({
         text: { runs: [{ text }] },
         navigationEndpoint: navigateEndpoint,
         trackingParams: null
-    }
-});
-
-const overlayMessageRenderer = (simpleText) => ({
-    overlayMessageRenderer: {
-        title: { simpleText }
     }
 });
 
@@ -136,7 +101,6 @@ export {
     timelyAction,
     MenuServiceItemRenderer,
     MenuNavigationItemRenderer,
-    overlayMessageRenderer,
     ShelfRenderer,
     TileRenderer,
     ButtonRenderer

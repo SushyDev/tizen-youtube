@@ -1,11 +1,6 @@
 'use strict';
 
-// What this package declares about itself, read from its own config.xml.
-//
-// The switches handed to the container are in the manifest rather than in code, because they are
-// what the platform passes to Cobalt when it launches — so the manifest, not this service, is the
-// authority on where the content directory is and which proxy the container will use. Everything
-// here reads that and nothing writes it.
+// Reads the container switches from this package's config.xml; never writes them.
 
 const fs = require('fs');
 const path = require('path');

@@ -1,17 +1,6 @@
 import { configRead, onResponse } from '../../framework/index.js';
 
-// The "Up next" card, and the video it plays when the countdown runs out.
-//
-// Read off the set, the two live apart and both have to be answered or the card goes and the next
-// video still starts:
-//
-//   playerOverlays.playerOverlayRenderer.timelyActionRenderers[]      the card, on a timer
-//     .timelyActionRenderer  type TIMELY_ACTION_TYPE_UP_NEXT
-//   playerOverlays.playerOverlayRenderer.isAutoplayEnabled            whether it advances at all
-//   contents.singleColumnWatchNextResults.autoplay.autoplay.sets[]    what it would advance to
-//
-// Turning the card off therefore turns autoplay off with it, which is what anyone asking for it
-// means: the card is the only warning that the next video is coming.
+// Hiding the Up next card also disables autoplay, since the card is the only warning.
 
 const UP_NEXT = 'TIMELY_ACTION_TYPE_UP_NEXT';
 

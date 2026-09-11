@@ -11,9 +11,7 @@ const GRID = 'grid';
 
 const registry = { tile: [], keepTile: [], shelf: [], keepShelf: [], surface: [] };
 
-// The renderer families a visitor somewhere actually acts on. An item of any other shape is walked
-// past in silence, which is exactly how search results went out unfiltered: they carry no
-// tileRenderer at all, so every visitor declined all 122 of them and nothing looked wrong.
+// Families some visitor handles; any other is reported in dev builds.
 const UNDERSTOOD = ['tileRenderer', 'lockupViewModel', 'adSlotRenderer'];
 
 const reportUnknownItems = (items, surface) => {
@@ -58,9 +56,6 @@ const keepTile = (name, surfaces, decide) => add('keepTile', name, surfaces, dec
 const onShelf = (name, surfaces, dress) => add('shelf', name, surfaces, dress);
 const keepShelf = (name, surfaces, decide) => add('keepShelf', name, surfaces, decide);
 
-// The whole list, once, for a mod that wants to add a row rather than change one. Without it the
-// only way to put a shelf on a surface was to name that surface's path by hand, which is how two
-// features ended up with their own descent and missed every path they had not thought of.
 const onSurface = (name, surfaces, dress) => add('surface', name, surfaces, dress);
 
 // Dressers run before keepers so a dresser's side effects still happen for tiles a keeper drops.
@@ -84,11 +79,7 @@ const itemsOf = (shelf) => (shelf.shelfRenderer
     && shelf.shelfRenderer.content.horizontalListRenderer
     && shelf.shelfRenderer.content.horizontalListRenderer.items) || null;
 
-// Not everything in a section list is a shelf. An advert slot and a sign-in nudge are entries of
-// the same list carrying no shelfRenderer and no items — and skipping them outright meant a keeper
-// could never reject one, so both features hand-rolled their own descent instead and each missed
-// the paths the other covered. Every entry is now offered to the keepers; only the walking into a
-// shelf's own tiles is conditional on it having any.
+// Every section-list entry reaches the keepers, shelf or not.
 const walkShelves = (shelves, surface) => {
     const dressers = forSurface('shelf', surface);
     const keepers = forSurface('keepShelf', surface);

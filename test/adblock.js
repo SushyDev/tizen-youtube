@@ -1,11 +1,4 @@
-// The advert suppression that actually does the work.
-//
-// Filtering adverts out of responses is the visible half. The half that keeps them off the set is
-// a rewrite of the outgoing player request claiming the playback carries no advert, which
-// suppresses them upstream before any response exists. That rewrite ran unconditionally, so
-// turning adverts back on changed nothing and the setting was a lie.
-//
-// In its own file because it takes over the process's JSON.parse and JSON.stringify.
+// The playback-context rewrite follows enableAdBlock; its own file because it takes over JSON.
 
 import assert from 'assert';
 

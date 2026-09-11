@@ -78,11 +78,7 @@ const CORRECTNESS_RULES = {
 };
 
 
-// The shape every layer is held to: const only, no loops, no classes, and no anonymous block
-// wearing a variable's name. Nothing enforced these until 2026-09-06 and the code drifted for it.
-//
-// The fourth rule — one purpose per file — cannot be written as a selector. It is a review
-// question, and the answer is usually to split.
+// Style rules: const only, no loops, no classes, no IIFEs.
 //
 // These files are exempt because live sibling branches own them and a reshape here would conflict
 // on every restack. They are the follow-up, not an exception in principle.
@@ -97,19 +93,12 @@ const STYLED = [
     'tools/**/*.js', 'tools/**/*.mjs'
 ];
 
-// Tests may take whatever shape makes the assertion clearest, and a generated or vendored file
-// answers to whatever produced it.
+// Tests are exempt.
 const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
-    'test/**/*.js',
-    'service/vite.config.mjs'
+    'test/**/*.js'
 ]);
 
-// surfaces.js is "the only file that knows where YouTube keeps its tiles", and this is what makes
-// that true rather than merely written down. Two features spelled out their own descent to the
-// browse surface; when the Refresh button answered under a name neither had thought of, both
-// silently stopped working and nothing failed. Register a visitor with the walk instead — it
-// reaches every surface there is, and adding one there fixes every feature at once.
 const FEED_CONTAINERS = [
     'tvBrowseRenderer', 'tvSurfaceContentRenderer', 'tvSurfaceContentContinuation',
     'sectionListRenderer', 'sectionListContinuation', 'horizontalListContinuation',

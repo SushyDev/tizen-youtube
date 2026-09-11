@@ -1,10 +1,6 @@
 import { configRead, onResponse } from '../../framework/index.js';
 
-// What YouTube lays over the picture while a video plays.
-//
-// These arrive as timelyActionRenderers — a list of cards, each with a type and a time to appear
-// at. The shopping one sells merchandise behind a QR code; the NFL watermark is a badge nobody
-// asked for and there has never been a setting for it.
+// Drops the NFL watermark, and the shopping card if hideShoppingAction, from the player overlay.
 
 const NFL_WATERMARK = 'TIMELY_ACTION_TYPE_NFL_WATERMARK';
 const SHOPPING = 'TIMELY_ACTION_TYPE_SHOPPING';

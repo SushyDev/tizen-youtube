@@ -11,10 +11,6 @@ onResponse('guide', GUIDE_KEYS, (response) => {
     const hidden = configRead('disabledSidebarContents') || [];
     if (hidden.length === 0) return;
 
-    // There used to be a second switch here that hid subscribed channels, identifying one by its
-    // thumbnail. The container's guide carries no channels — read off the set with nothing
-    // hidden, it is the account entry and eleven sections, and the only thumbnail belongs to the
-    // account. The switch had nothing to act on, which is exactly how it behaved.
     const keep = (entry) => {
         const item = entry.guideEntryRenderer;
         if (!item) return true;

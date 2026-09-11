@@ -41,10 +41,7 @@ const SINCE = {
 
 const GLOBALS_SINCE = {
     node12: { structuredClone: 'node 17' },
-    // URLSearchParams is Chrome 49 and so is not "newer than the floor" by version — but Cobalt's
-    // URL is a partial implementation that carries `search` and stops there, with no searchParams
-    // on it and no URLSearchParams global. Measured on the set after reaching for it silently
-    // stopped SponsorBlock starting on any video. Version tables do not describe a partial engine.
+    // Cobalt's URL is partial: no searchParams and no URLSearchParams global.
     cobalt3: {
         structuredClone: 'Chrome 98',
         queueMicrotask: 'Chrome 71',
@@ -114,8 +111,7 @@ const visit = (node) => {
 
     if (Array.isArray(node)) return node.flatMap(visit);
 
-    // `new URLSearchParams()` is a NewExpression, not a call — checking only calls is how it
-    // shipped into Cobalt, which has no such global.
+    // NewExpression too, since `new URLSearchParams()` is not a call.
     const calls = (node.type === 'CallExpression' || node.type === 'NewExpression') && node.callee
         ? called(node.callee)
         : [];

@@ -1,12 +1,10 @@
 import { configRead } from '../../framework/index.js';
 
-// What the player opens on, written before it opens.
-//
-// Choosing the rung after playback starts costs a visible restart. The player decides which rung
-// to open on from its own stored bandwidth estimate, so the cheapest way to be right first time is
-// to have written that estimate before it looks. Ours is parser-inserted and kabuki's own script
-// is appended to the body, so this runs first — but only just, and only while that stays true.
-//
+// Seeds the player's stored bandwidth estimate so the first rung is right; relies on running
+// before kabuki's script.
+
+const QUALITY = 'preferredVideoQuality';
+
 // YouTube's own keys, in YouTube's own envelope: the value is a JSON string under `data`, with
 // `creation` and `expiration` beside it.
 const BANDWIDTH_KEY = 'yt-player-bandwidth';
@@ -33,7 +31,7 @@ const remember = (key, value) => {
 // bandwidth key as each video ends, so a value written once would decide the first video and
 // nothing after it.
 const seedPreferredQuality = () => {
-    const preference = configRead('preferredVideoQuality');
+    const preference = configRead(QUALITY);
     if (!preference || preference === 'auto') return;
 
     try {
@@ -59,4 +57,4 @@ const liftCeiling = () => {
     }
 };
 
-export { liftCeiling, seedPreferredQuality };
+export { QUALITY, liftCeiling, seedPreferredQuality };

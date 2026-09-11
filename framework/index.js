@@ -29,7 +29,7 @@ export { DEV_TOOLS } from './flags.js';
 export { default as sha256 } from './tiny-sha256.js';
 export { findAssignedProperty } from './findAssignments.js';
 export { showToast } from './toast.js';
-export { Modal, showModal } from './modal.js';
+export { showModal } from './modal.js';
 export {
     buttonItem, overlayPanelItemListRenderer, timelyAction,
     MenuServiceItemRenderer, MenuNavigationItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer

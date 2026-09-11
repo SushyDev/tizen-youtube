@@ -63,7 +63,7 @@ const runSuite = (suite) => {
     const counted = tally(run.output);
     const detail = counted.total ? `${counted.passed}/${counted.total} checks` : 'no checks reported';
 
-    if (!run.failed) {
+    if (!run.failed && counted.total && counted.passed === counted.total) {
         ui.ok(suite.name, detail, Date.now() - started);
         return true;
     }

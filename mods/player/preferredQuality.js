@@ -1,20 +1,10 @@
 import { PLAYER, configChangeEmitter, configRead, every, onResponse, stop, until, waitFor, whenPlayer } from '../../framework/index.js';
 import { NAMED, chooseQuality } from './qualityLadder.js';
 import { LIMITS, shouldAsk } from './askBudget.js';
-import { liftCeiling, seedPreferredQuality } from './qualitySeed.js';
+import { QUALITY, liftCeiling, seedPreferredQuality } from './qualitySeed.js';
 
-// Keeping the playing video on the rung the viewer asked for.
-//
-// Three moments matter and none of them is enough alone. A named rung is pinned the instant a
-// player exists, before any ladder is known. The response that lists the ladder opens a short
-// burst of close-together looks, because seeing the response is not the same as the player having
-// ingested it. And a slow heartbeat catches the rest — a player replaced by a navigation, a video
-// that looped, a setting changed mid-watch.
-//
-// Which rung to ask for is qualityLadder.js; how often it may be asked is askBudget.js; what the
-// player opens on before any of this runs is qualitySeed.js.
-
-const QUALITY = 'preferredVideoQuality';
+// Keeps the playing video on the preferred rung: pinned at attach, settled after each player
+// response, re-checked on a heartbeat.
 
 const CHECK_INTERVAL = 3000;
 

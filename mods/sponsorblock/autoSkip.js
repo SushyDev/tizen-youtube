@@ -1,5 +1,5 @@
 import { configRead, showToast } from '../../framework/index.js';
-import { SEGMENTS } from './segments.js';
+import { nameOf } from './segments.js';
 import { repeatGuard } from './repeatGuard.js';
 
 // Jumping the stretches the viewer asked not to see.
@@ -15,14 +15,11 @@ const LEAD = 0.3;
 // second is where the end screen and the next-video card live.
 const TAIL = 1;
 
-const nameOf = (segment) => SEGMENTS[segment.category]?.name || segment.category;
-
 const announce = (text) => {
     if (configRead('enableSponsorBlockToasts')) showToast('SponsorBlock', text);
 };
 
-// `skippable` and `manualOnly` are fixed when a video starts, which is when they were read before:
-// a category turned off mid-video takes effect on the next one.
+// `skippable` and `manualOnly` are read once per video; a change applies from the next one.
 const autoSkipper = (segments, skippable, manualOnly) => {
     const held = { video: null, timeout: null, active: true };
     const repeats = repeatGuard();

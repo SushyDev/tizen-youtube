@@ -1,8 +1,4 @@
 // The settings response: where a category is in it, and what one looks like.
-//
-// Both halves of the settings work read this shape — the one that adds our categories and the one
-// that moves YouTube's own rows into them — so it is described once here rather than descended
-// into from two places.
 
 const runs = (text) => ({ runs: [{ text }] });
 

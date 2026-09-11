@@ -1,10 +1,6 @@
 'use strict';
 
-// The certificate the service stands in front of youtube.com with, made on the set.
-//
-// It cannot be shipped. One CA baked into a public release would put its private key in every
-// download, so each set makes its own on first run, keeps it under the app's share directory, and
-// installs it into the container's own trust store.
+// A per-set CA, made on first run, because a shipped one would publish its private key.
 
 const fs = require('fs');
 const os = require('os');

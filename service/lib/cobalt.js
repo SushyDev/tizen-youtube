@@ -1,11 +1,6 @@
 'use strict';
 
 // Bringing the container up, and keeping it reachable.
-//
-// Everything a package cannot carry is derived on the set: the trust material is cobaltCa.js, the
-// content directory is cobaltContent.js, and what this package declares about itself is
-// cobaltConfig.js. What is left here is the sequencing — checking the container can reach us,
-// staging and trusting in the right order, and launching it when the platform will not.
 
 const os = require('os');
 const path = require('path');
@@ -193,7 +188,7 @@ const prepare = (done) => {
     const staged = stageOrFail(content);
     if (staged.error) return finish(staged.error);
 
-    const material = staged.material;
+    const material = existingMaterial();
 
     const trust = (issued) => {
         try {

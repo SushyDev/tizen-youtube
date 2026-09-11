@@ -1,17 +1,5 @@
-// DeArrow.
-//
-// Three separate faults, all confirmed on the set before these were written:
-//
-//   1. Nothing was dressed on a fresh launch. The answer arrives from the network, but a tile is
-//      dressed inside JSON.parse and cannot be waited for, so the old code dressed from a .then()
-//      after the app had already taken the title. Running one fixture through the patched parse on
-//      the television gave the original title on the first pass and the DeArrow title on the
-//      second — it only ever worked when a video came round twice in one session.
-//   2. No thumbnail was ever substituted. Picking the highest-voted entry picks the *original*
-//      thumbnail on a popular video, and an original carries `timestamp: null`. Live for
-//      dQw4w9WgXcQ: locked=true has 2 votes, original=true has 9.
-//   3. Even when one was, hqify replaced it. It is registered after deArrow and rebuilt the
-//      thumbnails array unconditionally, so the substitution was thrown away every time.
+// DeArrow: which answer to believe, hqify leaving substitutions alone, and the store dressing
+// across launches.
 
 import assert from 'assert';
 
@@ -106,8 +94,6 @@ const tile = (videoID, thumbUrl) => ({
 
 const dressed = (items) => walkTiles(items, SHELF)[0].tileRenderer;
 
-// -- which answer to believe ------------------------------------------------------------------
-
 // The live shape for dQw4w9WgXcQ, read off sponsor.ajay.app.
 const RICK = {
     titles: [
@@ -122,7 +108,7 @@ const RICK = {
     ]
 };
 
-check('a locked entry beats a higher-voted unlocked one, as it does in DeArrow itself', () => {
+check('a locked entry beats a higher-voted unlocked one', () => {
     assert.strictEqual(bestOf(RICK).timestamp, 3.92349,
         'votes alone picked the original thumbnail, whose timestamp is null');
     assert.strictEqual(bestOf(RICK).title, 'Rick Astley - Never gonna give you up (official music video)');
@@ -150,8 +136,6 @@ check('nothing submitted is nothing to say', () => {
     assert.deepStrictEqual(bestOf({ titles: [], thumbnails: [] }), { title: null, timestamp: null });
 });
 
-// -- hqify must not throw the substitution away -------------------------------------------------
-
 check("YouTube's own thumbnail is still enlarged", () => {
     withConfig({ enableHqThumbnails: true, enableDeArrow: false }, () => {
         const url = dressed([tile('abc')]).header.tileHeaderRenderer.thumbnail.thumbnails[0].url;
@@ -166,8 +150,6 @@ check("a thumbnail that is not YouTube's is left exactly as it is", () => {
         assert.strictEqual(url, theirs, 'hqify rebuilt the array and threw the substitution away');
     });
 });
-
-// -- the store is what dresses ------------------------------------------------------------------
 
 const suite = async () => {
     await checkAsync('a video never seen before is asked about and dressed by the next response', async () => {
@@ -217,7 +199,7 @@ const suite = async () => {
     });
 
     // The whole point of the store: this is what a relaunch looks like.
-    await checkAsync('what DeArrow said survives a restart, so the first feed of a session lands', async () => {
+    await checkAsync('what DeArrow said survives a restart', async () => {
         answers.body = RICK;
 
         await withConfigAsync({ enableDeArrow: true }, async () => {

@@ -1,13 +1,4 @@
-// Every place YouTube keeps a feed, and proof that the walk reaches all of them.
-//
-// This suite exists because of a bug that could only ever be a missing entry point: pressing
-// Refresh at the foot of the home page brought back adverts and shorts, and nothing else did.
-// Captured on the set, that response is 401KB with twenty-four tiles, one advert slot and one
-// shorts shelf, and it arrives under `continuationContents.tvSurfaceContentContinuation` — a name
-// surfaces.js did not know. Nine descents were listed there and the tenth was the one being used.
-//
-// A surface that is not walked is not a visible error. It is the feed simply going out undressed,
-// which is why each of them is named here rather than trusted.
+// Every surface YouTube keeps a feed on, walked.
 
 import assert from 'assert';
 
@@ -132,9 +123,6 @@ check('a section list continuation', () => {
     });
 });
 
-// This surface used to be the uneven one — shorts.js named three of the four, so scrolling right
-// along a mixed row let the shorts through while the advert beside them went. Reproduced on the
-// set, then evened up.
 check('a horizontal continuation', () => {
     withConfig(BLOCKING, () => {
         const out = through({ continuationContents: { horizontalListContinuation: { items: tiles() } } });
@@ -149,7 +137,6 @@ check('a grid continuation', () => {
     });
 });
 
-// The one that was missing. The shape is what the set actually sent.
 check('the home page after pressing Refresh', () => {
     withConfig(BLOCKING, () => {
         const out = through({
@@ -213,10 +200,6 @@ check('the suggestions beside a video', () => {
     });
 });
 
-// Search results, read off the set: a 1487KB response with 122 lockupViewModel and zero
-// tileRenderer. The walk reached every one of those items already — descent #3, the plain section
-// list — and every visitor declined them, because they are a renderer family none of them knew.
-// Eight shorts on screen, all of them LOCKUP_CONTENT_TYPE_SHORT.
 const lockup = (id, type) => ({
     lockupViewModel: {
         contentId: id,
@@ -268,8 +251,6 @@ check('a response carrying none of them is untouched', () => {
     });
 });
 
-// The queue adds a row rather than changing one, which used to mean naming the pivot's path by
-// hand — the same mistake in a different file. onSurface is how a mod does that now.
 check('a mod can add a row to a surface without knowing where it lives', () => {
     global.window.queuedVideos = { videos: [tile('q')], lastVideoId: 'q' };
 

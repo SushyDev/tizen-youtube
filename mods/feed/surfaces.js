@@ -1,20 +1,13 @@
 import {
-    DEV_TOOLS, GRID, PIVOT, SHELF, TILES, onResponse, walkShelves, walkTiles
+    DEV_TOOLS, GRID, PIVOT, SHELF, TILES, nativeJson, onResponse, walkShelves, walkTiles
 } from '../../framework/index.js';
 
-// The only file that knows where YouTube keeps its tiles.
-//
-// A table rather than a wall of ifs, because the table is the thing that goes wrong: a surface
-// missing from it is not an error anywhere, it is the feed quietly going out undressed. That is
-// exactly what happened to the Refresh button at the foot of the home page — its 401KB of tiles
-// arrive under `tvSurfaceContentContinuation`, which was not listed here, so adverts and shorts
-// came back and nothing said a word. Anything that acts on a tile or a row registers a visitor
-// with the walk and never comes here; this is the descent, and nothing else.
+// The only file that knows where YouTube keeps its tiles; a surface missing from DESCENTS goes out
+// undressed.
 
 const browse = (r) => r?.contents?.tvBrowseRenderer?.content?.tvSurfaceContentRenderer?.content;
 
-// Pressing Refresh answers under its own continuation name. The grid alongside it mirrors the
-// browse surface above; it has not been seen on the set, but the shape is the same one.
+// TODO: confirm the refreshed grid shape on a set.
 const refreshed = (r) => r?.continuationContents?.tvSurfaceContentContinuation?.content;
 
 const shelvesAt = (contents, surface) => {
@@ -29,10 +22,8 @@ const tilesAt = (holder, surface) => {
     return true;
 };
 
-// The subscriptions page: each channel is a tab carrying its own surface. The tabs themselves are
-// left in the three groups YouTube sends — "All", the channels with something new, an "A-Z"
-// divider, then every channel — because sorting them together made a channel that is legitimately
-// in two of those groups look like a duplicate.
+// The subscriptions page: each channel is a tab carrying its own surface, grouped as YouTube sends
+// them — "All", the channels with something new, an "A-Z" divider, then every channel.
 const subscriptionTabs = (r) => {
     const sections = r?.contents?.tvBrowseRenderer?.content?.tvSecondaryNavRenderer?.sections;
     if (!sections) return false;
@@ -64,12 +55,11 @@ const DESCENTS = [
     (r) => shelvesAt(r?.contents?.singleColumnWatchNextResults?.pivot?.sectionListRenderer?.contents, PIVOT)
 ];
 
-// A response carrying tiles that nothing above matched is a surface we do not know about. Silent
-// in a release build; in a dev build it names itself, which is the alarm that was missing.
+// A response carrying tiles that nothing above matched is a surface we do not know about.
 const CARRIES_TILES = /"(tileRenderer|shelfRenderer|adSlotRenderer)"/;
 
 const reportUnwalked = (r) => {
-    const text = JSON.stringify(r);
+    const text = nativeJson().stringify(r);
     if (!CARRIES_TILES.test(text)) return;
 
     console.warn('[feed] tiles arrived on a surface nothing descends into —'

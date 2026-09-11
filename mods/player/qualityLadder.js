@@ -1,13 +1,6 @@
-// Which rung a preference means.
-//
-// The ladder is per video and arrives with the player response, so this answers from whatever was
-// offered rather than from a fixed list: a preference of 1440p on a video that stops at 1080p is
-// 1080p, not nothing. Pure, and asked once per response.
+// Which rung a preference means, given the ladder a video offers.
 
-// The player's own names for the rungs. A named preference can be pinned through these before any
-// ladder exists, which is the only moment early enough to be sure the first segment fetched is the
-// right one. `highest` cannot be pinned that way — which rung is highest is not known until the
-// response lists them.
+// The player's own rung names, so a preference can be pinned before any ladder exists.
 const NAMED = {
     2160: 'hd2160', 1440: 'hd1440', 1080: 'hd1080', 720: 'hd720',
     480: 'large', 360: 'medium', 240: 'small', 144: 'tiny'

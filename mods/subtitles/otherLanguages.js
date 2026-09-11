@@ -14,8 +14,6 @@ onCommand('other subtitle languages', (cmd) => {
     const items = itemsOf(cmd);
     if (!items) return PASS;
 
-    // Read after the viewer's own language has been placed, which is why that interpreter is
-    // registered first: otherwise it is offered again here.
     const listed = languagesIn(items);
     const missing = allLanguages()
         .filter((language) => !listed.has(language.code) && !listed.has(language.name));

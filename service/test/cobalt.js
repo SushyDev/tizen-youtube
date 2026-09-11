@@ -1,13 +1,6 @@
 'use strict';
 
-// The container route loads at all.
-//
-// index.js requires cobalt.js inside a try/catch and carries on when it throws, because not every
-// Tizen device has the container and a set without it must still get a working proxy. That guard
-// also swallows a genuine mistake: a bad require or a missing name in there does not fail the
-// service, it silently removes the container route, and the only symptom is a black screen on the
-// set. So this requires each piece unguarded — a break here is a test failure rather than a
-// diagnosis session.
+// Requires each container-route module unguarded, since index.js swallows their load errors.
 
 process.env.TUBE_MITM_DIR = '/tmp/tube-test-mitm';
 process.env.TUBE_COBALT_CONTENT = '/tmp/tube-test-content';

@@ -1,14 +1,6 @@
-// The captions menu, as the command that opens it carries it.
-//
-// One overlay, reached through eight names, dressed by two features — the viewer's own language,
-// and every language the menu leaves out. Both need the same descent and the same row shape, so
-// what that menu looks like is known here and the features only decide what to add.
-//
-// This waited on CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE, which the container never sends:
-// opening the menu on the set fires CAPTIONS_LANGUAGE, and the string AUTO_TRANSLATE appears
-// nowhere in the app's own code, so the mod had been inert since the move into Cobalt. Both names
-// are accepted, because a build still sending the old one costs nothing to keep working.
+// The captions menu's shape, shared by the features that add rows to it.
 
+// The container sends CAPTIONS_LANGUAGE; AUTO_TRANSLATE is kept for older builds.
 const CAPTION_MENUS = [
     'CLIENT_OVERLAY_TYPE_CAPTIONS_LANGUAGE',
     'CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE'
@@ -56,8 +48,7 @@ const languageRow = (languageCode, languageName) => ({
     }
 });
 
-// Not the framework's overlayMessageRenderer: that one is a message with a title, and this is the
-// divider between sections, which the app styles from the subtitle and an empty title.
+// The divider between sections, which the app styles from the subtitle under an empty title.
 const sectionTitle = (title) => ({
     overlayMessageRenderer: {
         title: { simpleText: '' },

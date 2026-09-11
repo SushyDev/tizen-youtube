@@ -3,12 +3,7 @@ import { segmentsFor } from './segmentApi.js';
 import { segmentOverlay } from './segmentOverlay.js';
 import { autoSkipper } from './autoSkip.js';
 
-// One video's SponsorBlock session: what it holds, and when it is torn down.
-//
-// Everything it does is somewhere else — asking the API is segmentApi.js, drawing the bars is
-// segmentOverlay.js, jumping the stretches is autoSkip.js. What is left here is the part that
-// could not be anywhere else: which video is playing, which element is playing it, and making sure
-// nothing outlives the navigation away from it.
+// One video's SponsorBlock session, torn down on navigation.
 
 const WAIT_EVERY = 100;
 
@@ -29,6 +24,7 @@ const skippableCategories = () => SKIPPABLE
 
 const sponsorBlockFor = (videoID) => {
     const held = {
+        gone: false,
         video: null,
         segments: [],
         overlay: null,
@@ -64,13 +60,12 @@ const sponsorBlockFor = (videoID) => {
 
     const init = async () => {
         const segments = await segmentsFor(videoID);
-        if (!segments.length) return;
+        if (held.gone || !segments.length) return;
 
         held.segments = segments;
         held.overlay = segmentOverlay(segments);
         held.skipper = autoSkipper(segments, skippableCategories(), configRead('sponsorBlockManualSkips'));
 
-        // The overlay positions itself inside the bar now, so there is nothing to follow.
         held.onTick = () => held.skipper.schedule();
 
         // The duration is what every bar's width is a fraction of, so it is also the moment the
@@ -82,6 +77,8 @@ const sponsorBlockFor = (videoID) => {
     };
 
     const destroy = () => {
+        held.gone = true;
+
         if (held.stopWaitingForVideo) held.stopWaitingForVideo();
         held.stopWaitingForVideo = null;
 
@@ -110,24 +107,18 @@ const sponsorBlockFor = (videoID) => {
 
 window.sponsorblock = null;
 
-// Asked for by name rather than by trimming a prefix off the query. `search.replace('?v=', '')`
-// left every other query untouched and returned it whole, so navigating to the Library opened a
-// SponsorBlock session for the video "?c=FElibrary" — a request to the API and a skipper attached
-// to whatever video element happened to be on the page.
-//
-// Split by hand, because Cobalt's URL carries `search` and nothing else: `url.searchParams` is
-// undefined and `URLSearchParams` does not exist at all. Measured on the set, after reaching for
-// it here stopped SponsorBlock starting on any video whatsoever.
+// Parsed by hand: Cobalt's URL has no searchParams and no URLSearchParams global.
 const videoIdIn = (hash) => {
     const at = String(hash || '').indexOf('?');
     if (at === -1) return null;
 
     const found = /(?:^|&)v=([^&]*)/.exec(hash.slice(at + 1));
+    if (!found) return null;
 
     try {
-        return found ? decodeURIComponent(found[1]) : null;
+        return decodeURIComponent(found[1]);
     } catch (e) {
-        return found ? found[1] : null;
+        return found[1];
     }
 };
 
@@ -155,9 +146,6 @@ window.addEventListener('hashchange', () => {
     window.sponsorblock.init();
 }, false);
 
-// What the current video's segments are, for the parts of SponsorBlock that dress the player.
-// They used to reach into window.sponsorblock from another mod's file; this keeps the session
-// where it is and gives them a way to ask for it.
 const segmentsForVideo = () => (window.sponsorblock && window.sponsorblock.segments) || [];
 
 export { segmentsForVideo, videoIdIn };

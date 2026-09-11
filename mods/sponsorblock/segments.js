@@ -45,3 +45,5 @@ export const SEGMENTS = {
     name: 'highlight'
   }
 };
+
+export const nameOf = (segment) => SEGMENTS[segment.category]?.name || segment.category;

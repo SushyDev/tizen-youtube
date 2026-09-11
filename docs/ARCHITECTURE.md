@@ -27,13 +27,16 @@ resolves perfectly well, and the separation goes back to being a habit.
 `framework/index.js` is the whole of the public surface. Everything else under `framework/` is
 private, and a mod that imports it directly fails lint.
 
+Only `mods/feed/surfaces.js` may name a feed container such as `sectionListRenderer`. Every other
+mod registers with the walk instead, and `no-restricted-syntax` in `eslint.config.js` enforces it.
+
 ## What the framework is for
 
 Each registry replaced something that had been written several times and leaked differently.
 
 | Registry | What it replaced |
 |---|---|
-| `feed.js` — `onTile` / `keepTile` / `onShelf` / `keepShelf` | Eight traversals of each shelf |
+| `feed.js` — `onTile` / `keepTile` / `onShelf` / `keepShelf` / `onSurface` | Eight traversals of each shelf |
 | `commands.js` — `onCommand` | Two files independently patching `resolveCommand`, racing to wrap each other |
 | `keys.js` — `onKey` | Six capturing `document` key listeners serving two features, never removed |
 | `player.js` — `whenPlayer` / `whenVideo` | Nine separate waits for the player, six of them `waitFor` polls, with three disagreeing selectors |
@@ -70,7 +73,7 @@ Two build-time gates, one per side.
 ## Things that will bite
 
 - `app/` is a *source* directory. Tizen resolves `<content src>` and `<icon src>` relative to the
-  **archive** root, and `service/lib/cobalt.js` reads `../../config.xml` at runtime from
+  **archive** root, and `service/lib/cobaltConfig.js` reads `../../config.xml` at runtime from
   `service/dist/`. `tools/paths.js` stages `app/`'s contents flat for that reason.
 - The proxy port is written in three places: `tizen.config.json`, `service/lib/ports.js`, and the
   `--proxy` switch in `app/config.xml`. `npm run package` fails if `app/config.xml` disagrees with
@@ -78,5 +81,5 @@ Two build-time gates, one per side.
   nothing and says nothing.
 - `tools/check-output.js` rejects any built-in newer than Cobalt 3.2.1 / node 12. Babel lowers
   syntax; it does not polyfill a library call.
-- Four files are excluded from `tsc` and exempt from the style rules, because live sibling
+- Three files are excluded from `tsc`, and two of them from the style rules, because live sibling
   branches own them. They come back under both when those branches land.

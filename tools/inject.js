@@ -1,8 +1,6 @@
 'use strict';
 
-// A token whose source moved is simply not found, and would ship as the literal string. Both
-// halves of this file exist to make that loud: substitution throws when a token is absent, and
-// assertNoTokens throws when one survives a pipeline that substitutes silently.
+// A build token that is never substituted throws rather than shipping as a literal.
 
 function substitute(code, token, value) {
     if (typeof value !== 'string' || !value) {

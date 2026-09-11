@@ -1,27 +1,22 @@
 import { resolve as resolveCommand } from './internals.js';
 
-// The transient notice in the corner of the screen.
-//
-// It is opened by resolving a command rather than by touching the DOM, so it looks and behaves
-// exactly like YouTube's own: the app draws it, dismisses it and stacks it.
+// A toast opened through the app's own command resolver.
 
 const showToast = (title, subtitle, thumbnails) => {
+    // Left off entirely when there is none: an empty `image` draws the space for a thumbnail.
+    const image = thumbnails ? { image: { thumbnails } } : {};
+
     const toast = {
         openPopupAction: {
             popupType: 'TOAST',
             popup: {
-                overlayToastRenderer: {
+                overlayToastRenderer: Object.assign({
                     title: { simpleText: title },
                     subtitle: { simpleText: subtitle }
-                }
+                }, image)
             }
         }
     };
-
-    // Left off entirely when there is none: an empty `image` draws the space for a thumbnail.
-    if (thumbnails) {
-        toast.openPopupAction.popup.overlayToastRenderer.image = { thumbnails };
-    }
 
     resolveCommand(toast);
 };

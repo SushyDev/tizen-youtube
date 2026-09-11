@@ -1,9 +1,5 @@
-// How often the player may be asked to change rung.
-//
-// Asking restarts a running stream, so this is a budget rather than a check: one ask before the
-// first frame, one to correct it once the real ladder arrives, and never a third. A rung the
-// player declines twice is a rung it is not going to take, and pressing it again only stutters
-// the video for a viewer who can see perfectly well what is playing.
+// At most LIMITS.maxAttempts asks per rung, LIMITS.retryDelay apart, because each ask restarts
+// the stream.
 
 const LIMITS = { maxAttempts: 2, retryDelay: 5000 };
 

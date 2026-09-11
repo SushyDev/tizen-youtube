@@ -1,12 +1,7 @@
 import { ROWS, claimActionRows, claimBooleanRows } from './settingComponents.js';
 import { claimVersionPanel } from './aboutPatch.js';
 
-// Catching the rows once they are drawn.
-//
-// The response is patched long before any of it reaches the DOM — the action row's own code is
-// fetched only when the first one is drawn — so this keeps looking rather than trying once. It
-// eases off after five seconds and gives up entirely once the settings page is gone, so a viewer
-// who opened settings and left does not leave a timer running for the life of the page.
+// Claims drawn rows every 250ms for 5s, then every 500ms while the settings page is open.
 
 const SETTLING_ATTEMPTS = 20;
 const SETTLING_EVERY = 250;

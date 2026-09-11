@@ -1,13 +1,4 @@
-// The captions menu.
-//
-// What this replaced was one 306-line file holding a language catalogue, a country-to-language
-// guess, the row shapes and two independent features, wired through a hook that had been inert
-// since the move into Cobalt because it waited on an overlay name the container never sends. The
-// point of these checks is that each of those is now separately answerable.
-//
-// The interpreters are driven through the real command bus rather than called directly: the bus is
-// where the two features meet, and the order they meet in is what stops a language being offered
-// twice.
+// The captions menu: own-language and other-language rows, driven through the command bus.
 
 import assert from 'assert';
 
@@ -117,8 +108,6 @@ check('the account country decides the language offered', () => {
     assert.deepStrictEqual(viewerLanguage(), { code: 'fr', name: 'French' });
 });
 
-// The hook this replaced waited on CAPTIONS_AUTO_TRANSLATE, which the container never sends, so
-// the whole mod was inert on the set. CAPTIONS_LANGUAGE is what opening the menu actually fires.
 check('the overlay the container actually sends is the one recognised', () => {
     assert.strictEqual(opensCaptionMenu({ openPopupAction: { uniqueId: 'CLIENT_OVERLAY_TYPE_CAPTIONS_LANGUAGE' } }), true);
     assert.strictEqual(opensCaptionMenu({ openPopupAction: { uniqueId: 'CLIENT_OVERLAY_TYPE_CAPTIONS_AUTO_TRANSLATE' } }), true);

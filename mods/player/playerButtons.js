@@ -1,28 +1,6 @@
 import { ButtonRenderer, configRead, onResponse } from '../../framework/index.js';
 
-// The buttons around the video, dressed in the response.
-//
-// What this replaces reached the same buttons by scanning YouTube's module registry for a class,
-// swapping the registry slot for a look-alike constructor, and stacking four wrappers on one of
-// its methods. It was found doing nothing at all: nothing it defines existed anywhere in the
-// 3116 modules, though the class it hunts was loaded and the setting was on. One unguarded
-// `toString()` on a module that is still initialising throws, and its retry chain ends there —
-// permanently, and silently.
-//
-// None of that is necessary. `transportControlsRenderer` carries every group it wanted:
-//
-//   skipPreviousButton  skipNextButton  promotedActions  engagementActions  settingActions
-//
-// so this is an ordinary reader, guarded and ordered like every other, and it cannot be killed by
-// a module that was not ready. Read off the set, those groups hold:
-//
-//   engagementActions  LIKE_BUTTON COMMENTS ADD_TO_PLAYLIST
-//   settingActions     CAPTIONS PLAYBACK_SETTINGS QUALITY SURROUND_SOUND REPORT_VIDEO FEEDBACK
-//                      STATS_FOR_NERDS SPEED_BUTTON LOOP_BUTTON AUDIO_TRACKS DRC
-//   promotedActions    CHANNEL_BUTTON ABOUT_BUTTON SUBSCRIBE
-//
-// SPEED_BUTTON is in that list, which is why there is no speed button here: the container ships
-// one, and adding a second is the mistake the duplicate previews switch already made.
+// Transport-control buttons, dressed in the response; the container already ships a speed button.
 
 const type = (entry) => String((entry && entry.type) || '');
 
@@ -50,22 +28,15 @@ const withMiniPlayer = (actions) => {
     return actions.slice(0, at).concat([miniPlayer()], actions.slice(at));
 };
 
-const dressEngagement = (actions) => {
-    const kept = [
-        !configRead('enableSuperThanksButton') ? 'SUPER_THANKS' : null,
-        configRead('hideShoppingAction') ? 'SHOPPING' : null,
-        !configRead('enableAIAskButton') ? 'YOUCHAT_BUTTON' : null
-    ].filter(Boolean).reduce(without, actions);
-
-    return kept;
-};
+const dressEngagement = (actions) => [
+    !configRead('enableSuperThanksButton') ? 'SUPER_THANKS' : null,
+    configRead('hideShoppingAction') ? 'SHOPPING' : null,
+    !configRead('enableAIAskButton') ? 'YOUCHAT_BUTTON' : null
+].filter(Boolean).reduce(without, actions);
 
 const dressSettings = (actions) => (configRead('enableMPButton') ? withMiniPlayer(actions) : actions);
 
-// Replaced wholesale rather than dressed: YouTube's own pair are chapter controls on some videos,
-// and what this asks for is the previous and next video in the queue. Wrapped, because in the
-// response these are a renderer envelope rather than the bare renderer the old code returned
-// from a getter.
+// Replaced, not dressed: YouTube's pair are chapter controls, ours step through the queue.
 const skipButton = (title, icon, signal) => ({
     buttonRenderer: ButtonRenderer(false, title, icon, { signalAction: { signal } })
 });

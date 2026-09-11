@@ -1,11 +1,6 @@
 import { resolve as resolveCommand } from './internals.js';
 
-// The two-panel overlay the settings and speed pickers are drawn in.
-//
-// `header` is either a string or `{ title, subtitle }` — both are common enough at the call sites
-// that requiring one would only push the branch outwards. Anything else, including nothing at all,
-// is treated as an empty header rather than thrown on: a modal with no title is still usable, and
-// a picker that fails to open is not.
+// The two-panel overlay; `header` is a string or { title, subtitle }.
 
 const headerOf = (header) => {
     if (typeof header === 'string') return { title: header, subtitle: '' };
@@ -18,16 +13,16 @@ const panelHeader = (header) => {
     // A caller may hand over the finished renderer, in which case it is used as it stands.
     const renderer = named.overlayPanelHeaderRenderer || { title: { simpleText: named.title } };
 
-    if (named.subtitle) renderer.subtitle = { simpleText: named.subtitle };
+    const subtitle = named.subtitle ? { subtitle: { simpleText: named.subtitle } } : {};
 
-    return renderer;
+    return Object.assign({}, renderer, subtitle);
 };
 
 // `update` redraws a modal already on screen instead of opening a second one over it, which is
 // what makes a settings switch flip in place rather than stacking panels.
 const Modal = (header, content, id, update) => {
     const modal = {
-        openPopupAction: {
+        openPopupAction: Object.assign({
             popupType: 'MODAL',
             popup: {
                 overlaySectionRenderer: {
@@ -51,13 +46,8 @@ const Modal = (header, content, id, update) => {
                 }
             },
             uniqueId: id
-        }
+        }, update ? { shouldMatchUniqueId: true, updateAction: true } : {})
     };
-
-    if (update) {
-        modal.openPopupAction.shouldMatchUniqueId = true;
-        modal.openPopupAction.updateAction = true;
-    }
 
     return modal;
 };

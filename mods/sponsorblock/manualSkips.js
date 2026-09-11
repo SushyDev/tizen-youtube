@@ -1,5 +1,5 @@
 import { configRead, onResponse, timelyAction } from '../../framework/index.js';
-import { SEGMENTS } from './segments.js';
+import { nameOf } from './segments.js';
 import { segmentsForVideo } from './sponsorblock.js';
 import { skipTo } from './skipTo.js';
 
@@ -7,7 +7,7 @@ import { skipTo } from './skipTo.js';
 // automatically, shown over the picture for as long as the segment lasts.
 
 const cardFor = (segment) => timelyAction(
-    `Skip ${SEGMENTS[segment.category]?.name || segment.category}`,
+    `Skip ${nameOf(segment)}`,
     'SKIP_NEXT',
     skipTo(segment.segment[1]),
     segment.segment[0] * 1000,

@@ -1,11 +1,6 @@
 'use strict';
 
 // Where a request is really going, and what it should carry when it gets there.
-//
-// Four kinds of request arrive here and they look almost alike: one forwarded by a client using us
-// as an HTTP proxy, one wrapped in the CORS bypass prefix, one that came in over our own MITM TLS
-// believing it was talking to youtube.com, and a plain one from the page. What separates them is
-// the connection, not the path, which is why this reads the socket.
 
 const URL = require('url');
 
@@ -82,4 +77,4 @@ const headersFor = (req, route) => {
         { 'accept-encoding': 'gzip, deflate' }));
 };
 
-module.exports = { overOurTls, routeFor, headersFor, YOUTUBE_HOST, YOUTUBE_ORIGIN };
+module.exports = { overOurTls, routeFor, headersFor, YOUTUBE_ORIGIN };

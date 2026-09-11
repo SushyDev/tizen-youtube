@@ -1,13 +1,5 @@
-// What DeArrow has already said, remembered across launches.
-//
-// This is what makes DeArrow work at all. The answer arrives from the network, but a tile is
-// dressed inside JSON.parse — synchronously, before the object goes back to the app — so an answer
-// that has not arrived yet is an answer that cannot be applied. Held only in memory, the store was
-// empty at every launch, so every video on the first home feed was a miss and nothing was dressed.
-// It appeared to work only after the same video came round a second time in one session.
-//
-// Kept on disk, a video seen in any previous session is dressed on sight. Only the first-ever
-// sighting is still missed, and that one corrects itself the next time the feed is drawn.
+// DeArrow's answers kept in localStorage, because a tile is dressed synchronously inside
+// JSON.parse and cannot wait for the network.
 
 const KEY = 'tube.dearrow';
 
@@ -36,10 +28,9 @@ const load = () => {
     const now = Date.now();
     const stored = read();
 
-    held.entries = Object.keys(stored).reduce((kept, videoID) => {
-        if (fresh(stored[videoID], now)) kept[videoID] = stored[videoID];
-        return kept;
-    }, {});
+    held.entries = Object.assign({}, ...Object.keys(stored)
+        .filter((videoID) => fresh(stored[videoID], now))
+        .map((videoID) => ({ [videoID]: stored[videoID] })));
 };
 
 // Written on a short timer rather than per answer: one feed response yields dozens of answers
@@ -65,16 +56,19 @@ const scheduleFlush = () => {
     held.writing = setTimeout(flush, WRITE_AFTER);
 };
 
-// Oldest out first. Dropping the lot on overflow would throw away a warm store to make room for
-// one entry, which is what the in-memory version did.
+// Oldest out first: dropping the lot on overflow would throw away a warm store for one entry.
 const evict = () => {
     const videoIDs = Object.keys(held.entries);
     if (videoIDs.length <= REMEMBERED) return;
 
-    videoIDs
+    const oldest = videoIDs
+        .slice()
         .sort((one, two) => held.entries[one].at - held.entries[two].at)
-        .slice(0, videoIDs.length - REMEMBERED)
-        .forEach((videoID) => { delete held.entries[videoID]; });
+        .slice(0, videoIDs.length - REMEMBERED);
+
+    held.entries = Object.assign({}, ...videoIDs
+        .filter((videoID) => oldest.indexOf(videoID) === -1)
+        .map((videoID) => ({ [videoID]: held.entries[videoID] })));
 };
 
 // undefined for a video never asked about, null for one DeArrow has nothing to say about.

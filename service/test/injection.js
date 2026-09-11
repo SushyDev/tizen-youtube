@@ -10,9 +10,11 @@ const {
 const ORIGIN = 'http://tv.example:8099';
 
 let failures = 0;
+let total = 0;
 
 function check(label, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok || !detail ? '' : `  ${detail}`}`);
+    total += 1;
     if (!ok) failures += 1;
 }
 
@@ -81,6 +83,7 @@ check('__Secure- cookie is renamed and de-secured',
 check('the rename survives a round trip',
     restoreCookiePrefixes('__LocalSecure-3PSID=abc; __LocalHost-x=1') === '__Secure-3PSID=abc; __Host-x=1');
 
+// YouTube's policy has no connect-src, and Cobalt treats that as refuse.
 const youtubePolicy = "base-uri 'self';object-src 'none';script-src 'nonce-abc' 'strict-dynamic'";
 const widened = withOurGrants(youtubePolicy);
 
@@ -96,9 +99,7 @@ check('an existing connect-src is widened rather than duplicated',
         === "default-src 'self'; connect-src * data: blob: ws: wss:; img-src * data: blob:",
     withOurGrants("default-src 'self'; connect-src 'self' https://a.example; img-src *"));
 
-// The real policy denies everything it does not name, and lists several hundred image hosts
-// without DeArrow's among them. Widening connect-src alone let the branding fetch through and
-// left the picture it named refused, which read as a data fault rather than a policy one.
+// The real policy denies whatever it does not name, and its image hosts do not include DeArrow's.
 const cobaltish = "default-src 'none';connect-src 'self' *.youtube.com;img-src 'self' *.ytimg.com *.ggpht.com";
 const opened = withOurGrants(cobaltish);
 
@@ -117,8 +118,5 @@ check('every policy in a combined header is widened',
     && both.split(',').every((one) => /img-src \* data: blob:/.test(one)),
     both);
 
-if (failures) {
-    console.log(`${failures} check${failures === 1 ? '' : 's'} failed.`);
-    process.exit(1);
-}
-console.log('all checks passed');
+console.log(`\n${total - failures}/${total} checks passed.`);
+process.exit(failures ? 1 : 0);

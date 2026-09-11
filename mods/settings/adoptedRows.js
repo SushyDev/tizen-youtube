@@ -1,11 +1,6 @@
 import { categoryOf, findCategory, textOf } from './settingsResponse.js';
 
-// YouTube's own settings rows, moved into our categories.
-//
-// The rule this exists for: where YouTube already ships a switch for something, we move it rather
-// than shipping a second one beside it. That is not tidiness. The previews pair wrote the *same*
-// ENABLE_PREVIEWS_WITH_SOUND flag from two places and ours re-forced it on every page load, so
-// turning YouTube's off did not stay off.
+// YouTube's own rows moved into our categories, so no setting is shipped twice.
 
 const SUBSCRIPTION = 'tube_subscription';
 const PARENTAL = 'tube_parental';
@@ -63,44 +58,38 @@ const moveFor = (row, reachable) => {
         || (rule.setting && rule.setting === setting)
         || rule.title === title);
 
-    return move && reachable[move.to] ? move : null;
+    return move && reachable.has(move.to) ? move : null;
 };
 
-const reachableIn = (items) => items.reduce((reachable, item) => {
-    const found = categoryOf(item);
-    if (found) reachable[found.categoryId] = true;
-    return reachable;
-}, ADDED.reduce((seed, entry) => {
-    seed[entry.id] = true;
-    return seed;
-}, {}));
+const reachableIn = (items) => new Set(ADDED
+    .map((entry) => entry.id)
+    .concat(items.map(categoryOf).filter(Boolean).map((found) => found.categoryId)));
 
 const takeMoved = (items) => {
     const reachable = reachableIn(items);
 
-    const categories = items.map(categoryOf).filter((found) => found && Array.isArray(found.items));
+    const categories = items
+        .map((item) => ({ item, found: categoryOf(item) }))
+        .filter(({ found }) => found && Array.isArray(found.items))
+        .map(({ item, found }) => ({
+            item, found, rows: found.items.map((row) => ({ row, move: moveFor(row, reachable) }))
+        }));
 
-    const moved = categories.reduce((all, found) => all.concat(found.items
-        .map((row) => ({ row, move: moveFor(row, reachable) }))
-        .filter((entry) => entry.move)), []);
+    const taken = categories
+        .reduce((all, { rows }) => all.concat(rows.filter((entry) => entry.move)), [])
+        .reduce((grouped, entry) => Object.assign({}, grouped, {
+            [entry.move.to]: (grouped[entry.move.to] || []).concat([entry])
+        }), {});
 
-    const taken = moved.reduce((byTarget, entry) => ({
-        ...byTarget,
-        [entry.move.to]: (byTarget[entry.move.to] || []).concat([entry])
-    }), {});
-
-    categories.forEach((found) => {
-        found.items = found.items.filter((row) => !moveFor(row, reachable));
+    categories.forEach(({ found, rows }) => {
+        found.items = rows.filter((entry) => !entry.move).map((entry) => entry.row);
     });
 
     // Emptied categories are removed after the walk, not during it: splicing mid-iteration skips
     // whatever followed each removal.
-    const emptied = items.filter((item) => {
-        const found = categoryOf(item);
-        return found && Array.isArray(found.items) && found.items.length === 0;
-    });
-
-    emptied.forEach((item) => items.splice(items.indexOf(item), 1));
+    categories
+        .filter(({ found }) => found.items.length === 0)
+        .forEach(({ item }) => items.splice(items.indexOf(item), 1));
 
     return taken;
 };

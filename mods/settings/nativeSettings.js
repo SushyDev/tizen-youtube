@@ -48,8 +48,6 @@ function PatchSettings(response) {
     putMoved(items, taken);
 }
 
-// Registered here rather than called from the adblocker, which is where the whole settings UI
-// used to be loaded from as a side effect.
 onResponse('settings', ['items'], PatchSettings);
 
 const start = () => {

@@ -85,11 +85,6 @@ check('interceptJson is idempotent', () => {
     assert.strictEqual(JSON.parse, before, 'a second call wrapped the wrapper');
 });
 
-// The trap this exists to catch. A reader that deep-copies its response with
-// JSON.parse(JSON.stringify(x)) re-enters the hook, because the copy is a response as far as the
-// patched parse is concerned. Once a reader was registered for a tile-shaped root, that recursion
-// became real: dressing a tile copies it, the copy is dressed, and each round is bigger than the
-// last. clone() goes through the originals so it cannot happen.
 check('a reader that clones its response is not re-entered', () => {
     const runs = { n: 0 };
 

@@ -1,10 +1,4 @@
-// Giving up on a segment the viewer keeps seeking back into.
-//
-// Skipping is right the first time and wrong the third: someone who lands back inside the same
-// stretch twice within a second is doing it deliberately, and the only useful thing left to do is
-// say so once and stop fighting them.
-//
-// `now` is passed in rather than read, so this can be exercised without waiting.
+// Stops skipping a segment the viewer re-enters within WINDOW ms, and says so once.
 
 const WINDOW = 1000;
 

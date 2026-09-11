@@ -2,9 +2,7 @@ import { displayLanguage, displayRegion } from './languageNames.js';
 
 // Every language YouTube will auto-translate a caption track into, named for a menu.
 //
-// The codes are the fixed part. The names are not: Intl.DisplayNames is asked for them where the
-// engine has it, and a set without it falls back to a table fetched from our own origin, which may
-// not have arrived yet at import. So this is built when it is first asked for.
+// Built on first use, because names may come from a table fetched after import.
 
 const CODES = [
     'af', 'sq', 'am', 'ar', 'hy', 'as', 'az', 'eu', 'be', 'bn', 'bs', 'bg',

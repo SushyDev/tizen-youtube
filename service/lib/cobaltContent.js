@@ -1,16 +1,11 @@
 'use strict';
 
-// Staging the container's Evergreen content directory.
-//
-// --content replaces that directory wholesale, so ours has to hold everything Cobalt's own does —
-// fonts, icu, licenses, certs — before the container will start against it. About 5.1MB, nearly
-// all of it icu/icudt68l.dat, copied once and then never again.
+// Stages a copy of Cobalt's own content, because --content replaces the directory wholesale.
 
 const fs = require('fs');
 const path = require('path');
 
 const postmortem = require('./postmortem.js');
-const { existingMaterial } = require('./cobaltCa.js');
 
 const STOCK = '/usr/apps/com.samsung.tv.cobalt/content/app/cobalt/content';
 
@@ -40,18 +35,14 @@ const cobaltIsInstalledHere = () => {
     try { return fs.statSync(STOCK).isDirectory(); } catch (e) { return false; }
 };
 
-const stagedMaterial = (content) => {
-    const copied = copyInto(STOCK, content);
-    if (copied) note('staged', `${copied} files into ${content}`);
-
-    return existingMaterial();
-};
-
 // Answered rather than thrown, so a staging failure is reported through the same path everything
 // else in prepare() is.
 const stageOrFail = (content) => {
     try {
-        return { material: stagedMaterial(content) };
+        const copied = copyInto(STOCK, content);
+        if (copied) note('staged', `${copied} files into ${content}`);
+
+        return {};
     } catch (error) {
         return { error };
     }

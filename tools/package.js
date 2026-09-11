@@ -6,19 +6,11 @@ const { join, dirname, relative, sep } = require('path');
 const JSZip = require('jszip');
 
 const ui = require('./report.js');
-const { load, ROOT } = require('./config.js');
+const { load, parseUrl, ROOT } = require('./config.js');
 const paths = require('./paths.js');
 const { PROXY } = require('../service/lib/ports.js');
 
 const APP = { output: paths.WGT, include: paths.WIDGET };
-
-function asUrl(value) {
-    try {
-        return new URL(value);
-    } catch (e) {
-        return null;
-    }
-}
 
 function friendly(message) {
     const error = new Error(message);
@@ -73,7 +65,7 @@ function addCobaltProfile(staging) {
     }
 
     const checkUrl = (name, value, scheme) => {
-        const parsed = asUrl(value);
+        const parsed = parseUrl(value);
 
         if (!parsed) throw friendly(`${name} is not a URL: ${value}`);
         if (parsed.protocol !== scheme) throw friendly(`${name} must use ${scheme.slice(0, -1)}.`);

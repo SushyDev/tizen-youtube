@@ -1,10 +1,7 @@
 import { until } from './schedule.js';
 import { booted } from './register.js';
 
-// Taken before anything is patched. A mod that deep-copies with JSON.parse(JSON.stringify(x))
-// would otherwise re-enter this whole pipeline: the copy is a response as far as the hook is
-// concerned, so it gets read, and a reader that copies again does it once more each time. A
-// tile-shaped copy matches a reader, which made that recursion real and expensive.
+// Captured before interception so clone() never re-enters the readers.
 const original = { parse: JSON.parse, stringify: JSON.stringify };
 
 const clone = (value) => original.parse(original.stringify(value));

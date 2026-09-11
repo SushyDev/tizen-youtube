@@ -95,4 +95,4 @@ function load(options) {
     return config;
 }
 
-module.exports = { load, gitStamp, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };
+module.exports = { load, gitStamp, parseUrl, CONFIG_PATH, ROOT, PLACEHOLDER_HOSTS };

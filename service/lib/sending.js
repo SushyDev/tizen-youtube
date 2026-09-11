@@ -1,12 +1,6 @@
 'use strict';
 
-// Making the request upstream, and making it again when the connection was the problem.
-//
-// Two failures are worth a second attempt and neither is the server's fault. A pooled socket that
-// died while idle is handed out anyway and the request dies on it — newer Node retries that itself,
-// but the Node inside a Tizen service is old enough that nothing does. And YouTube's header block
-// is larger than Node's HTTP/1 parser will accept, with no way to raise the limit from in here, so
-// that request goes again over HTTP/2. Neither retry is possible once a body has been streamed.
+// Sends upstream, retrying once on a dead pooled socket or a header overflow.
 
 const fetch = require('node-fetch');
 const http = require('http');
@@ -53,4 +47,5 @@ const send = (url, req, headers) => {
         return fetch(url, Object.assign({}, options, { agent: undefined }));
     });
 };
-module.exports = { send, isRetriable };
+
+module.exports = { send };

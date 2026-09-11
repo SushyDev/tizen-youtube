@@ -1,6 +1,7 @@
 'use strict';
 
 const os = require('os');
+const crypto = require('crypto');
 
 const postmortem = require('./lib/postmortem.js');
 postmortem.watch();
@@ -105,14 +106,24 @@ const describeState = () => {
     };
 };
 
-app.get('/__tube/state', (_, res) => {
+// These expose internal state/logs, so — same as the dev bridge's /eval — a token gates them.
+const ADMIN_TOKEN = process.env.TUBE_ADMIN_TOKEN || crypto.randomBytes(8).toString('hex');
+console.log(`[tube] admin routes need token ${ADMIN_TOKEN} (?token= or x-tube-token header)`);
+
+const requireAdminToken = (req, res, next) => {
+    const supplied = (req.query && req.query.token) || req.get('x-tube-token') || '';
+    if (supplied === ADMIN_TOKEN) return next();
+    return res.status(403).json({ error: 'wrong token' });
+};
+
+app.get('/__tube/state', requireAdminToken, (_, res) => {
     maybeCheckForUpdate();
     res.json(describeState());
 });
 
 // Inside the container there is no console and no dev bridge, so this route is the only way to
 // read what the service did.
-app.get('/__tube/log', (_, res) => {
+app.get('/__tube/log', requireAdminToken, (_, res) => {
     res.type('text/plain').send(postmortem.read() || '(nothing logged)');
 });
 

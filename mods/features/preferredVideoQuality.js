@@ -102,7 +102,7 @@ function watchPreferredQuality() {
             player.addEventListener('onStateChange', tick);
             tick();
         },
-        { every: ATTACH_EVERY }
+        { everyMs: ATTACH_EVERY }
     );
 
     function tick() {

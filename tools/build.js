@@ -24,7 +24,7 @@ const STEPS = [
         label: 'service bundle',
         workspace: 'service',
         outputs: ['service/dist/index.js'],
-        summarise: (sizes) => `${ui.bytes(sizes[0])} · syntax floor verified`
+        summarise: (sizes) => `${ui.bytes(sizes[0])} · floor verified`
     }
 ];
 

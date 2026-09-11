@@ -85,7 +85,6 @@ module.exports = [
             '**/node_modules/**',
             '**/dist/**',
             '**/release/**',
-            '**/.ncc/**',
             '**/.package/**',
             'mods/tiny-sha256.js'
         ]

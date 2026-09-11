@@ -21,6 +21,8 @@
     "lint": "eslint .",
     "build": "node tools/build.js",
     "test": "node tools/test.js",
+    "test:matrix": "node tools/matrix.js",
+    "probe:engine": "node tools/engine-probe.js",
     "package": "node tools/package.js",
     "release": "node tools/release.js",
     "dev": "npm run dev --workspace ui",
@@ -32,6 +34,7 @@
     "version:set": "node tools/version.js --set"
   },
   "devDependencies": {
+    "acorn": "^8.14.0",
     "eslint": "^10.9.1",
     "jszip": "^3.10.1"
   }

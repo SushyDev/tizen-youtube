@@ -1,3 +1,5 @@
+# Everything that can be checked without a television.
+
 name: CI
 
 on:
@@ -34,3 +36,42 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # The bundle is self-contained, so it is the whole of what the matrix below needs.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-bundle
+          path: service/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  runtimes:
+    name: node ${{ matrix.node }}
+    needs: check
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '12.16.3'   # verified on hardware: Tizen 6.5, Cobalt 3.2.1
+          - node: '14.21.3'
+          - node: '16.20.2'
+          - node: '18.18.2'   # verified on hardware: Tizen 9.0, Cobalt 5.2.1
+          - node: '20.18.1'
+          - node: '22.12.0'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: service-bundle
+          path: service/dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Load and answer on node ${{ matrix.node }}
+        run: node service/test/smoke.js

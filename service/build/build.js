@@ -1,70 +1,35 @@
 'use strict';
 
 const { execFileSync } = require('child_process');
-const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, rmSync, readdirSync, statSync } = require('fs');
+const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } = require('fs');
 const { join } = require('path');
-const babel = require('@babel/core');
 
 const { load } = require('../../tools/config.js');
 const { injectTokens } = require('../../tools/inject.js');
 
 const config = load();
 const root = join(__dirname, '..');
-const staging = join(root, '.ncc');
 const outDir = join(root, 'dist');
+const bundle = join(outDir, 'index.js');
 const assetsDir = join(outDir, 'assets');
 const modsDist = join(root, '..', 'dist');
 
-function run(cmd, args) {
-    execFileSync(cmd, args, { cwd: root, stdio: 'inherit' });
-}
+const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: 'inherit' });
 
-console.log('[1/4] bundling with ncc');
-run('npx', ['ncc', 'build', 'index.js', '-o', staging, '--no-source-map-register']);
+const kb = (bytes) => `${Math.round(bytes / 1024)}kB`;
 
-console.log('[2/4] lowering the bundle for Node 4.4.3');
-const result = babel.transformSync(readFileSync(join(staging, 'index.js'), 'utf8'), {
-    configFile: join(root, 'babel.config.json'),
-    sourceType: 'script',
-    compact: false,
-    sourceMaps: false,
-    generatorOpts: { compact: false }
-});
+// Vite empties dist/, so the userscript has to be embedded after it and not before.
+console.log('[1/4] bundling for node 12');
+run('npx', ['vite', 'build']);
 
-let code = result.code;
+console.log('[2/4] stamping the origin');
+const stamped = injectTokens(readFileSync(bundle, 'utf8'), {
+    __TUBE_ORIGIN__: config.origin
+}).code;
 
-code = injectTokens(code, { __TUBE_ORIGIN__: config.origin }).code;
+writeFileSync(bundle, stamped);
 console.log(`      origin: ${config.origin}`);
-
-if (code.indexOf('regeneratorRuntime') !== -1) {
-    console.log('      prepending regeneratorRuntime');
-    const runtime = readFileSync(require.resolve('regenerator-runtime/runtime.js'), 'utf8');
-    code = `${runtime}\nvar regeneratorRuntime = global.regeneratorRuntime;\n${code}`;
-}
-
-if (!existsSync(outDir)) mkdirSync(outDir);
-writeFileSync(join(outDir, 'index.js'), code);
-console.log(`      dist/index.js  ${Math.round(Buffer.byteLength(code) / 1024)}kB`);
-
-function copyTree(from, to) {
-    if (!existsSync(to)) mkdirSync(to);
-    readdirSync(from).forEach((entry) => {
-        const source = join(from, entry);
-        const target = join(to, entry);
-        if (statSync(source).isDirectory()) return copyTree(source, target);
-        copyFileSync(source, target);
-    });
-}
-
-readdirSync(staging).forEach((entry) => {
-    if (entry === 'index.js') return;
-    const source = join(staging, entry);
-    if (statSync(source).isDirectory()) copyTree(source, join(outDir, entry));
-    else copyFileSync(source, join(outDir, entry));
-    console.log(`      carried ncc asset: ${entry}`);
-});
-
-rmSync(staging, { recursive: true, force: true });
+console.log(`      dist/index.js  ${kb(Buffer.byteLength(stamped))}`);
 
 console.log('[3/4] embedding the userscript');
 const userScript = join(modsDist, 'userScript.js');
@@ -75,9 +40,9 @@ if (!existsSync(userScript)) {
     process.exit(1);
 }
 
-if (!existsSync(assetsDir)) mkdirSync(assetsDir);
+mkdirSync(assetsDir, { recursive: true });
 copyFileSync(userScript, join(assetsDir, 'userScript.js'));
-console.log(`      dist/assets/userScript.js  ${Math.round(readFileSync(userScript).length / 1024)}kB`);
+console.log(`      dist/assets/userScript.js  ${kb(readFileSync(userScript).length)}`);
 
-console.log('[4/4] verifying Node 4.4.3 compatibility');
-run('node', [join(__dirname, 'check-node4.js'), join(outDir, 'index.js')]);
+console.log('[4/4] verifying the floor');
+run('node', [join(root, '..', 'tools', 'check-output.js'), bundle, 'node12']);

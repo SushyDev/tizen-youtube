@@ -4,19 +4,21 @@
 //
 //   node tools/engine-probe.js                       print the snippet to paste
 //   node tools/engine-probe.js --host 192.168.1.107  run it through that set's dev bridge
-//
-// tools/check-output.js holds the userscript to Chrome 63, because that is the target proven to run
-// on Cobalt 3.2.1 — not because Cobalt is that old. Run this on the oldest set you support and the
-// answer says which of the newer built-ins are really there, so the floor can be raised on evidence.
 
 const http = require('http');
 
 const ui = require('./ui.js');
+const { DEV } = require('../service/lib/ports.js');
 
-const DEV_PORT = 8097;
+const asJson = (text) => {
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        return null;
+    }
+};
 
-// Named so the reply reads as a table rather than a list of booleans. Each is a built-in that
-// check-output.js currently refuses for the browser bundle.
+// Named so the reply reads as a table rather than a list of booleans.
 const PROBE = `(function () {
     var has = {
         'flat (Chrome 69)': typeof [].flat === 'function',
@@ -58,26 +60,22 @@ if (!host) {
 
 const request = http.request({
     host,
-    port: DEV_PORT,
+    port: DEV,
     path: '/eval?seconds=20',
     method: 'POST',
     headers: { 'content-type': 'text/plain', 'x-tube-token': token }
 }, (response) => {
-    const parts = [];
-    response.on('data', (chunk) => parts.push(chunk));
+    const held = { parts: [] };
+    response.on('data', (chunk) => { held.parts = held.parts.concat([chunk]); });
     response.on('end', () => {
-        const body = Buffer.concat(parts).toString('utf8');
+        const body = Buffer.concat(held.parts).toString('utf8');
 
-        const answer = (() => {
-            try { return JSON.parse(body); } catch (e) { return null; }
-        })();
+        const answer = asJson(body);
 
         if (!answer) return ui.crash(new Error(`${host} did not answer JSON: ${body.slice(0, 200)}`));
         if (answer.error) return ui.crash(Object.assign(new Error(answer.error), { isFriendly: true }));
 
-        const value = (() => {
-            try { return JSON.parse(answer.value); } catch (e) { return null; }
-        })();
+        const value = asJson(answer.value);
 
         if (!value) return ui.crash(new Error(`could not read the reply: ${String(answer.value).slice(0, 200)}`));
 
@@ -99,7 +97,7 @@ const request = http.request({
 });
 
 request.on('error', (error) => ui.crash(Object.assign(
-    new Error(`could not reach the dev bridge on ${host}:${DEV_PORT} — ${error.message}\n\n`
+    new Error(`could not reach the dev bridge on ${host}:${DEV} — ${error.message}\n\n`
         + '  It only listens in a TUBE_DEV=1 build with diagnostics switched on.'),
     { isFriendly: true }
 )));

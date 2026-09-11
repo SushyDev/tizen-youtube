@@ -1,13 +1,6 @@
 'use strict';
 
-// Loads the built bundle and asks it a question, on whatever Node it is handed.
-//
-// A parser cannot see a module that does not resolve: `require('fs/promises')` satisfies every
-// syntax check on a modern laptop and kills the service on its first require on the set. Only
-// actually loading the bundle catches that, and it costs about a second.
-//
-// Written in the old style on purpose — this file is never transpiled, so it has to parse on the
-// oldest runtime in the matrix.
+// Written in ES5 because this file is never transpiled and must parse on the oldest Node in the matrix.
 
 var http = require('http');
 var os = require('os');
@@ -29,11 +22,15 @@ function pass(message) {
 var scratch = path.join(os.tmpdir(), 'tube-smoke-' + process.pid + '-' + Date.now());
 fs.mkdirSync(scratch);
 
+process.on('exit', function () {
+    (fs.rmSync || fs.rmdirSync)(scratch, { recursive: true, force: true });
+});
+
 process.env.TUBE_PROXY_PORT = String(PORT);
 process.env.TUBE_CACHE_DIR = scratch;
 process.env.TUBE_LOG = path.join(scratch, 'service.log');
 
-// Unroutable, so the update check fails fast instead of reaching the network from CI.
+// A closed loopback port, so the update check fails at once instead of reaching the network from CI.
 process.env.TUBE_ORIGIN = 'http://127.0.0.1:1';
 
 var entry = path.join(__dirname, '..', 'dist', 'index.js');
@@ -59,9 +56,8 @@ function get(pathname, done) {
     request.setTimeout(4000, function () { request.destroy(); });
 }
 
-// Serving its own files proves very little: the service exists to fetch. `require('node-fetch')`
-// resolving to an ES module namespace instead of the function shipped once, and nothing here saw
-// it, because every route that does not reach upstream still answers perfectly.
+// Every route that stays local answers even when fetch is broken, so only an upstream round trip
+// proves it works.
 function checkItCanFetchUpstream() {
     var upstream = http.createServer(function (request, response) {
         response.writeHead(200, { 'content-type': 'text/plain' });

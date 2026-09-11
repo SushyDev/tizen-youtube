@@ -139,9 +139,6 @@ looking at it needs a stand-in that answers and never hands over. That is
 `ui/dev/service.js`, and each state `boot.js` can meet is a query string —
 `?boot=debugger`, `?boot=failed`, `?boot=slow`, `?boot=script`.
 
-The service binds `:8099` either way, so `npm test` and `npm run dev` cannot
-run at the same time; the test suite says so rather than failing obscurely.
-
 | Path | |
 | --- | --- |
 | `mods/core.js` | The userscript's entry: what is patched, and when |
@@ -155,7 +152,7 @@ run at the same time; the test suite says so rather than failing obscurely.
 | `ui/src/boot.js` | The boot screen, which exists to disappear |
 | `ui/dev/tube.js` | `npm run dev`: the real service and the userscript watcher, beside Vite |
 
-**One floor, enforced three ways.** Two device pairs are verified on hardware —
+Two device pairs are verified on hardware —
 Tizen 6.5 / node 12.16.3 / Cobalt 3.2.1, and Tizen 9.0 / node 18.18.2 /
 Cobalt 5.2.1 — and everything between them is unverified, so the lower pair is
 the floor. `tools/check-output.js` reads every built bundle and refuses a
@@ -168,8 +165,8 @@ came to ship into a Chromium 47 bundle unnoticed.
 A syntax gate cannot see a module that does not resolve either:
 `require('fs/promises')` passes every check on a modern runner and kills the
 service on its first require on the set. So `service/test/smoke.js` loads the
-built bundle for real and asks it a question, on each Node a television is known
-to run — in CI as the `runtimes` job, and locally as `npm run test:matrix`.
+built bundle for real and asks it a question, on the two verified runtimes and
+the versions around them — in CI as the `runtimes` job, and locally as `npm run test:matrix`.
 `tools/engine-probe.js` measures what Cobalt actually supports, for raising the
 floor on evidence rather than on hope.
 

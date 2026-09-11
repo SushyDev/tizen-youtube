@@ -10,8 +10,6 @@ const TV = process.env.TUBE_TV || '';
 const SCENARIOS = !TV && process.env.TUBE_BOOT === 'scenarios';
 const LOCAL = !TV && !SCENARIOS;
 
-// The boot screen runs in the set's own webview, and only in a TUBE_COBALT_CONTAINER=off
-// build. Chromium 63 is what has shipped and run; the fallback path is not worth a risk.
 const ENGINE = 'chrome >= 63';
 
 export default defineConfig({

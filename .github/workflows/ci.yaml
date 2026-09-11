@@ -1,12 +1,4 @@
 # Everything that can be checked without a television.
-#
-# The build runs here because `ui/build.js` refuses CSS a Tizen webview would silently drop, and
-# `tools/check-output.js` refuses a built-in newer than the floor.
-#
-# A syntax gate cannot see a module that does not resolve: `require('fs/promises')` passes every
-# check on a modern runner and kills the service on its first require on the set. So `runtimes`
-# loads the built bundle for real, on each Node a television is known to run. Locally the same
-# matrix is `npm run test:matrix`.
 
 name: CI
 
@@ -57,9 +49,6 @@ jobs:
     name: node ${{ matrix.node }}
     needs: check
     runs-on: ubuntu-latest
-
-    # Below the floor is reported, not enforced: a red mark for a runtime nothing uses gets ignored.
-    continue-on-error: ${{ matrix.below_floor == true }}
 
     strategy:
       fail-fast: false

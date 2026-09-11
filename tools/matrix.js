@@ -3,18 +3,6 @@
 // Runs the bundle smoke test on every Node this service has to survive.
 //
 //   npm run test:matrix [-- --serial] [-- 12.16.3 18.18.2]
-//
-// A syntax gate walks the AST and cannot see that `require('fs/promises')` resolves nowhere before
-// Node 14 — a build that passes every check on a laptop then installs, launches, and never opens
-// its port. Loading the bundle under an old runtime catches it in about a second.
-//
-// Two pairs are verified on real hardware and nothing between them is:
-//
-//   Tizen 6.5   node 12.16.3   Cobalt 3.2.1   <- the floor
-//   Tizen 9.0   node 18.18.2   Cobalt 5.2.1
-//
-// The versions in between are run anyway, as margin — a set that reports something else is more
-// likely than a set that reports one of those two exactly.
 
 const { execFile } = require('child_process');
 const { existsSync } = require('fs');
@@ -32,12 +20,9 @@ const TARGETS = [
     { node: '22.12.0', note: 'newer than any set seen — margin' }
 ];
 
-const FLOOR = 12;
 const BASE_PORT = 8400;
 
 const SMOKE = join(ROOT, 'service', 'test', 'smoke.js');
-
-const major = (version) => Number(String(version).split('.')[0]);
 
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 
@@ -57,11 +42,9 @@ const smokeOn = (target, index) => {
 };
 
 const report = (result) => {
-    const belowFloor = major(result.target.node) < FLOOR;
     const label = `node ${result.target.node}`;
 
     if (result.ok) return ui.ok(label, result.target.note);
-    if (belowFloor) return ui.warn(`${label} below the floor, not enforced — ${result.target.note}`);
 
     ui.fail(label, result.target.note);
     result.out.split('\n').filter((line) => line.trim()).slice(-8)
@@ -93,6 +76,18 @@ const main = async () => {
         );
     }
 
+    const installed = (await run('fnm', ['list'])).out.match(/v\d+\.\d+\.\d+/g) || [];
+    const missing = targets
+        .map((target) => target.node)
+        .filter((version) => installed.indexOf(`v${version}`) === -1);
+
+    if (missing.length) {
+        throw friendly(
+            `node ${missing.join(', ')} is not installed, so the bundle was not run on it.\n\n`
+            + missing.map((version) => `  fnm install ${version}`).join('\n')
+        );
+    }
+
     ui.heading('matrix', `${targets.length} runtimes`);
 
     const results = serial
@@ -106,12 +101,12 @@ const main = async () => {
 
     results.forEach(report);
 
-    const broken = results.filter((result) => !result.ok && major(result.target.node) >= FLOOR);
+    const broken = results.filter((result) => !result.ok);
 
     ui.blank();
     if (broken.length) throw friendly(`The bundle does not run on ${broken.map((r) => r.target.node).join(', ')}.`);
 
-    ui.note(`The bundle loads and answers on every runtime at or above node ${FLOOR}.`);
+    ui.note(`The bundle loads and answers on node ${targets.map((target) => target.node).join(', ')}.`);
     ui.blank();
 };
 

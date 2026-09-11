@@ -10,7 +10,6 @@ const ARTEFACTS = [
     'dist',
     'ui/dist',
     'service/dist',
-    'service/.ncc',
     'release'
 ];
 

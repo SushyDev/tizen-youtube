@@ -22,8 +22,6 @@ const kb = (bytes) => `${Math.round(bytes / 1024)}kB`;
 console.log('[1/4] bundling for node 12');
 run('npx', ['vite', 'build']);
 
-// Literal substitution that throws if a token is missing or survives, so a bundle can never ship
-// still asking for the placeholder.
 console.log('[2/4] stamping the origin');
 const stamped = injectTokens(readFileSync(bundle, 'utf8'), {
     __TUBE_ORIGIN__: config.origin
@@ -42,7 +40,7 @@ if (!existsSync(userScript)) {
     process.exit(1);
 }
 
-if (!existsSync(assetsDir)) mkdirSync(assetsDir, { recursive: true });
+mkdirSync(assetsDir, { recursive: true });
 copyFileSync(userScript, join(assetsDir, 'userScript.js'));
 console.log(`      dist/assets/userScript.js  ${kb(readFileSync(userScript).length)}`);
 

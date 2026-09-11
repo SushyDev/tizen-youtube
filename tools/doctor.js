@@ -29,7 +29,7 @@ check('dependencies installed', () => {
     if (!existsSync(join(ROOT, 'node_modules'))) {
         throw new Error('No node_modules. Run: npm install');
     }
-    const probes = ['rollup', '@vercel/ncc', '@babel/core', 'vite', 'eslint'];
+    const probes = ['rollup', '@babel/core', 'vite', 'eslint'];
     const missing = probes.filter((name) => !existsSync(join(ROOT, 'node_modules', name)));
     if (missing.length) {
         throw new Error(`Missing ${missing.join(', ')}. Run: npm install`);

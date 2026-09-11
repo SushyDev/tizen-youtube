@@ -1,0 +1,32 @@
+{
+  "//": "Types without a TypeScript step; nothing here touches what the build emits, and no file is renamed.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": []
+  },
+  "include": [
+    "framework/**/*.js",
+    "framework/**/*.d.ts",
+    "mods/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "mods/player/customUI.js",
+    "mods/player/pictureInPicture.js",
+    "mods/settings/settingsModel.js",
+    "mods/commands/interpreters.js"
+  ]
+}

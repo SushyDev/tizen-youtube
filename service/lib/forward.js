@@ -5,7 +5,7 @@
 const net = require('net');
 const URL = require('url');
 
-const journal = require('./journal.js');
+const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 const mitm = require('./mitm.js');
 
@@ -72,7 +72,7 @@ const tunnel = (server) => {
             client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
             if (head && head.length) client.unshift(head);
 
-            journal.service('mitm', `open ${req.url}`);
+            dev.journal.service('mitm', `open ${req.url}`);
             secure.emit('connection', client);
             return;
         }
@@ -87,7 +87,7 @@ const tunnel = (server) => {
 
         const drop = (error) => {
             if (error) {
-                journal.service('tunnel', `broke ${req.url}: ${error.message}`);
+                dev.journal.service('tunnel', `broke ${req.url}: ${error.message}`);
                 record('tunnel', `${req.url} ${error.code || error.message}`);
             }
 
@@ -95,9 +95,9 @@ const tunnel = (server) => {
             client.destroy();
         };
 
-        if (journal.wanted()) {
-            journal.service('tunnel', `open ${req.url}`);
-            client.on('close', () => journal.service('tunnel', `shut ${req.url} after ${upstream.bytesRead}b`));
+        if (dev.journal.wanted()) {
+            dev.journal.service('tunnel', `open ${req.url}`);
+            client.on('close', () => dev.journal.service('tunnel', `shut ${req.url} after ${upstream.bytesRead}b`));
         }
 
         upstream.on('error', drop);

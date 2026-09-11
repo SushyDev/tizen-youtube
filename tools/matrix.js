@@ -8,8 +8,8 @@ const { execFile } = require('child_process');
 const { existsSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
-const { ROOT } = require('./config.js');
+const ui = require('./report.js');
+const { load, ROOT } = require('./config.js');
 
 const TARGETS = [
     { node: '12.16.3', note: 'Tizen 6.5 — verified on hardware, and the floor' },
@@ -20,7 +20,7 @@ const TARGETS = [
     { node: '22.12.0', note: 'newer than any set seen — margin' }
 ];
 
-const BASE_PORT = 8400;
+const BASE_PORT = load().ports.matrix;
 
 const SMOKE = join(ROOT, 'service', 'test', 'smoke.js');
 

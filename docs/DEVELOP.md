@@ -6,7 +6,8 @@
 | --- | --- |
 | `npm run doctor` | Check prerequisites when something looks wrong |
 | `npm run build` | Userscript and service |
-| `npm test` | Lint, then the mods and service suites |
+| `npm run typecheck` | `tsc --noEmit` on its own |
+| `npm test` | Lint, types, then the userscript and service suites |
 | `npm run package` | Build an unsigned `.wgt` for Tizen Homebrew |
 | `npm run release` | Stage `release/origin/` — the userscript, the language names and `latest.json` |
 | `npm run dev` | YouTube with the mods in a browser, no hardware needed |

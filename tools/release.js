@@ -4,7 +4,7 @@ const { createHash } = require('crypto');
 const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, rmSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./ui.js');
+const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
 
 let config;
@@ -14,8 +14,10 @@ try {
     ui.crash(err);
 }
 
-const distDir = join(ROOT, 'dist');
-const assetsDir = join(ROOT, 'assets');
+const paths = require('./paths.js');
+
+const distDir = join(ROOT, paths.DIST);
+const assetsDir = join(ROOT, 'app', 'assets');
 
 const outDir = join(ROOT, 'release', 'origin');
 

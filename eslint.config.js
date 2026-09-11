@@ -79,17 +79,16 @@ const CORRECTNESS_RULES = {
 
 // TODO: reshape SIBLING_OWNED files once their branches land.
 const SIBLING_OWNED = [
-    'mods/features/pictureInPicture.js',
-    'mods/youtube/commands.js'
+    'mods/player/pictureInPicture.js',
+    'mods/commands/interpreters.js'
 ];
 
-const SHIPPED = ['service/**/*.js', 'mods/**/*.js'];
+const SHIPPED = ['service/**/*.js', 'framework/**/*.js', 'mods/**/*.js'];
 
 const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
-    'mods/test/**/*.js',
-    'service/build/**/*.js',
-    'mods/rollup.config.js'
+    'test/**/*.js',
+    'service/vite.config.mjs'
 ]);
 
 const STYLE_RULES = {
@@ -116,7 +115,7 @@ module.exports = [
             '**/dist/**',
             '**/release/**',
             '**/.package/**',
-            'mods/tiny-sha256.js'
+            'framework/tiny-sha256.js'
         ]
     },
     {
@@ -130,8 +129,7 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        files: ['mods/**/*.js'],
-        ignores: ['mods/test/**/*.js'],
+        files: ['framework/**/*.js', 'mods/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
@@ -140,7 +138,7 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        files: ['mods/rollup.config.js'],
+        files: ['tools/rollup.config.mjs'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
@@ -149,11 +147,18 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        files: ['mods/test/**/*.js'],
+        files: ['test/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
-            globals: NODE_GLOBALS
+            // A test that stands in for the page stubs what the page would have provided, so the
+            // shipped code it exercises can be copied verbatim rather than adapted to run here.
+            globals: Object.assign({}, NODE_GLOBALS, {
+                window: 'readonly',
+                document: 'readonly',
+                location: 'writable',
+                CustomEvent: 'readonly'
+            })
         },
         rules: CORRECTNESS_RULES
     },
@@ -161,6 +166,35 @@ module.exports = [
         files: SHIPPED,
         ignores: UNSTYLED,
         rules: STYLE_RULES
+    },
+
+    {
+        files: ['framework/**/*.js'],
+        rules: {
+            'no-restricted-imports': ['error', {
+                patterns: [{
+                    group: ['**/mods/**', '**/service/**', '**/tools/**'],
+                    message: 'the framework may not know a feature exists — invert it with register()'
+                }]
+            }]
+        }
+    },
+    {
+        files: ['mods/**/*.js'],
+        rules: {
+            'no-restricted-imports': ['error', {
+                patterns: [
+                    {
+                        group: ['**/framework/*', '!**/framework/index.js'],
+                        message: 'import from framework/index.js — the rest of the framework is private'
+                    },
+                    {
+                        group: ['**/service/**', '**/tools/**'],
+                        message: 'a mod may not reach the service or the build tools'
+                    }
+                ]
+            }]
+        }
     },
     // Not shipped and not Node either: it is injected into the page by the dev service.
     {

@@ -12,7 +12,6 @@
     "node": ">=20"
   },
   "workspaces": [
-    "mods",
     "service"
   ],
   "scripts": {
@@ -29,11 +28,22 @@
     "clean": "node tools/clean.js",
     "version": "node tools/version.js",
     "version:check": "node tools/version.js --check",
-    "version:set": "node tools/version.js --set"
+    "version:set": "node tools/version.js --set",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.22.9",
+    "@rollup/plugin-babel": "^6.0.3",
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-replace": "^6.0.3",
+    "@rollup/plugin-terser": "^0.4.3",
     "acorn": "^8.14.0",
     "eslint": "^10.9.1",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "rollup": "^3.26.2",
+    "rollup-plugin-string": "^3.0.0",
+    "typescript": "^7.0.2"
   }
 }

@@ -1,6 +1,7 @@
 # Everything that can be checked without a television.
 #
-# The build runs here because `tools/check-output.js` refuses a built-in newer than the floor.
+# The build runs here because `tools/check-output.js` refuses a built-in newer than the floor, and
+# `npm test` gates on eslint, `tsc --noEmit`, the userscript suites and the service suites.
 
 name: CI
 

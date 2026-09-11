@@ -86,8 +86,6 @@ const PAGES = [
   { label: 'More', value: 'more' }
 ];
 
-// Home is the empty value on purpose: it is where the app goes when nothing is chosen, so it is
-// the off position of this setting as well as one of its answers.
 const START_PAGES = [
   { label: 'Home', value: '' },
   { label: 'Subscriptions', value: 'FEsubscriptions' },

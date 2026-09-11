@@ -28,13 +28,12 @@ import './dev/index.js';
 register('origin rewrite', 'network', startNetwork);
 register('native settings', 'settings', startSettings);
 register('ui shell', 'ui', startShell);
-
-// Every phase runs in the same tick as this file, which is what puts the launch parameter in the
-// URL before kabuki gets round to reading it.
 register('start page', 'ui', startPage);
 register('playback speed', 'ui', startSpeed);
 
 // Taking over JSON.parse seals registration, so it is a phase rather than a last line.
 register('json', 'intercept', interceptJson);
 
+// Synchronous, and it has to stay that way: the start page writes what kabuki's own script reads
+// as it starts, which works only because ours is parser-inserted.
 boot();

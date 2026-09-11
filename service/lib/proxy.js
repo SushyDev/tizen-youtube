@@ -160,16 +160,15 @@ const attachFallback = (app) => {
 
         return send(route.url, req, headers)
             .then((response) => {
-                res.status(response.status);
-
                 if (route.isBypass) dev.journal.service('answered', `${response.status} ${route.url.slice(0, 110)}`);
-
-                copyHeaders(req, res, response, route);
 
                 const contentType = response.headers.get('content-type') || '';
                 const textual = TEXTUAL.some((type) => contentType.indexOf(type) !== -1);
 
                 if (!textual) {
+                    res.status(response.status);
+                    copyHeaders(req, res, response, route);
+
                     if (!response.body) return res.end();
 
                     // A viewer who closes the page leaves a media stream being pulled into a socket
@@ -181,11 +180,14 @@ const attachFallback = (app) => {
                     return response.body.pipe(res);
                 }
 
-                return readText(response, route.url, req, headers).then((text) => {
+                return readText(response, route.url, req, headers).then(({ response: source, text }) => {
+                    res.status(source.status);
+                    copyHeaders(req, res, source, route);
+
                     const injectionOrigin = route.asTheRealHost && req.headers.host
                         ? `https://${req.headers.host}`
                         : null;
-                    const nonce = route.asTheRealHost ? nonceOf(response.headers.get(CSP_HEADER)) : null;
+                    const nonce = route.asTheRealHost ? nonceOf(source.headers.get(CSP_HEADER)) : null;
 
                     const injected = rewriteAttestation(
                         rewriteBody(text, req.url, injectionOrigin, nonce), route.url

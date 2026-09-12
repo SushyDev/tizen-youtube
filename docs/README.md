@@ -79,3 +79,9 @@ Licensed GPL-3.0-only. Derived from
 [TizenTube](https://github.com/reisxd/TizenTube) and
 [youtube-webos](https://github.com/webosbrew/youtube-webos), and from the people
 who worked out what a Samsung TV will and will not allow.
+
+The Cobalt container route was first published here on 2026-09-06, in
+[#16](https://github.com/SushyDev/tizen-youtube/pull/16),
+[#26](https://github.com/SushyDev/tizen-youtube/pull/26) and
+[#27](https://github.com/SushyDev/tizen-youtube/pull/27). TizenTube's own Cobalt build followed on
+2026-09-11; [REISXD.md](REISXD.md) compares the two.

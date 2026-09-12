@@ -10,6 +10,7 @@ const forward = require('./forward.js');
 const dev = require('../dev/index.js');
 const ports = require('./ports.js');
 const postmortem = require('./postmortem.js');
+const protection = require('./protection.js');
 const { upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js');
@@ -28,6 +29,9 @@ const CSP_HEADER = 'content-security-policy';
 const TRACE_LIMIT = 40;
 
 const state = { traced: 0 };
+
+// Readable.destroy arrived in node 8; before it the stream is unhooked and drained instead.
+const release = (stream) => (typeof stream.destroy === 'function' ? stream.destroy() : stream.unpipe().resume());
 
 // A wildcard is refused for a request that carries cookies, so when the page names itself the
 // answer names it back.
@@ -185,8 +189,9 @@ const attachFallback = (app) => {
                     // A viewer who closes the page leaves a media stream being pulled into a socket
                     // nothing reads; and a source that breaks mid-pipe would otherwise hang the
                     // client for ever.
-                    res.on('close', () => response.body.destroy());
+                    res.on('close', () => release(response.body));
                     response.body.on('error', (error) => fail('upstream stream broke', error));
+                    protection.watch(route.url, response.body);
 
                     return response.body.pipe(res);
                 }
@@ -220,4 +225,9 @@ const attachFallback = (app) => {
 
     return app;
 };
-module.exports = { create, attachFallback };
+// Each page load gets its own trace, so a launch that failed before a working one is still on record.
+const retrace = () => {
+    state.traced = 0;
+};
+
+module.exports = { create, attachFallback, retrace };

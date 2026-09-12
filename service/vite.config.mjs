@@ -19,6 +19,7 @@ const LEGACY = process.env.TUBE_TARGET === 'legacy';
 
 const LEGACY_ENTRY = join(HERE, 'legacy', 'index.js');
 const HTTP2_STANDIN = join(HERE, 'legacy', 'http2.js');
+const URL_STANDIN = join(HERE, 'legacy', 'url.js');
 
 const polyfilled = (code) => babel.transformSync(code, {
     babelrc: false,
@@ -31,11 +32,13 @@ const polyfilled = (code) => babel.transformSync(code, {
     }]]
 }).code;
 
-// Narrows core-js to node 4.4.3's gaps and makes http2 optional; build-service.js lowers to ES5.
+// Narrows core-js to node 4.4.3's gaps, makes http2 optional and parses URLs the way node 4 can;
+// build-service.js lowers to ES5.
 const legacy = {
     name: 'tube-legacy',
     enforce: 'pre',
     resolveId: (source, importer) => {
+        if (source === 'whatwg-url') return URL_STANDIN;
         if (source !== 'http2' && source !== 'node:http2') return null;
         return importer === HTTP2_STANDIN ? { id: 'http2', external: true } : HTTP2_STANDIN;
     },

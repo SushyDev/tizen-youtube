@@ -77,8 +77,8 @@ jobs:
             legacy_only: true
           - node: '12.16.3'   # verified on hardware: Tizen 6.5, Cobalt 3.2.1
           - node: '14.21.3'
-          - node: '16.20.2'
-          - node: '18.18.2'   # verified on hardware: Tizen 9.0, Cobalt 5.2.1
+          - node: '16.5.0'    # verified on hardware: Tizen 5.5, Cobalt 23.lts Evergreen
+          - node: '18.18.2'   # verified on hardware: Tizen 9.0, Cobalt 25.lts
           - node: '20.18.1'
           - node: '22.12.0'
 

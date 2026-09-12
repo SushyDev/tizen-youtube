@@ -6,6 +6,16 @@ const TRACK = 'ytlr-multi-markers-player-bar-renderer div[idomkey="progress-bar"
 const CHAPTER = 'chapter-';
 const WHOLE_BAR = 'div[idomkey="segment"]';
 
+const BAR_HOSTS = ['YTLR-PROGRESS-BAR', 'YTLR-MULTI-MARKERS-PLAYER-BAR-RENDERER'];
+
+// Walked by hand: Cobalt 20 has no Element.closest.
+const insideTheBar = (element, depth) => {
+    if (!element || depth === 0) return false;
+    if (BAR_HOSTS.indexOf(String(element.tagName).toUpperCase()) !== -1) return true;
+
+    return insideTheBar(element.parentElement, depth - 1);
+};
+
 // Walked by hand: Cobalt's querySelectorAll has no prefix attribute match.
 const piecesOf = (track) => {
     const chapters = Array.prototype.slice.call(track.children)
@@ -14,7 +24,11 @@ const piecesOf = (track) => {
     if (chapters.length) return chapters;
 
     const whole = track.querySelector(WHOLE_BAR);
-    return whole ? [whole] : [];
+    if (whole) return [whole];
+
+    // The plain slider and the decorated bar have neither chapters nor a segment, so the track is
+    // the one piece.
+    return insideTheBar(track.parentElement, 8) ? [track] : [];
 };
 
 const chapterIn = (element) => {
@@ -63,4 +77,4 @@ const drawnBar = (duration) => {
     };
 };
 
-export { drawnBar, chapterIn, spansFor };
+export { drawnBar, chapterIn, spansFor, piecesOf };

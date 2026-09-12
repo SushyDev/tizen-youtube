@@ -9,6 +9,7 @@ const { join } = require('path');
 const buffer = require('../legacy/buffer.js');
 const http2 = require('../legacy/http2.js');
 const standIn = require('../legacy/fs.js');
+const { URL } = require('../legacy/url.js');
 
 const results = [];
 
@@ -44,6 +45,15 @@ check('recursive mkdir accepts a directory that exists', settles(() => standIn.m
 check('plain mkdir still refuses a directory that exists', !settles(() => standIn.mkdirSync(deep)));
 
 fs.rmSync(scratch, { recursive: true, force: true });
+
+const media = 'https://rr2---sn-3u-nf0r.googlevideo.com/videoplayback?id=o-1&itag=558';
+
+check('a googlevideo media host parses', String(new URL(media)) === media);
+check('its host name and scheme read as node-fetch reads them',
+    new URL(media).hostname === 'rr2---sn-3u-nf0r.googlevideo.com' && new URL(media).protocol === 'https:');
+check('a redirect resolves against the request',
+    String(new URL('/videoplayback?id=o-2', media)) === 'https://rr2---sn-3u-nf0r.googlevideo.com/videoplayback?id=o-2');
+check('a string with no scheme is refused', !settles(() => new URL('not a url')));
 
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);

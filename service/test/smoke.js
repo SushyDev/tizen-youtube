@@ -126,6 +126,47 @@ const checkItInterceptsTls = () => {
     });
 };
 
+// The player drops media requests all the time, and node below 8 has no stream destroy: it crashed.
+const checkItSurvivesADroppedStream = () => {
+    const chunk = 'x'.repeat(65536);
+
+    const upstream = http.createServer((request, response) => {
+        response.writeHead(200, { 'content-type': 'application/octet-stream' });
+        response.write(chunk);
+
+        const timer = setInterval(() => response.write(chunk), 20);
+        response.on('close', () => clearInterval(timer));
+        setTimeout(() => {
+            clearInterval(timer);
+            response.end();
+        }, 3000);
+    });
+
+    upstream.listen(0, '127.0.0.1', () => {
+        const target = `http://127.0.0.1:${upstream.address().port}/media`;
+
+        const request = http.get({ host: '127.0.0.1', port: PORT, path: `/cors-bypass/${target}` }, (response) => {
+            response.once('data', () => {
+                request.abort();
+
+                setTimeout(() => get('/__tube/state', (error, status) => {
+                    upstream.close();
+
+                    if (error || status !== 200) {
+                        return fail(`the service did not survive a dropped media stream${error ? `: ${error.message}` : ` (status ${status})`}`);
+                    }
+
+                    pass('it survives a media stream the page drops');
+
+                    return checkItInterceptsTls();
+                }), 300);
+            });
+        });
+
+        request.on('error', () => undefined);
+    });
+};
+
 // Local routes answer even when fetch is broken; only an upstream round trip proves it works.
 const checkItCanFetchUpstream = () => {
     const upstream = http.createServer((request, response) => {
@@ -159,7 +200,7 @@ const checkItCanFetchUpstream = () => {
 
                 pass('it can send a request body upstream');
 
-                return checkItInterceptsTls();
+                return checkItSurvivesADroppedStream();
             });
         });
     });

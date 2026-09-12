@@ -123,7 +123,12 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
-journalRoutes.attach(app);
+// The served page's boot line, so each load's requests are traced afresh.
+const retraceOnBoot = (line) => {
+    if (line.indexOf('booted ') === 0) proxy.retrace();
+};
+
+journalRoutes.attach(app, { heard: retraceOnBoot });
 bootRoutes.attach(app, { cobalt, script: () => describeState().script });
 
 // `relaunch` is passed in rather than reached for, because dev/ may not know about the container

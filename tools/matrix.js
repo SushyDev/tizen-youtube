@@ -19,7 +19,7 @@ const TARGETS = [
     { node: '10.24.1', note: 'unverified — margin', legacyOnly: true },
     { node: '12.16.3', note: 'Tizen 6.5 — verified on hardware, and the floor' },
     { node: '14.21.3', note: 'unverified — margin, and the first with require("fs/promises")' },
-    { node: '16.20.2', note: 'unverified — margin' },
+    { node: '16.5.0', note: 'Tizen 5.5 — verified on hardware' },
     { node: '18.18.2', note: 'Tizen 9.0 — verified on hardware' },
     { node: '20.18.1', note: 'newer than any set seen — margin' },
     { node: '22.12.0', note: 'newer than any set seen — margin' }

@@ -1,3 +1,5 @@
+import { presentAsYouTube, realOrigin } from './pageOrigin.js';
+
 // Hosts that refuse the page's origin are fetched through the service's /cors-bypass/ route.
 const PROXIED = [
     'googlevideo.com',
@@ -13,23 +15,22 @@ const OURS = ['youtube.com', 'www.youtube.com'];
 const throughTheService = (hostname) =>
     PROXIED.some((host) => hostname === host || hostname.endsWith(`.${host}`));
 
+// Read by hand: Cobalt 20 cannot construct a URL at all. A relative URL is already ours.
+const ABSOLUTE = /^(https?:)?\/\/([^/?#:]+)(:\d+)?(.*)$/i;
+
 function redirectUrl(originalUrl) {
     if (!originalUrl) return originalUrl;
 
-    try {
-        const text = String(originalUrl);
-        const url = new URL(text.indexOf('//') === 0 ? `https:${text}` : text, window.location.origin);
+    const parts = ABSOLUTE.exec(String(originalUrl));
+    if (!parts) return originalUrl;
 
-        // Cobalt's URL setters corrupt the URL, so results are concatenated.
-        if (OURS.indexOf(url.hostname) !== -1) {
-            return `${window.location.origin}${url.pathname}${url.search}${url.hash}`;
-        }
+    const [, scheme, host, port, rest] = parts;
+    const hostname = host.toLowerCase();
 
-        if (throughTheService(url.hostname)) {
-            return `${window.location.origin}/cors-bypass/${url.toString()}`;
-        }
-    } catch (e) {
-        // An unparseable URL is the page's business, not ours.
+    if (OURS.indexOf(hostname) !== -1) return `${realOrigin()}${rest || '/'}`;
+
+    if (throughTheService(hostname)) {
+        return `${realOrigin()}/cors-bypass/${scheme || 'https:'}//${host}${port || ''}${rest}`;
     }
 
     return originalUrl;
@@ -83,6 +84,7 @@ export default function installProxyPatches() {
 const start = () => {
     if (typeof window === 'undefined' || window.location.protocol !== 'http:') return;
     installProxyPatches();
+    presentAsYouTube();
 };
 
 export { redirectUrl, start };

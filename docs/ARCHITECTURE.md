@@ -114,6 +114,25 @@ Two build-time gates, one per side.
   with no `--content`, so instead of intercepting TLS it loads the page from the service:
   `--base_url=http://127.0.0.2:8099/tv`, which a gold build allows over loopback. The userscript is
   the same one — Cobalt 20 runs V8 6.5.
+- Served that way, every media request must reach `/cors-bypass/`, because googlevideo answers CORS
+  only for `https://www.youtube.com`. Two traps stood in the way, and both failed silently.
+  - Cobalt 20 cannot construct `URL` (`TypeError: URL is not constructible`). So
+    `mods/network/originRewrite.js` reads hosts with a regex, and the userscript must never call
+    `new URL`.
+  - Below node 7, node-fetch falls back to whatwg-url, whose tr46 rejects googlevideo's `rr2---sn-`
+    hosts, so `service/legacy/url.js` stands in for it.
+  - Cobalt 20 also has no `Worker`, and its `fetch` is a JavaScript polyfill over XHR.
+  - Below node 8, streams have no `destroy`. `proxy.js` unpipes and drains a media stream the page
+    drops instead, because calling it crashed the service. The smoke test drops one.
+- googlevideo refused the PO token the served page minted until the page presented itself as
+  YouTube. `mods/network/pageOrigin.js` makes `location` and `document.URL` read
+  `https://www.youtube.com`. Cobalt 20 leaves location forgeable; a browser does not, so there it does
+  nothing. Navigation still maps back to the real origin, and `realOrigin()` still builds the
+  bypass. With that, kabuki fetches its integrity token first-party
+  (`/api/jnn/v1/GenerateIT`), and googlevideo answers `protection ok`.
+- googlevideo opens every media answer with `STREAM_PROTECTION_STATUS`, which the player shows only
+  as a timeout. `service/lib/protection.js` logs it as `media: itag N: protection
+  ok/pending/required`, so a set's log shows whether attestation was accepted.
 - kabuki counts only `www.youtube.com` and `accounts.google.com` as production hosts, and draws a
   red `NO DEBUG ACCESS DOMAIN=` watermark on any other. The host is the one thing the 5.0+ widget
   cannot change, so the service redirects `/tv` to carry `env_hideWatermark=true`, kabuki's own

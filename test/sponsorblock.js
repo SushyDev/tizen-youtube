@@ -95,7 +95,7 @@ hashes.forEach((one) => {
 });
 
 const { gradientOver, stretches } = await import('../mods/sponsorblock/segmentGradient.js');
-const { chapterIn, spansFor } = await import('../mods/sponsorblock/drawnBar.js');
+const { chapterIn, spansFor, piecesOf } = await import('../mods/sponsorblock/drawnBar.js');
 const { commaParts, transitionOf, slideOf, translateOf, shiftOf } = await import('../mods/sponsorblock/transitions.js');
 const { carry, structureOf } = await import('../mods/sponsorblock/mirror.js');
 const gradientFor = (segments, duration) => gradientOver(stretches(segments, duration), { from: 0, to: duration });
@@ -192,6 +192,36 @@ check('carried times are preferred, and the pieces own places are the fallback',
 check('a video without chapters is one piece covering the whole of it', () => {
     const whole = [{ element: {}, box: { left: 96 } }];
     assert.deepStrictEqual(spansFor(whole, { left: 96, width: 1728 }, 681), [{ from: 0, to: 681 }]);
+});
+
+// Only as much of an element as piecesOf reads.
+const node = (tagName, key, kids, parent) => ({
+    tagName,
+    parentElement: parent || null,
+    children: kids || [],
+    getAttribute: (name) => (name === 'idomkey' ? key : null),
+    querySelector: (selector) => (kids || []).find((kid) => selector === `div[idomkey="${kid.getAttribute('idomkey')}"]`) || null
+});
+
+check('chapters are the pieces wherever the bar has them', () => {
+    const chapters = [node('DIV', 'chapter-0'), node('DIV', 'chapter-1')];
+    assert.deepStrictEqual(piecesOf(node('DIV', 'progress-bar', chapters.concat([node('DIV', 'segment')]))), chapters);
+});
+
+check('a bar without chapters is its one segment', () => {
+    const segment = node('DIV', 'segment');
+    assert.deepStrictEqual(piecesOf(node('DIV', 'progress-bar', [node('DIV', null), segment])), [segment]);
+});
+
+check('the plain slider inside the player bar is itself the one piece', () => {
+    const bar = node('YTLR-PROGRESS-BAR', null, [], node('DIV', 'controls'));
+    const slider = node('DIV', 'slider', [node('DIV', null), node('DIV', null)], node('DIV', null, [], bar));
+    assert.deepStrictEqual(piecesOf(slider), [slider]);
+});
+
+check('a slider outside the player bar is not drawn on', () => {
+    const settings = node('YTLR-SETTINGS-PAGE', null, []);
+    assert.deepStrictEqual(piecesOf(node('DIV', 'slider', [], settings)), []);
 });
 
 check('a timing function keeps its own commas', () => {

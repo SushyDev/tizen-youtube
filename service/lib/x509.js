@@ -222,7 +222,7 @@ const createLeaf = (ca, commonName, altNames, done) => generateKey((error, key) 
     return done(null, { key: key.privateKey, cert: cert.pem, chain: cert.pem + ca.cert });
 });
 
-// Node 4 has no key generation at all, and the container route does not exist on a set that old.
+// Absent below node 10.12, where the 5.0+ widget serves the page itself and needs no CA.
 const available = () => typeof crypto.generateKeyPair === 'function';
 
 module.exports = { available, createCa, createLeaf, subjectHashes };

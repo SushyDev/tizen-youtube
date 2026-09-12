@@ -10,7 +10,17 @@ const { load, parseUrl, ROOT } = require('./config.js');
 const paths = require('./paths.js');
 const { PROXY } = require('../service/lib/ports.js');
 
-const APP = { output: paths.WGT, include: paths.WIDGET };
+// Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the page from the service instead.
+const APPS = [
+    { label: 'youtube 6.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null },
+    {
+        label: 'youtube 5.0+',
+        output: paths.WGT_LEGACY,
+        include: paths.WIDGET_LEGACY,
+        requiredVersion: '5.0',
+        servedFrom: `http://127.0.0.2:${PROXY}/tv`
+    }
+];
 
 function friendly(message) {
     const error = new Error(message);
@@ -18,8 +28,8 @@ function friendly(message) {
     return error;
 }
 
-function stageContents(staging) {
-    APP.include.forEach((entry) => {
+function stageContents(staging, app) {
+    app.include.forEach((entry) => {
         const from = join(ROOT, entry.from);
         if (!existsSync(from)) {
             throw friendly(
@@ -71,7 +81,9 @@ function addCobaltProfile(staging) {
         if (parsed.protocol !== scheme) throw friendly(`${name} must use ${scheme.slice(0, -1)}.`);
     };
 
-    checkUrl('TUBE_COBALT_BASE_URL', baseUrl, 'https:');
+    // Cobalt allows plain http only to loopback and private addresses, even in a gold build.
+    const privateHost = /^http:\/\/(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(baseUrl);
+    checkUrl('TUBE_COBALT_BASE_URL', baseUrl, privateHost ? 'http:' : 'https:');
     checkUrl('TUBE_COBALT_PROXY', proxyUrl, 'http:');
 
     const path = join(staging, 'config.xml');
@@ -119,6 +131,31 @@ function checkThePortsAgree(staging, expected) {
     );
 }
 
+// Tizen refuses to install a widget whose required_version is above the platform's own.
+function setRequiredVersion(staging, version) {
+    const path = join(staging, 'config.xml');
+    const xml = readFileSync(path, 'utf8');
+    const expression = /(<tizen:application\b[^>]*\brequired_version=")[^"]*(")/;
+
+    if (!expression.test(xml)) throw friendly('config.xml has no required_version to set.');
+
+    writeFileSync(path, xml.replace(expression, `$1${version}$2`));
+}
+
+// Points --base_url at the service and drops --content, which Cobalt 20 does not have.
+function servePage(staging, baseUrl) {
+    const path = join(staging, 'config.xml');
+    const xml = readFileSync(path, 'utf8');
+    const expression = /(<tizen:metadata\s+key="http:\/\/samsung\.com\/tv\/metadata\/native\.userdata"\s+value=")([^"]*)("\s*\/>)/;
+
+    if (!expression.test(xml)) throw friendly('config.xml has no Cobalt native.userdata metadata.');
+
+    const kept = expression.exec(xml)[2].split(/\s+/).filter(Boolean)
+        .filter((argument) => !/^--(base_url|content)=/.test(argument));
+
+    writeFileSync(path, xml.replace(expression, `$1${xmlAttribute([`--base_url=${baseUrl}`].concat(kept).join(' '))}$3`));
+}
+
 function addGameMode(staging) {
     const path = join(staging, 'config.xml');
     const xml = readFileSync(path, 'utf8');
@@ -146,9 +183,9 @@ async function writeWidget(staging, outPath) {
     writeFileSync(outPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-async function packageApp(config) {
+async function packageApp(config, app) {
     const staging = join(ROOT, '.package');
-    const outPath = join(ROOT, APP.output);
+    const outPath = join(ROOT, app.output);
 
     rmSync(staging, { recursive: true, force: true });
     mkdirSync(staging, { recursive: true });
@@ -156,7 +193,9 @@ async function packageApp(config) {
 
     const started = Date.now();
     try {
-        stageContents(staging);
+        stageContents(staging, app);
+        if (app.requiredVersion) setRequiredVersion(staging, app.requiredVersion);
+        if (app.servedFrom) servePage(staging, app.servedFrom);
         addCobaltProfile(staging);
         checkThePortsAgree(staging, config.ports.proxy);
         if (wantsGameMode()) addGameMode(staging);
@@ -165,7 +204,7 @@ async function packageApp(config) {
         rmSync(staging, { recursive: true, force: true });
     }
 
-    return { ms: Date.now() - started, size: statSync(outPath).size, path: APP.output };
+    return { ms: Date.now() - started, size: statSync(outPath).size, path: app.output, label: app.label };
 }
 
 async function main() {
@@ -178,8 +217,12 @@ async function main() {
     execFileSync('node', [join(__dirname, 'build.js')], { cwd: ROOT, stdio: 'inherit' });
 
     ui.group('packaging');
-    const result = await packageApp(config);
-    ui.ok('youtube', `${ui.bytes(result.size)} · ${result.path}`, result.ms);
+    // One at a time: both stage through .package.
+    const results = await APPS.reduce(
+        (queue, app) => queue.then((done) => packageApp(config, app).then((result) => done.concat(result))),
+        Promise.resolve([])
+    );
+    results.forEach((result) => ui.ok(result.label, `${ui.bytes(result.size)} · ${result.path}`, result.ms));
 
     ui.blank();
     ui.note('Packaged, signed by nobody.');

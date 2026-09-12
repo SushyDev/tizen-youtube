@@ -14,7 +14,10 @@ const { upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js');
 const { readText, send } = require('./sending.js');
-const { nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants } = require('./rewrites.js');
+const {
+    nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants,
+    hidesWatermark, withHiddenWatermark
+} = require('./rewrites.js');
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
@@ -42,7 +45,7 @@ const create = () => {
         next();
     });
 
-    app.use((req, _, next) => {
+    app.use((req, res, next) => {
         const watching = dev.journal.wanted();
         const tracing = state.traced < TRACE_LIMIT;
         if (!watching && !tracing) return next();
@@ -55,9 +58,11 @@ const create = () => {
         // Our own /__tube/ requests would drown the page's in the journal.
         if (watching && !ours) dev.journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
 
-        if (tracing && overOurTls(req) && !ours) {
+        // Noted when answered, so the status shows what the page actually got back.
+        if (tracing && !ours) {
             state.traced += 1;
-            postmortem.note('req', `${req.method} ${req.headers.host || '?'}${path.slice(0, 120)}`);
+            res.on('finish', () => postmortem.note('req',
+                `${req.method} ${req.headers.host || '?'}${path.slice(0, 110)} → ${res.statusCode}`));
         }
 
         return next();
@@ -142,6 +147,12 @@ const attachFallback = (app) => {
         }
 
         const route = routeFor(req);
+
+        // Served as ourselves, the page has to say so in its own URL before kabuki reads it.
+        if (!route.asTheRealHost && req.path === '/tv' && !hidesWatermark(req.url)) {
+            return res.redirect(302, withHiddenWatermark(req.url));
+        }
+
         const headers = headersFor(req, route);
 
         // An unhandled 'error' on the response socket is an uncaught exception, and the postmortem

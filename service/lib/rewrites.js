@@ -4,7 +4,7 @@
 
 const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
-const { localOrigin, proxyPrefix } = require('./origin.js');
+const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
 
 const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
 
@@ -67,6 +67,20 @@ const withOurGrants = (policy) => {
     return String(policy).split(',').map((one) => GRANTS.reduce(granted, one)).join(',');
 };
 
+const sendTo = (origin) => `(new Image()).src='${origin}/__tube/journal?m='+encodeURIComponent`;
+
+// Cobalt has no console, so the page's own errors are sent to the service log.
+const reporter = (origin) => 'window.__tubeFetch=window.fetch;'
+    + `window.onerror=function(m,s,l,c){${sendTo(origin)}(String(m)+' @ '+s+':'+l+':'+c);};`
+    + 'window.addEventListener(\'unhandledrejection\',function(e){var r=e&&e.reason;'
+    + `${sendTo(origin)}('rejection: '+String(r&&(r.stack||r.message)||r));});`;
+
+// The userscript replaces window.fetch as it boots, so a changed fetch is proof it ran.
+const RAN = '(window.fetch!==window.__tubeFetch?\'fetch patched by the userscript\':\'fetch untouched\')';
+
+// Timestamped, since the service logs each distinct message once.
+const bootBeacon = (origin) => `${sendTo(origin)}('booted '+new Date().toISOString().slice(11,19)+': '+${RAN});`;
+
 const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
@@ -81,10 +95,14 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
 
     const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
         + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
+        + `<script${stamp}>${bootBeacon(origin)}</script>`
         + dev.pageScripts(origin, stamp);
 
+    // First in the body, so it sees the page's errors; Cobalt ignores what is added to <head>.
+    const reported = tuned.replace(/<body[^>]*>/, (open) => `${open}<script${stamp}>${reporter(origin)}</script>`);
+
     // Appended past </html> a browser still runs it; Cobalt's parser drops it.
-    return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
+    return reported.indexOf('</body>') !== -1 ? reported.replace('</body>', `${tag}</body>`) : reported + tag;
 };
 
 // __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are renamed in both
@@ -92,7 +110,7 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
 const rewriteSetCookie = (values) => values.map((cookie) => cookie
     .replace(/^__Secure-/i, '__LocalSecure-')
     .replace(/^__Host-/i, '__LocalHost-')
-    .replace(/Domain=[^;]+/i, 'Domain=localhost')
+    .replace(/Domain=[^;]+/i, `Domain=${PROXY_HOST}`)
     .replace(/;\s*Secure/i, '')
     .replace(/;\s*SameSite=None/i, '')
     .replace(/;\s*;/g, ';')
@@ -102,7 +120,16 @@ const restoreCookiePrefixes = (header) => header
     .replace(/__LocalSecure-/g, '__Secure-')
     .replace(/__LocalHost-/g, '__Host-');
 
+// kabuki reads env_ switches from its own URL, and draws a debug watermark on any origin but
+// YouTube's unless env_hideWatermark says otherwise.
+const HIDE_WATERMARK = 'env_hideWatermark=true';
+
+const hidesWatermark = (url) => String(url).indexOf('env_hideWatermark=') !== -1;
+
+const withHiddenWatermark = (url) => `${url}${String(url).indexOf('?') === -1 ? '?' : '&'}${HIDE_WATERMARK}`;
+
 module.exports = {
     nonceOf, rerouteAbr, overrideInnertubeHost, rewriteAttestation, retuneFlags,
-    withOurGrants, rewriteBody, rewriteSetCookie, restoreCookiePrefixes
+    withOurGrants, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
+    hidesWatermark, withHiddenWatermark
 };

@@ -8,6 +8,7 @@ const URL = require('url');
 const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 const mitm = require('./mitm.js');
+const carrier = require('./carrier.js');
 
 // A cobalt.js that fails to load, which mitm.js notes, costs the served stamp, never the tunnel.
 function cobaltIfItLoads() {
@@ -61,8 +62,26 @@ const tunnel = (server) => {
 
     const interceptor = mitm.interceptor(server, record);
 
+    // Cobalt names its version and engine on every CONNECT; logged once per distinct agent.
+    const agents = new Set();
+
+    // The first hosts tunnelled after a start, which is what the page loaded before anything failed.
+    const CONNECTS_TRACED = 40;
+    const connects = { count: 0 };
+
     server.on('connect', (req, client, head) => {
         if (cobalt) cobalt.served();
+
+        if (connects.count < CONNECTS_TRACED) {
+            connects.count += 1;
+            postmortem.note('connect', req.url);
+        }
+
+        const agent = req.headers['user-agent'];
+        if (agent && !agents.has(agent)) {
+            agents.add(agent);
+            postmortem.note('cobalt', `agent: ${agent}`);
+        }
 
         const [host, port] = req.url.split(':');
         const secure = mitm.isIntercepted(host) ? interceptor() : null;
@@ -73,7 +92,7 @@ const tunnel = (server) => {
             if (head && head.length) client.unshift(head);
 
             dev.journal.service('mitm', `open ${req.url}`);
-            secure.emit('connection', client);
+            secure.emit('connection', carrier(client));
             return;
         }
 

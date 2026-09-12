@@ -11,7 +11,12 @@ const { join } = require('path');
 const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
 
+// Legacy runs on all of these; modern from node 12.
 const TARGETS = [
+    { node: '4.4.3', note: 'Tizen 5.0 — verified on hardware, and the legacy floor', legacyOnly: true },
+    { node: '6.17.1', note: 'unverified — margin, and the last without http2', legacyOnly: true },
+    { node: '8.17.0', note: 'unverified — margin', legacyOnly: true },
+    { node: '10.24.1', note: 'unverified — margin', legacyOnly: true },
     { node: '12.16.3', note: 'Tizen 6.5 — verified on hardware, and the floor' },
     { node: '14.21.3', note: 'unverified — margin, and the first with require("fs/promises")' },
     { node: '16.20.2', note: 'unverified — margin' },
@@ -24,6 +29,19 @@ const BASE_PORT = load().ports.matrix;
 
 const SMOKE = join(ROOT, 'service', 'test', 'smoke.js');
 
+const BUNDLES = {
+    modern: join(ROOT, 'service', 'dist', 'index.js'),
+    legacy: join(ROOT, 'service', 'dist-legacy', 'index.js')
+};
+
+const runsOf = (target) => (target.legacyOnly ? ['legacy'] : ['modern', 'legacy'])
+    .map((bundle) => ({ target, bundle }));
+
+// Nothing older than node 16 was built for Apple silicon.
+const installHint = (version) => `  fnm install ${version}${
+    process.platform === 'darwin' && process.arch === 'arm64' && Number(version.split('.')[0]) < 16 ? ' --arch x64' : ''
+}`;
+
 const friendly = (message) => Object.assign(new Error(message), { isFriendly: true });
 
 const run = (command, args, options) => new Promise((resolve) => {
@@ -32,17 +50,19 @@ const run = (command, args, options) => new Promise((resolve) => {
     });
 });
 
-const smokeOn = (target, index) => {
+const smokeOn = ({ target, bundle }, index) => {
     const port = BASE_PORT + index;
 
     return run('fnm', ['exec', `--using=${target.node}`, 'node', SMOKE], {
         cwd: ROOT,
-        env: Object.assign({}, process.env, { TUBE_PROXY_PORT: String(port) })
-    }).then((result) => Object.assign({ target, port }, result));
+        env: Object.assign({}, process.env, { TUBE_PROXY_PORT: String(port), TUBE_SMOKE_ENTRY: BUNDLES[bundle] })
+    }).then((result) => Object.assign({ target, bundle, port }, result));
 };
 
+const labelOf = (result) => `node ${result.target.node} · ${result.bundle}`;
+
 const report = (result) => {
-    const label = `node ${result.target.node}`;
+    const label = labelOf(result);
 
     if (result.ok) return ui.ok(label, result.target.note);
 
@@ -64,8 +84,11 @@ const main = async () => {
 
     if (!targets.length) throw friendly(`No target matches ${wanted.join(', ')}.`);
 
-    if (!existsSync(join(ROOT, 'service', 'dist', 'index.js'))) {
-        throw friendly('No bundle to test. Run `npm run build` first.');
+    const runs = targets.flatMap(runsOf);
+
+    const unbuilt = Object.keys(BUNDLES).filter((bundle) => !existsSync(BUNDLES[bundle]));
+    if (unbuilt.length) {
+        throw friendly(`No ${unbuilt.join(' or ')} bundle to test. Run \`npm run build\` first.`);
     }
 
     if (!(await run('fnm', ['--version'])).ok) {
@@ -84,29 +107,29 @@ const main = async () => {
     if (missing.length) {
         throw friendly(
             `node ${missing.join(', ')} is not installed, so the bundle was not run on it.\n\n`
-            + missing.map((version) => `  fnm install ${version}`).join('\n')
+            + missing.map(installHint).join('\n')
         );
     }
 
-    ui.heading('matrix', `${targets.length} runtimes`);
+    ui.heading('matrix', `${targets.length} runtimes · ${runs.length} runs`);
 
     const results = serial
-        ? await targets.reduce(
-            (queue, target, index) => queue.then(
-                (done) => smokeOn(target, index).then((result) => done.concat(result))
+        ? await runs.reduce(
+            (queue, pending, index) => queue.then(
+                (done) => smokeOn(pending, index).then((result) => done.concat(result))
             ),
             Promise.resolve([])
         )
-        : await Promise.all(targets.map(smokeOn));
+        : await Promise.all(runs.map(smokeOn));
 
     results.forEach(report);
 
     const broken = results.filter((result) => !result.ok);
 
     ui.blank();
-    if (broken.length) throw friendly(`The bundle does not run on ${broken.map((r) => r.target.node).join(', ')}.`);
+    if (broken.length) throw friendly(`The bundles do not run on ${broken.map(labelOf).join(', ')}.`);
 
-    ui.note(`The bundle loads and answers on node ${targets.map((target) => target.node).join(', ')}.`);
+    ui.note(`The bundles load and answer on node ${targets.map((target) => target.node).join(', ')}.`);
     ui.blank();
 };
 

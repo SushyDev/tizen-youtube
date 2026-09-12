@@ -70,19 +70,21 @@ jobs:
           path: release/origin/
           if-no-files-found: error
 
-      - name: Name the widget after the version
+      - name: Name the widgets after the version
         id: widget
         run: |
           version="$(node -p "require('./tizen.config.json').version")"
-          name="tizen-youtube-${version}.wgt"
-          mv release/tube.wgt "release/${name}"
-          echo "path=release/${name}" >> "$GITHUB_OUTPUT"
+          mv release/tube-tizen-6.5.wgt "release/tizen-youtube-${version}-tizen-6.5.wgt"
+          mv release/tube-tizen-5.0.wgt "release/tizen-youtube-${version}-tizen-5.0.wgt"
+          echo "path=release/tizen-youtube-${version}*.wgt" >> "$GITHUB_OUTPUT"
 
-      - name: Keep the service bundle for the runtime matrix
+      - name: Keep the service bundles for the runtime matrix
         uses: actions/upload-artifact@v4
         with:
           name: release-service-bundle
-          path: service/dist
+          path: |
+            service/dist
+            service/dist-legacy
           retention-days: 1
           if-no-files-found: error
 
@@ -101,7 +103,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['12.16.3', '14.21.3', '16.20.2', '18.18.2', '20.18.1', '22.12.0']
+        include:
+          - node: '4.4.3'     # the legacy bundle alone, up to node 12
+            legacy_only: true
+          - node: '6.17.1'
+            legacy_only: true
+          - node: '8.17.0'
+            legacy_only: true
+          - node: '10.24.1'
+            legacy_only: true
+          - node: '12.16.3'
+          - node: '14.21.3'
+          - node: '16.20.2'
+          - node: '18.18.2'
+          - node: '20.18.1'
+          - node: '22.12.0'
 
     steps:
       - uses: actions/checkout@v4
@@ -109,14 +125,20 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-service-bundle
-          path: service/dist
+          path: service
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
       - name: Load and answer on node ${{ matrix.node }}
+        if: ${{ !matrix.legacy_only }}
         run: node service/test/smoke.js
+
+      - name: Load and answer on node ${{ matrix.node }}, legacy
+        run: node service/test/smoke.js
+        env:
+          TUBE_SMOKE_ENTRY: service/dist-legacy/index.js
 
   # Blocking, because a release reaches strangers.
   browser:

@@ -108,5 +108,16 @@ Two build-time gates, one per side.
   - How the previous run ended (`uncaught:`, `exit:`) is shown again at the top of the next run
     as `previous:`. So a crash that restarts the service stays on the boot screen, which also
     says when the service's pid changes.
+- The 5.0+ widget (`tube-tizen-5.0.wgt`) differs in two ways. Its service (`TUBE_TARGET=legacy`) is
+  ES5 with core-js for node 4.4.3, and `service/legacy/` stands in for the Buffer, `mkdirSync`, http2,
+  TLS-socket and `normalize` behaviour old node lacks. And Cobalt 20 keeps its trust store read-only
+  with no `--content`, so instead of intercepting TLS it loads the page from the service:
+  `--base_url=http://127.0.0.2:8099/tv`, which a gold build allows over loopback. The userscript is
+  the same one — Cobalt 20 runs V8 6.5.
+- kabuki counts only `www.youtube.com` and `accounts.google.com` as production hosts, and draws a
+  red `NO DEBUG ACCESS DOMAIN=` watermark on any other. The host is the one thing the 5.0+ widget
+  cannot change, so the service redirects `/tv` to carry `env_hideWatermark=true`, kabuki's own
+  exemption for exactly that check. Nothing else in kabuki reads the host list; debug mode is keyed
+  to fishfood builds, `web-release-qa` and `expflag`, none of which apply.
 - Three files are excluded from `tsc`, and two of them from the style rules, because live sibling
   branches own them. They come back under both when those branches land.

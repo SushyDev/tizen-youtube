@@ -135,6 +135,8 @@ module.exports = [
         ignores: [
             '**/node_modules/**',
             '**/dist/**',
+            '**/dist-legacy/**',
+            '**/.dev/**',
             '**/release/**',
             '**/.package/**',
             'framework/tiny-sha256.js'

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-legacy/
 # `npm run dev` keeps the service's update cache here.
 .dev/
 release/

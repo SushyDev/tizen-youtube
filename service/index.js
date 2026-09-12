@@ -14,6 +14,7 @@ const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
 const { STAMP } = require('./lib/stamp.js');
+const { capability } = require('./lib/platform.js');
 const bootRoutes = require('./lib/bootRoutes.js');
 const journalRoutes = require('./lib/journalRoutes.js');
 const routeErrors = require('./lib/routeErrors.js');
@@ -43,7 +44,8 @@ const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
-postmortem.note('platform', `tizen ${platformVersion || 'none'}, patch ${STAMP}`);
+postmortem.note('platform', `tizen ${platformVersion || 'none'}, node ${process.version}, `
+    + `${capability('http://tizen.org/system/model_name') || 'unknown model'}, patch ${STAMP}`);
 
 const app = proxy.create();
 

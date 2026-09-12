@@ -7,6 +7,7 @@ Ad-free YouTube on a Samsung TV.
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
 - Tizen 6.5 and up, on sets with Samsung's Cobalt container
+- Tizen 5.0 and 5.5 with a widget of their own, run on a Tizen 5.0 set
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A
@@ -27,7 +28,7 @@ the player's own controls, and every setting is a real row in YouTube's own Sett
 
 | | This app | [TizenTube](https://github.com/reisxd/TizenTube) | [TizenTube Cobalt](https://github.com/reisxd/TizenTubeCobalt) |
 | --- | --- | --- | --- |
-| Runs on | Samsung TVs, Tizen 6.5+ | Samsung TVs, Tizen 3+ | Android TV, Google TV, Fire TV |
+| Runs on | Samsung TVs, Tizen 5.0+ | Samsung TVs, Tizen 3+ | Android TV, Google TV, Fire TV |
 | Engine | Samsung's own Cobalt, same as stock YouTube | The TV's browser | Its own rebuild of Cobalt, not the official one |
 | Updates | Mods over the air, digest-verified | Mods pulled from a public CDN at launch, unchecked; if it's unreachable, the ads are back | App updates itself; mods pulled from the same CDN at launch, unchecked |
 | Settings | Real rows in YouTube's own Settings | A separate pop-up menu, behind one Settings entry or the green button | A separate pop-up menu, behind one Settings entry or the green button |
@@ -68,10 +69,11 @@ For the Homebrew route, if you would rather not use the catalogue, with **Node 2
 git clone https://github.com/SushyDev/tizen-youtube.git
 cd tizen-youtube
 npm install
-npm run package    # release/tube.wgt, for Tizen Homebrew
+npm run package    # release/tube-tizen-6.5.wgt and tube-tizen-5.0.wgt, for Tizen Homebrew
 ```
 
-Load `release/tube.wgt` through Homebrew's **Upload** tab; [DEVELOP.md](DEVELOP.md) has the other commands.
+Load the one for your TV — `tube-tizen-6.5.wgt` from Tizen 6.5, `tube-tizen-5.0.wgt` from 5.0 — through
+Homebrew's **Upload** tab; [DEVELOP.md](DEVELOP.md) has the other commands.
 
 ---
 

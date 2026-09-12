@@ -81,7 +81,7 @@ const cookies = rewriteSetCookie(['__Secure-3PSID=abc; Domain=.youtube.com; Secu
 const attributes = cookies[0].split(/;\s*/).slice(1);
 check('__Secure- cookie is renamed and de-secured',
     cookies[0].indexOf('__LocalSecure-3PSID') === 0
-    && attributes.indexOf('Domain=localhost') !== -1
+    && attributes.indexOf('Domain=tv.example') !== -1
     && attributes.indexOf('Secure') === -1
     && attributes.indexOf('SameSite=None') === -1,
     cookies[0]);

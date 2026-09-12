@@ -10,7 +10,7 @@ const x509 = require('./x509.js');
 const postmortem = require('./postmortem.js');
 const { CONTAINER, appId, configuredContent, container, switches } = require('./cobaltConfig.js');
 const { MITM_DIR, existingMaterial, installCa, issue, stillGood } = require('./cobaltCa.js');
-const { STOCK, cobaltIsInstalledHere, stageOrFail } = require('./cobaltContent.js');
+const { STOCK, discover, locate, stageOrFail } = require('./cobaltContent.js');
 const { writeBootScreen } = require('./bootScreen.js');
 const { guarded, launch, launchOver, restart } = require('./cobaltLaunch.js');
 
@@ -156,8 +156,9 @@ const relaunch = (done) => {
             // Cleared so wake()'s own quiet period cannot swallow the launch that follows.
             state.lastWake = 0;
             note('relaunch', `starting ${me}`);
-            tizen.application.launch(me, () => done(null, { killed: running.length }),
-                (error) => done(new Error(`launch refused: ${error.message}`)));
+            const refusedStart = (error) => done(new Error(`launch refused: ${error.message}`));
+            guarded(() => tizen.application.launch(me, () => done(null, { killed: running.length }), refusedStart),
+                refusedStart);
         };
 
         if (!running.length) return start();
@@ -171,7 +172,7 @@ const relaunch = (done) => {
 
         return running.forEach((context) => {
             note('relaunch', `killing ${context.appId} (${context.id})`);
-            tizen.application.kill(context.id, finished, finished);
+            guarded(() => tizen.application.kill(context.id, finished, finished), finished);
         });
     }, (error) => done(new Error(`could not list contexts: ${error.message}`)));
 };
@@ -205,20 +206,20 @@ const prepare = (done) => {
 
     // Reported either way and before anything else: on a set the service cannot be reached from,
     // this one line is the whole diagnosis. Not every Tizen device has the container.
-    const present = cobaltIsInstalledHere();
+    const from = locate();
 
-    note(present ? 'present' : 'absent', present
-        ? `Cobalt is at ${STOCK}`
-        : `nothing at ${STOCK} — ${os.hostname()} may not be a device that has the container`);
+    note(from ? 'present' : 'absent', from
+        ? `Cobalt's content is at ${from}${from === STOCK ? '' : `, found by searching: ${discover()}`}`
+        : `nothing at ${STOCK} — ${discover()}`);
 
     const content = configuredContent();
     if (!content) return finish(null, null);
 
     checkAddress();
 
-    if (!present) return finish(null, null);
+    if (!from) return finish(null, null);
 
-    const staged = stageOrFail(content);
+    const staged = stageOrFail(content, from);
     if (staged.error) return finish(staged.error);
 
     guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
@@ -240,6 +241,9 @@ const prepare = (done) => {
     // Key generation is seconds on this hardware, so it runs off the event loop and the service
     // answers normally while it happens.
     if (!x509.available()) return finish(null, null);
+
+    // Pure JavaScript on the oldest sets, so the log shows it has begun rather than nothing.
+    note('issuing', 'making the CA and leaf; everything tunnels untouched until they exist');
 
     return issue((error, issued) => (error ? finish(error) : trust(issued)));
 };

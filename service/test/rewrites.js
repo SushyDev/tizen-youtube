@@ -97,12 +97,25 @@ check('a prefixed cookie is renamed and its https-only attributes dropped', () =
     assert.ok(out.indexOf('__LocalSecure-A=1') === 0, out);
     assert.ok(!/;\s*Secure/i.test(out), out);
     assert.ok(!/SameSite=None/i.test(out), out);
-    assert.ok(out.indexOf('Domain=localhost') !== -1, out);
+    assert.ok(out.indexOf('Domain=tv.example') !== -1, out);
 });
 
 check('and put back on the way up', () => {
     assert.strictEqual(rewrites.restoreCookiePrefixes('__LocalSecure-A=1; __LocalHost-B=2'),
         '__Secure-A=1; __Host-B=2');
+});
+
+check('the watermark switch is added to a bare page url', () => {
+    assert.strictEqual(rewrites.withHiddenWatermark('/tv'), '/tv?env_hideWatermark=true');
+});
+
+check('and after the launch parameters already on it', () => {
+    assert.strictEqual(rewrites.withHiddenWatermark('/tv?launch=menu'), '/tv?launch=menu&env_hideWatermark=true');
+});
+
+check('a url that already carries it is recognised, so it is not redirected twice', () => {
+    assert.ok(rewrites.hidesWatermark('/tv?launch=menu&env_hideWatermark=true'));
+    assert.ok(!rewrites.hidesWatermark('/tv?launch=menu'));
 });
 
 const failed = results.filter((ok) => !ok).length;

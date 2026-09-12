@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local" version="1.0.1" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:allow-navigation href="*"/>
-    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.0"/>
+    <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="6.5"/>
     <author>tube</author>
     <!-- A widget will not install without a start file; nativeID means it never runs. -->
     <content src="index.html"/>

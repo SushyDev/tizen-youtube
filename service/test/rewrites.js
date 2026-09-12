@@ -62,9 +62,9 @@ check('the one SABR media url is sent back through the proxy', () => {
 });
 
 check('the attestation program url is rewritten in its escaped form', () => {
-    const escaped = '{\\"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\":\\"\\/\\/x.example\\/p\\"}';
-    const out = rewrites.rewriteAttestation(escaped, 'https://www.youtube.com/tv_config');
-    assert.ok(out.indexOf('https:\\/\\/x.example') !== -1, out);
+    const escaped = '{\\"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\":\\"\\/\\/www.google.com\\/js\\/th\\/p\\"}';
+    const out = rewrites.rewriteAttestation(escaped);
+    assert.ok(out.indexOf('cors-bypass\\/https:\\/\\/www.google.com\\/js\\/th\\/p') !== -1, out);
 });
 
 check('a flag already in the blob is retuned in place', () => {

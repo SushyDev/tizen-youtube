@@ -189,9 +189,12 @@ const attachFallback = (app) => {
                         : null;
                     const nonce = route.asTheRealHost ? nonceOf(source.headers.get(CSP_HEADER)) : null;
 
-                    const injected = rewriteAttestation(
-                        rewriteBody(text, req.url, injectionOrigin, nonce), route.url
-                    );
+                    const html = rewriteBody(text, req.url, injectionOrigin, nonce);
+
+                    // The real host reaches attestation itself; otherwise the page hooks do.
+                    const injected = route.asTheRealHost || upstream.nativeProxyPatches
+                        ? html
+                        : rewriteAttestation(html);
 
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
 

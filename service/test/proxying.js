@@ -13,6 +13,9 @@ global.setTimeout = (run, ms, ...rest) => setTimer(run, ms === HEADERS_DEADLINE 
 const http = require('http');
 
 const proxy = require('../lib/proxy.js');
+const knobs = require('../lib/knobs.js');
+
+const ATTESTED = 'var a="https://jnn-pa.googleapis.com";var b="\\/\\/www.google.com\\/js\\/th\\/p.js";';
 
 const results = [];
 
@@ -56,6 +59,11 @@ const upstream = http.createServer((req, res) => {
     if (req.url === '/moved') {
         res.writeHead(302, { location: 'http://example.invalid/next' });
         return res.end();
+    }
+
+    if (req.url === '/attested') {
+        res.writeHead(200, { 'content-type': 'application/javascript' });
+        return res.end(ATTESTED);
     }
 
     if (req.url === '/echo') {
@@ -157,6 +165,31 @@ upstream.listen(0, '127.0.0.1', () => {
                 check('a preflight echoes the headers that were asked for',
                     res.headers['access-control-allow-headers'] === 'authorization, x-goog-visitor-id',
                     res.headers['access-control-allow-headers']);
+
+                // How the container asks.
+                return get(`${target}/attested`);
+            })
+            .then((res) => {
+                check('a page served as its real host reaches attestation itself',
+                    res.body.toString() === ATTESTED, res.body.toString());
+
+                return bypass('/attested');
+            })
+            .then((res) => {
+                check('served as the service, attestation is left to the page\'s hooks',
+                    res.body.toString() === ATTESTED, res.body.toString());
+
+                knobs.upstream.nativeProxyPatches = false;
+                return bypass('/attested');
+            })
+            .then((res) => {
+                knobs.upstream.nativeProxyPatches = true;
+                const body = res.body.toString();
+
+                check('with the hooks off, the body routes attestation through the service',
+                    body.indexOf('http://tv.example:8099/cors-bypass/https://jnn-pa.googleapis.com') !== -1
+                    && body.indexOf('http:\\/\\/tv.example:8099\\/cors-bypass\\/https:\\/\\/www.google.com') !== -1,
+                    body);
 
                 return bypass('/truncated');
             })

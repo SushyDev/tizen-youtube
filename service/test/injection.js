@@ -51,25 +51,32 @@ check('over our TLS the script comes from the page\'s own origin',
 check('over our TLS every injected tag carries the page\'s nonce',
     overTlsTags.length > 0 && overTlsTags.every((tag) => tag.indexOf(' nonce="n0nce+/="') !== -1), overTlsTags.join(' '));
 
-const player = rewriteAttestation(
-    'var x="https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT";',
-    'https://www.youtube.com/s/player/abc/tv-player-es6-tcl.js'
-);
-check('player routes jnn-pa through the service', player.indexOf(`${ORIGIN}/cors-bypass/https://jnn-pa.googleapis.com`) !== -1, player);
+const player = rewriteAttestation('var x="https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT";');
+check('jnn-pa is routed through the service', player.indexOf(`${ORIGIN}/cors-bypass/https://jnn-pa.googleapis.com`) !== -1, player);
 
 const wrapped = rewriteAttestation(
     '{"x":"{\\"interpreterUrl\\":{\\"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\":'
-        + '\\"//www.google.com/js/th/a.js\\"}}"}',
-    'https://www.youtube.com/tv_config?action_get_config=true'
+        + '\\"//www.google.com/js/th/a.js\\"}}"}'
 );
 check('the BotGuard program URL is routed through the service',
     wrapped.indexOf(`${ORIGIN}/cors-bypass/https://www.google.com/js/th/a.js`) !== -1, wrapped);
 
-const escaped = rewriteAttestation(
-    '{"interpreterUrl":"\\/\\/www.google.com\\/js\\/th\\/a.js"}',
-    'https://www.youtube.com/tv'
-);
-check('the escaped form is routed too', escaped.indexOf(`${ORIGIN}/cors-bypass/https:`) !== -1, escaped);
+const ESCAPED_ORIGIN = ORIGIN.replace(/\//g, '\\/');
+const escaped = rewriteAttestation('{"interpreterUrl":"\\/\\/www.google.com\\/js\\/th\\/a.js"}');
+check('the escaped form is routed in its own escaping',
+    escaped.indexOf(`${ESCAPED_ORIGIN}\\/cors-bypass\\/https:\\/\\/www.google.com\\/js\\/th\\/a.js`) !== -1, escaped);
+check('and stays valid JSON', (() => { try { return !!JSON.parse(escaped); } catch (e) { return false; } })(), escaped);
+
+const renamed = rewriteAttestation('{"programSource":"//www.google.com/js/th/b.js","rpc":"https://jnn-pa.googleapis.com"}');
+check('a field YouTube renames is still routed', renamed.split(`${ORIGIN}/cors-bypass/https://`).length === 3, renamed);
+
+const literal = rewriteAttestation('var r=/^https:\\/\\/jnn-pa.googleapis.com\\//;');
+check('a regex literal naming jnn-pa still parses', (() => {
+    try { return !!new (require('vm').Script)(literal); } catch (e) { return false; }
+})(), literal);
+
+const elsewhere = 'a="https://www.google.com/search";b="//www.google.com/recaptcha/api.js"';
+check('other google.com URLs are left alone', rewriteAttestation(elsewhere) === elsewhere, rewriteAttestation(elsewhere));
 
 const cookies = rewriteSetCookie(['__Secure-3PSID=abc; Domain=.youtube.com; Secure; SameSite=None; Path=/']);
 const attributes = cookies[0].split(/;\s*/).slice(1);

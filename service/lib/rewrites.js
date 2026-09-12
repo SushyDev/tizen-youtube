@@ -22,22 +22,13 @@ const overrideInnertubeHost = (text) => text.replace(
     `"INNERTUBE_HOST_OVERRIDE":${JSON.stringify(localOrigin())},"INNERTUBE_CONTEXT_CLIENT_NAME"`
 );
 
-// BotGuard's program URL arrives protocol-relative inside a JSON string, so its quotes and slashes
-// may be escaped.
-const WRAPPED_PROGRAM = /(\\?"privateDoNotAccessOrElseTrustedResourceUrlWrappedValue\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
-const PLAIN_PROGRAM = /(\\?"interpreterUrl\\?"\s*:\s*\\?")((?:\\?\/){2}(?:[^"\\]|\\\/)+)/g;
+// Matched by host; the prefix keeps the match's escaping.
+const ATTESTATION = /(?:https?:)?((?:\\?\/){2})(jnn-pa\.googleapis\.com|www\.google\.com(?=\\?\/js\\?\/th\\?\/))/g;
 
-const rewriteAttestation = (text, targetUrl) => {
-    const prefix = proxyPrefix();
-
-    const attested = /tv-player-[^/]+\.js/.test(targetUrl) || /player-es6/.test(targetUrl)
-        ? text.replace(/https:\/\/jnn-pa\.googleapis\.com/g, `${prefix}https://jnn-pa.googleapis.com`)
-        : text;
-
-    return attested
-        .replace(WRAPPED_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`)
-        .replace(PLAIN_PROGRAM, (whole, lead, url) => `${lead}${prefix}https:${url}`);
-};
+const rewriteAttestation = (text) => text.replace(ATTESTATION, (whole, slashes, host) => {
+    const prefix = slashes.indexOf('\\') === -1 ? proxyPrefix() : proxyPrefix().replace(/\//g, '\\/');
+    return `${prefix}https:${slashes}${host}`;
+});
 
 const BLOB = /(serializedExperimentFlags\\?":\\?")((?:[^"\\]|\\u[0-9a-fA-F]{4})*)/g;
 

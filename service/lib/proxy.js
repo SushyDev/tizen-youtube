@@ -16,7 +16,7 @@ const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js
 const { readText, send } = require('./sending.js');
 const {
     nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants,
-    hidesWatermark, withHiddenWatermark
+    hidesWatermark, withHiddenWatermark, rewriteStaticHosts
 } = require('./rewrites.js');
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
@@ -207,9 +207,12 @@ const attachFallback = (app) => {
                         ? html
                         : rewriteAttestation(html);
 
+                    // Served as ourselves, engine-loaded statics must not inherit our http origin.
+                    const served = route.asTheRealHost ? injected : rewriteStaticHosts(injected);
+
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
 
-                    res.send(abr ? rerouteAbr(injected) : injected);
+                    res.send(abr ? rerouteAbr(served) : served);
                 });
             })
             .catch((error) => fail('upstream failed', error));

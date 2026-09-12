@@ -67,6 +67,23 @@ const withOurGrants = (policy) => {
     return String(policy).split(',').map((one) => GRANTS.reduce(granted, one)).join(',');
 };
 
+// Served as ourselves over http, the engine loads fonts and CSS images directly (the page's fetch
+// hook never sees them), and a protocol-relative //gstatic URL inherits our http: — which Cobalt
+// refuses to a public host. Route those through the bypass so they come from our own origin.
+const STATIC_HOSTS = ['www.gstatic.com', 'fonts.gstatic.com'];
+
+const rewriteStaticHosts = (text) => {
+    const prefix = proxyPrefix();
+
+    return STATIC_HOSTS.reduce((out, host) => {
+        const escaped = host.replace(/\./g, '\\.');
+
+        return out
+            .replace(new RegExp(`https?://${escaped}`, 'g'), `${prefix}https://${host}`)
+            .replace(new RegExp(`(["'(])//${escaped}`, 'g'), `$1${prefix}https://${host}`);
+    }, text);
+};
+
 const sendTo = (origin) => `(new Image()).src='${origin}/__tube/journal?m='+encodeURIComponent`;
 
 // Cobalt has no console, so the page's own errors are sent to the service log.
@@ -131,5 +148,5 @@ const withHiddenWatermark = (url) => `${url}${String(url).indexOf('?') === -1 ? 
 module.exports = {
     nonceOf, rerouteAbr, overrideInnertubeHost, rewriteAttestation, retuneFlags,
     withOurGrants, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
-    hidesWatermark, withHiddenWatermark
+    hidesWatermark, withHiddenWatermark, rewriteStaticHosts
 };

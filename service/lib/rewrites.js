@@ -5,6 +5,7 @@
 const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
+const { reporter, bootBeacon } = require('./pageReporter.js');
 
 const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
 
@@ -83,20 +84,6 @@ const rewriteStaticHosts = (text) => {
             .replace(new RegExp(`(["'(])//${escaped}`, 'g'), `$1${prefix}https://${host}`);
     }, text);
 };
-
-const sendTo = (origin) => `(new Image()).src='${origin}/__tube/journal?m='+encodeURIComponent`;
-
-// Cobalt has no console, so the page's own errors are sent to the service log.
-const reporter = (origin) => 'window.__tubeFetch=window.fetch;'
-    + `window.onerror=function(m,s,l,c){${sendTo(origin)}(String(m)+' @ '+s+':'+l+':'+c);};`
-    + 'window.addEventListener(\'unhandledrejection\',function(e){var r=e&&e.reason;'
-    + `${sendTo(origin)}('rejection: '+String(r&&(r.stack||r.message)||r));});`;
-
-// The userscript replaces window.fetch as it boots, so a changed fetch is proof it ran.
-const RAN = '(window.fetch!==window.__tubeFetch?\'fetch patched by the userscript\':\'fetch untouched\')';
-
-// Timestamped, since the service logs each distinct message once.
-const bootBeacon = (origin) => `${sendTo(origin)}('booted '+new Date().toISOString().slice(11,19)+': '+${RAN});`;
 
 const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;

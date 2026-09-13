@@ -78,6 +78,10 @@ check('relaunching past a refused kill does not throw',
     survives(() => cobalt.relaunch((error) => { answered.error = error; })));
 check('and still starts ours', launched.indexOf(ME) !== -1 && answered.error === null);
 
+launched.length = 0;
+check('the boot screen can have the app started again', cobalt.restart() === true && launched.indexOf(ME) !== -1);
+check('but only once, so it can never loop', cobalt.restart() === false);
+
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

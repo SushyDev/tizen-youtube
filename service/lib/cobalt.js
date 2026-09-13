@@ -11,6 +11,8 @@ const postmortem = require('./postmortem.js');
 const { CONTAINER, appId, configuredContent, container, switches } = require('./cobaltConfig.js');
 const { MITM_DIR, existingMaterial, installCa, issue, stillGood } = require('./cobaltCa.js');
 const { STOCK, cobaltIsInstalledHere, stageOrFail } = require('./cobaltContent.js');
+const { writeBootScreen } = require('./bootScreen.js');
+const { guarded, launch, launchOver, restart } = require('./cobaltLaunch.js');
 
 const RELAUNCH_QUIET = 20000;
 const CLAIM_WITHIN = 10000;
@@ -19,7 +21,10 @@ const KILL_SETTLE = 1200;
 
 const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.describe(detail)}`);
 
-const state = { prepared: null, preparing: false, lastWake: 0, waiting: [] };
+const state = {
+    prepared: null, preparing: false, settled: false, failed: null,
+    lastWake: 0, waiting: [], listeningAt: 0, onListening: []
+};
 const proxied = { context: null, at: 0, lookedAt: 0 };
 
 const addresses = () => {
@@ -77,19 +82,42 @@ const served = () => {
     }
 };
 
-const launch = (me) => tizen.application.launch(me, () => {},
-    (error) => note('relaunch', `refused: ${error.message}`));
+// The claim window counts from the port opening, or the wake if later.
+const whenListening = (then) => {
+    if (state.listeningAt) return then();
+
+    state.onListening = state.onListening.concat([then]);
+    return undefined;
+};
+
+const listened = () => {
+    state.listeningAt = Date.now();
+
+    const waiting = state.onListening;
+    state.onListening = [];
+    waiting.forEach((then) => then());
+};
 
 const replaceUnlessOurs = (up, me, since) => {
     if (up.id === proxied.context) return;
 
-    setTimeout(() => {
-        if (proxied.at >= since) proxied.context = up.id;
-        if (up.id === proxied.context) return;
+    whenListening(() => {
+        const from = Math.max(since, state.listeningAt);
 
-        note('woken', `the container is not ours; launching ${me}`);
-        tizen.application.kill(up.id, () => setTimeout(() => launch(me), KILL_SETTLE), () => launch(me));
-    }, CLAIM_WITHIN);
+        setTimeout(() => {
+            if (proxied.at >= from) proxied.context = up.id;
+            if (up.id === proxied.context) return;
+
+            note('woken', `the container is not ours; launching ${me}`);
+            guarded(
+                () => tizen.application.kill(up.id, () => setTimeout(() => launch(me), KILL_SETTLE), () => launchOver(me)),
+                (error) => {
+                    note('woken', `could not close it: ${error.message}`);
+                    launchOver(me);
+                }
+            );
+        }, CLAIM_WITHIN);
+    });
 };
 
 // Launched from the service because the container the platform starts on a reopen dies at once.
@@ -151,9 +179,14 @@ const relaunch = (done) => {
 const prepare = (done) => {
     const finish = (error, result) => {
         state.preparing = false;
+        state.settled = true;
 
-        if (error) note('failed', error);
-        else state.prepared = result;
+        if (error) {
+            note('failed', error);
+            state.failed = postmortem.describe(error).split('\n')[0];
+        } else {
+            state.prepared = result;
+        }
 
         const waiting = state.waiting;
         state.waiting = [];
@@ -188,6 +221,8 @@ const prepare = (done) => {
     const staged = stageOrFail(content);
     if (staged.error) return finish(staged.error);
 
+    guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
+
     const material = existingMaterial();
 
     const trust = (issued) => {
@@ -221,4 +256,16 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-module.exports = { prepare, wake, served, relaunch, material, container, appId, MITM_DIR };
+// Whether the boot screen must wait for our certificate.
+const status = () => {
+    const needed = !!configuredContent();
+    const unmade = needed && state.settled && !state.prepared && !state.failed;
+
+    return {
+        needsCertificate: needed,
+        prepared: !!state.prepared,
+        failed: state.failed || (unmade ? 'Cobalt\'s content was not found on this TV' : null)
+    };
+};
+
+module.exports = { prepare, wake, served, listened, status, restart, relaunch, material, container, appId, MITM_DIR };

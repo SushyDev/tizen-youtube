@@ -14,12 +14,15 @@ const scratch = mkdtempSync(join(tmpdir(), 'tube-loader-'));
 process.env.TUBE_CACHE_DIR = scratch;
 const loader = require('../lib/loader.js');
 
-let bundled;
-try {
-    bundled = loader.resolve();
-} catch (e) {
-    bundled = null;
-}
+const resolvedOrNull = () => {
+    try {
+        return loader.resolve();
+    } catch (e) {
+        return null;
+    }
+};
+
+const bundled = resolvedOrNull();
 check('the bundled script resolves with no network and no cache',
     !!bundled && bundled.origin === 'bundled' && bundled.source.length > 1000,
     bundled ? `${bundled.origin} / ${bundled.source.length} bytes` : 'threw');

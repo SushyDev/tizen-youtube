@@ -5,6 +5,7 @@
 // with their own copies of findBySource and findMap.
 
 export { register, boot } from './register.js';
+export { report, warn } from './journal.js';
 export { every, after, until, stop } from './schedule.js';
 export { onKey } from './keys.js';
 export { whenPlayer, whenVideo, PLAYER } from './player.js';

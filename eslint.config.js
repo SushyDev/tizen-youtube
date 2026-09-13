@@ -150,6 +150,16 @@ module.exports = [
         },
         rules: CORRECTNESS_RULES
     },
+    // The boot screen's page: shipped by the service, run by Cobalt.
+    {
+        files: ['service/boot/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: BROWSER_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
     {
         files: ['framework/**/*.js', 'mods/**/*.js'],
         languageOptions: {
@@ -188,6 +198,17 @@ module.exports = [
         files: STYLED,
         ignores: UNSTYLED,
         rules: STYLE_RULES
+    },
+
+    // var is banned everywhere, tests included; let too, outside the sibling-owned files.
+    {
+        files: STYLED.concat(['test/**/*.js', '*.js']),
+        ignores: SIBLING_OWNED,
+        rules: { 'no-var': 'error', 'prefer-const': ['error', { destructuring: 'all' }] }
+    },
+    {
+        files: ['service/test/**/*.js', 'test/**/*.js'],
+        rules: { 'no-restricted-syntax': ['error', STYLE_SELECTORS[0]] }
     },
 
     {

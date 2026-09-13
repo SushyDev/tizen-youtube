@@ -2,11 +2,11 @@
 
 const forward = require('../lib/forward.js');
 
-let failures = 0;
+const tally = { failures: 0 };
 
 function check(label, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok || !detail ? '' : `  ${detail}`}`);
-    if (!ok) failures += 1;
+    if (!ok) tally.failures += 1;
 }
 
 const normalised = (url) => {
@@ -37,5 +37,5 @@ check('an absolute URL is a forward target',
     forward.absoluteTarget('https://www.youtube.com/tv') === 'https://www.youtube.com/tv');
 check('a path is not a forward target', forward.absoluteTarget('/tv') === null);
 
-console.log(failures ? `\n${failures} failed.` : '\nall checks passed');
-process.exit(failures ? 1 : 0);
+console.log(tally.failures ? `\n${tally.failures} failed.` : '\nall checks passed');
+process.exit(tally.failures ? 1 : 0);

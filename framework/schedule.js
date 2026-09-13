@@ -1,5 +1,7 @@
 // Named timers: rescheduling a name replaces its timer rather than stacking a second.
 
+import { report } from './journal.js';
+
 const timers = Object.create(null);
 
 const stop = (name) => {
@@ -15,7 +17,7 @@ const guarded = (name, run) => {
     try {
         run();
     } catch (failure) {
-        console.error(`[schedule:${name}] failed:`, failure);
+        report(`schedule:${name}`, 'failed', failure);
     }
 };
 

@@ -1,4 +1,5 @@
 import { DEV_TOOLS } from './flags.js';
+import { report } from './journal.js';
 
 // One walk of the feed that every tile and shelf visitor registers against.
 
@@ -46,7 +47,7 @@ const guarded = (entry, run, fallback) => {
     try {
         return run();
     } catch (failure) {
-        console.error(`[feed:${entry.name}] failed:`, failure);
+        report(`feed:${entry.name}`, 'failed', failure);
         return fallback;
     }
 };

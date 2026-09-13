@@ -3,11 +3,20 @@
 const os = require('os');
 
 const postmortem = require('./lib/postmortem.js');
+const lastRun = require('./lib/lastRun.js');
+const printed = require('./lib/printed.js');
+
+lastRun.recall();
 postmortem.watch();
+printed.attach();
 
 const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
+const { STAMP } = require('./lib/stamp.js');
+const bootRoutes = require('./lib/bootRoutes.js');
+const journalRoutes = require('./lib/journalRoutes.js');
+const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
 const forward = require('./lib/forward.js');
 const upgrade = require('./lib/upgrade.js');
@@ -33,6 +42,8 @@ const containerRoute = cobalt ? cobalt.container() : null;
 const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
+
+postmortem.note('platform', `tizen ${platformVersion || 'none'}, patch ${STAMP}`);
 
 const app = proxy.create();
 
@@ -110,11 +121,8 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
-// Inside the container there is no console and no dev bridge, so this route is the only way to
-// read what the service did.
-app.get('/__tube/log', (_, res) => {
-    res.type('text/plain').send(postmortem.read() || '(nothing logged)');
-});
+journalRoutes.attach(app);
+bootRoutes.attach(app, { cobalt, script: () => describeState().script });
 
 // `relaunch` is passed in rather than reached for, because dev/ may not know about the container
 // route — and on a set without one it is simply absent.
@@ -127,6 +135,7 @@ dev.routes(app, {
 
 dev.attach(app);
 proxy.attachFallback(app);
+routeErrors.attach(app);
 
 // Every interface, because the container is another package and cannot reach our 127.0.0.1.
 const BIND = '0.0.0.0';
@@ -149,6 +158,7 @@ const listen = (addresses, index) => {
         serving.yes = true;
 
         postmortem.note('listening', `${address}:${ports.PROXY}`);
+        if (cobalt) cobalt.listened();
         console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
     });
@@ -180,7 +190,10 @@ const listen = (addresses, index) => {
     });
 };
 
-listen(candidates(), 0);
+const holdFor = dev.startDelay();
+if (holdFor) postmortem.note('listen', `held shut for ${holdFor / 1000}s by TUBE_START_DELAY`);
+
+setTimeout(() => listen(candidates(), 0), holdFor);
 
 // Tizen's service runner calls these on every wake message, and a missing one kills the service.
 module.exports = {

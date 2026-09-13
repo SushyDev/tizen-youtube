@@ -1,6 +1,7 @@
 // Tracks the player and video elements and re-announces them when the page swaps them.
 
 import { until, stop } from './schedule.js';
+import { report } from './journal.js';
 
 const PLAYER = '#movie_player, .html5-video-player';
 
@@ -14,7 +15,7 @@ const say = (entry, subject) => {
     try {
         entry.run(subject);
     } catch (failure) {
-        console.error(`[player:${entry.name}] failed:`, failure);
+        report(`player:${entry.name}`, 'failed', failure);
     }
 };
 

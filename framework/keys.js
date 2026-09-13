@@ -1,5 +1,7 @@
 // Routes remote key codes to registered handlers through three capturing listeners.
 
+import { report } from './journal.js';
+
 const TYPES = ['keydown', 'keypress', 'keyup'];
 
 const byCode = Object.create(null);
@@ -15,7 +17,7 @@ const dispatch = (event) => {
         try {
             return entry.handle(event) === true || stop;
         } catch (failure) {
-            console.error(`[key:${entry.name}] failed:`, failure);
+            report(`key:${entry.name}`, 'failed', failure);
             return stop;
         }
     }, false);

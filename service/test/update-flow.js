@@ -15,10 +15,10 @@ function check(name, ok, detail) {
 const GOOD = Buffer.from('/* a genuine userscript */\nwindow.__tube = 1;\n');
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 
-let mode = 'good';
+const serving = { mode: 'good' };
 const origin = http.createServer((req, res) => {
     if (req.url === '/latest.json') {
-        const digest = mode === 'badDigest' ? sha(Buffer.from('something else entirely')) : sha(GOOD);
+        const digest = serving.mode === 'badDigest' ? sha(Buffer.from('something else entirely')) : sha(GOOD);
         res.setHeader('content-type', 'application/json');
         return res.end(JSON.stringify({
             version: '1.2.3',
@@ -26,7 +26,7 @@ const origin = http.createServer((req, res) => {
         }));
     }
     if (req.url === '/1.2.3/userScript.js') {
-        if (mode === 'truncated') return res.end(GOOD.slice(0, 10));
+        if (serving.mode === 'truncated') return res.end(GOOD.slice(0, 10));
         return res.end(GOOD);
     }
     res.statusCode = 404;
@@ -58,7 +58,7 @@ origin.listen(0, '127.0.0.1', () => {
         .then((again) => {
             check('re-checking does not re-download an unchanged bundle', again === false, String(again));
 
-            mode = 'badDigest';
+            serving.mode = 'badDigest';
             const cacheB = mkdtempSync(join(tmpdir(), 'tube-bad-'));
             const loaderB = loadLoader(cacheB, url);
             return loaderB.checkForUpdate().then((updated) => {
@@ -71,7 +71,7 @@ origin.listen(0, '127.0.0.1', () => {
             });
         })
         .then(() => {
-            mode = 'truncated';
+            serving.mode = 'truncated';
             const cacheC = mkdtempSync(join(tmpdir(), 'tube-trunc-'));
             const loaderC = loadLoader(cacheC, url);
             return loaderC.checkForUpdate().then((updated) => {
@@ -90,7 +90,7 @@ origin.listen(0, '127.0.0.1', () => {
             });
         })
         .then(() => {
-            mode = 'good';
+            serving.mode = 'good';
             const installed = { version: '0.3.1' };
             global.tizen = { application: { getAppInfo: () => ({ version: installed.version }) } };
 

@@ -1,4 +1,5 @@
 import { waitFor } from './waitFor.js';
+import { report } from './journal.js';
 
 const registry = () => window._yttv || {};
 
@@ -78,7 +79,7 @@ const whenFound = (name, look, onFound, options) => waitFor(look, (found) => {
     try {
         return onFound(found);
     } catch (failure) {
-        console.error(`[whenFound:${name}] failed:`, failure);
+        report(`whenFound:${name}`, 'failed', failure);
         return undefined;
     }
 }, options);

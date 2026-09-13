@@ -15,15 +15,23 @@ app.get('/__tube/state', (_, res) => res.json({ marker: 'service-endpoint' }));
 app.get('/its/own/route', (_, res) => res.status(501).json({ marker: 'service-route' }));
 proxy.attachFallback(app);
 
+const jsonOrNull = (text) => {
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        return null;
+    }
+};
+
 const server = app.listen(0, '127.0.0.1', () => {
     const port = server.address().port;
 
     function get(path) {
         return new Promise((resolve, reject) => {
             const req = http.get({ host: '127.0.0.1', port, path, timeout: 8000 }, (res) => {
-                let body = '';
-                res.on('data', (c) => { body += c; });
-                res.on('end', () => resolve({ status: res.statusCode, body }));
+                const parts = [];
+                res.on('data', (c) => parts.push(c));
+                res.on('end', () => resolve({ status: res.statusCode, body: parts.join('') }));
             });
             req.on('error', reject);
             req.on('timeout', () => { req.destroy(); reject(new Error('timed out')); });
@@ -32,16 +40,14 @@ const server = app.listen(0, '127.0.0.1', () => {
 
     get('/__tube/state')
         .then((res) => {
-            let parsed = null;
-            try { parsed = JSON.parse(res.body); } catch (e) { }
+            const parsed = jsonOrNull(res.body);
             check('/__tube/state is served by the service, not the proxy',
                 !!parsed && parsed.marker === 'service-endpoint',
                 `got ${res.body.slice(0, 60)}`);
             return get('/its/own/route');
         })
         .then((res) => {
-            let parsed = null;
-            try { parsed = JSON.parse(res.body); } catch (e) { }
+            const parsed = jsonOrNull(res.body);
             check('a route outside /__tube is served by the service, not the proxy',
                 res.status === 501 && !!parsed && parsed.marker === 'service-route',
                 `status ${res.status}, body ${res.body.slice(0, 60)}`);

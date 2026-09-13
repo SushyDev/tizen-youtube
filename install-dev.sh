@@ -16,7 +16,7 @@ PORT="${TUBE_HOMEBREW_PORT:-8091}"
 PIN="${TUBE_HOMEBREW_PIN:-000000}"
 # Set TUBE_CHII=<laptop>:<port> to have every page carry a remote-inspector target script.
 CHII="${TUBE_CHII:-}"
-WGT="${TUBE_WGT:-release/tube-tizen-6.5.wgt}"
+WGT="${TUBE_WGT:-release/tube-tizen-5.5.wgt}"
 
 cd "$(dirname "$0")"
 

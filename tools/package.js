@@ -12,7 +12,7 @@ const { PROXY } = require('../service/lib/ports.js');
 
 // Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the page from the service instead.
 const APPS = [
-    { label: 'youtube 6.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null },
+    { label: 'youtube 5.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null },
     {
         label: 'youtube 5.0+',
         output: paths.WGT_LEGACY,

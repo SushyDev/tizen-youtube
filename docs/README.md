@@ -6,8 +6,8 @@ Ad-free YouTube on a Samsung TV.
 
 - Adverts and sponsor segments gone, on the TV's own YouTube client
 - Its own app; the stock YouTube app is left alone
-- Tizen 6.5 and up, on sets with Samsung's Cobalt container
-- Tizen 5.0 and 5.5 with a widget of their own, run on a Tizen 5.0 set
+- Tizen 5.5 and up, on sets with Samsung's Cobalt container (5.5 not yet confirmed on a set)
+- Tizen 5.0 with a widget of its own, which also plays on 5.5
 - Updates over the air, digest-verified, with the shipped copy as the floor
 
 **Discord**: https://discord.gg/WjxVnrsV4A
@@ -69,10 +69,10 @@ For the Homebrew route, if you would rather not use the catalogue, with **Node 2
 git clone https://github.com/SushyDev/tizen-youtube.git
 cd tizen-youtube
 npm install
-npm run package    # release/tube-tizen-6.5.wgt and tube-tizen-5.0.wgt, for Tizen Homebrew
+npm run package    # release/tube-tizen-5.5.wgt and tube-tizen-5.0.wgt, for Tizen Homebrew
 ```
 
-Load the one for your TV — `tube-tizen-6.5.wgt` from Tizen 6.5, `tube-tizen-5.0.wgt` from 5.0 — through
+Load the one for your TV — `tube-tizen-5.5.wgt` from Tizen 5.5, `tube-tizen-5.0.wgt` from 5.0 — through
 Homebrew's **Upload** tab; [DEVELOP.md](DEVELOP.md) has the other commands.
 
 ---

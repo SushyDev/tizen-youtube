@@ -74,7 +74,7 @@ jobs:
         id: widget
         run: |
           version="$(node -p "require('./tizen.config.json').version")"
-          mv release/tube-tizen-6.5.wgt "release/tizen-youtube-${version}-tizen-6.5.wgt"
+          mv release/tube-tizen-5.5.wgt "release/tizen-youtube-${version}-tizen-5.5.wgt"
           mv release/tube-tizen-5.0.wgt "release/tizen-youtube-${version}-tizen-5.0.wgt"
           echo "path=release/tizen-youtube-${version}*.wgt" >> "$GITHUB_OUTPUT"
 

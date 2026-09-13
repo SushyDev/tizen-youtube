@@ -167,6 +167,46 @@ const checkItSurvivesADroppedStream = () => {
     });
 };
 
+// Every innertube call is a POST, and node below 8 once refused them all.
+const checkItCanPost = (upstream, target) => post(`/cors-bypass/${target}`, 'ping', (postError, postStatus, echoed) => {
+    upstream.close();
+
+    if (postError) return fail(`a POST through the proxy broke: ${postError.message}`);
+
+    if (postStatus !== 200 || echoed !== 'posted ping') {
+        return fail(`a POST through the proxy answered ${postStatus}: ${readable(echoed).slice(0, 200)}`);
+    }
+
+    pass('it can send a request body upstream');
+
+    return checkItSurvivesADroppedStream();
+});
+
+// Below node 14, node-fetch tied a close listener to a kept-alive socket for every request.
+const REUSES = 12;
+
+// One kept-alive socket, as Cobalt holds them, so the service's own socket upstream is reused.
+const KEPT_ALIVE = new http.Agent({ keepAlive: true, maxSockets: 1 });
+
+const fetchRepeatedly = (target, left, done) => {
+    if (!left) return done();
+
+    const request = http.get({ host: '127.0.0.1', port: PORT, path: `/cors-bypass/${target}`, agent: KEPT_ALIVE },
+        (response) => collect(response, () => fetchRepeatedly(target, left - 1, done)));
+
+    request.on('error', (error) => fail(`a repeated fetch broke: ${error.message}`));
+    return undefined;
+};
+
+const checkSocketsStayClean = (target, next) => fetchRepeatedly(target, REUSES, () => get('/__tube/log', (error, status, log) => {
+    if (error || status !== 200) return fail('/__tube/log did not answer');
+    if (/memory leak/i.test(log)) return fail('a kept-alive socket collects a listener per request');
+
+    pass(`${REUSES} requests over kept-alive sockets leave no listener behind`);
+
+    return next();
+}));
+
 // Local routes answer even when fetch is broken; only an upstream round trip proves it works.
 const checkItCanFetchUpstream = () => {
     const upstream = http.createServer((request, response) => {
@@ -188,20 +228,7 @@ const checkItCanFetchUpstream = () => {
 
             pass('it can fetch upstream and hand the answer back');
 
-            // Every innertube call is a POST, and node below 8 once refused them all.
-            return post(`/cors-bypass/${target}`, 'ping', (postError, postStatus, echoed) => {
-                upstream.close();
-
-                if (postError) return fail(`a POST through the proxy broke: ${postError.message}`);
-
-                if (postStatus !== 200 || echoed !== 'posted ping') {
-                    return fail(`a POST through the proxy answered ${postStatus}: ${readable(echoed).slice(0, 200)}`);
-                }
-
-                pass('it can send a request body upstream');
-
-                return checkItSurvivesADroppedStream();
-            });
+            return checkSocketsStayClean(target, () => checkItCanPost(upstream, target));
         });
     });
 };

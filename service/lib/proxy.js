@@ -189,8 +189,15 @@ const attachFallback = (app) => {
                     // A viewer who closes the page leaves a media stream being pulled into a socket
                     // nothing reads; and a source that breaks mid-pipe would otherwise hang the
                     // client for ever.
-                    res.on('close', () => release(response.body));
-                    response.body.on('error', (error) => fail('upstream stream broke', error));
+                    // A break after the viewer dropped the stream is our own release, not upstream's.
+                    const dropped = { yes: false };
+                    res.on('close', () => {
+                        dropped.yes = true;
+                        release(response.body);
+                    });
+                    response.body.on('error', (error) => {
+                        if (!dropped.yes) fail('upstream stream broke', error);
+                    });
                     protection.watch(route.url, response.body);
 
                     return response.body.pipe(res);

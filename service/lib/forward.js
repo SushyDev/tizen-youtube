@@ -107,7 +107,9 @@ const tunnel = (server) => {
         const drop = (error) => {
             if (error) {
                 dev.journal.service('tunnel', `broke ${req.url}: ${error.message}`);
-                record('tunnel', `${req.url} ${error.code || error.message}`);
+
+                // A reset after data flowed is how a finished tunnel usually ends.
+                if (!upstream.bytesRead) record('tunnel', `${req.url} ${error.code || error.message}`);
             }
 
             upstream.destroy();

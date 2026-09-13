@@ -250,7 +250,11 @@ const prepare = (done) => {
 
 // What forward.js needs to stand in front of a TLS connection, or null while it is still being
 // made. Read from disk so a service that started before the staging finished picks it up.
+// A widget without --content cannot plant our CA, so there interception would only break TLS.
+const trusted = () => !switches() || !!configuredContent();
+
 const material = () => {
+    if (!trusted()) return null;
     if (state.prepared) return { key: state.prepared.key, cert: state.prepared.chain };
 
     const existing = existingMaterial();

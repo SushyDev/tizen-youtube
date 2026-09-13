@@ -45,8 +45,23 @@ const legacy = {
     transform: (code, id) => (id === LEGACY_ENTRY ? { code: polyfilled(code), map: null } : null)
 };
 
+// Below node 14 node-fetch ties a close listener to the socket per request; kept-alive sockets
+// pile them up and fire "Premature close" on finished bodies.
+const PER_SOCKET_CLOSE = 'parseInt(process.version.substring(1)) < 14';
+const NODE_FETCH = /node-fetch[\\/]lib[\\/]index\.js$/;
+
+const staleCloseListeners = {
+    name: 'tube-node-fetch-close',
+    transform: (code, id) => {
+        if (!NODE_FETCH.test(id)) return null;
+        if (code.indexOf(PER_SOCKET_CLOSE) === -1) throw new Error(`node-fetch changed: ${PER_SOCKET_CLOSE} is gone`);
+
+        return { code: code.replace(PER_SOCKET_CLOSE, 'false'), map: null };
+    }
+};
+
 export default defineConfig({
-    plugins: LEGACY ? [legacy] : [],
+    plugins: LEGACY ? [legacy, staleCloseListeners] : [staleCloseListeners],
 
     resolve: {
         // The CommonJS entry, because the bundled ESM copy becomes a `{ default }` namespace and

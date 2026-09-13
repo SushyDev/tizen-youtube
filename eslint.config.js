@@ -150,6 +150,16 @@ module.exports = [
         },
         rules: CORRECTNESS_RULES
     },
+    // The boot screen's page: shipped by the service, run by Cobalt.
+    {
+        files: ['service/boot/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: BROWSER_GLOBALS
+        },
+        rules: CORRECTNESS_RULES
+    },
     {
         files: ['framework/**/*.js', 'mods/**/*.js'],
         languageOptions: {

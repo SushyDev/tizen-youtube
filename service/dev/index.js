@@ -106,8 +106,14 @@ const routes = (app, { policies, state, knobs, relaunch }) => {
     });
 };
 
+// Holds the port shut, to reproduce the start race.
+const BUILD_DELAY = '__TUBE_START_DELAY__';
+const startDelay = () => Number(process.env.TUBE_START_DELAY
+    || (BUILD_DELAY.indexOf('TUBE_START_DELAY') === -1 ? BUILD_DELAY : 0)) || 0;
+
 module.exports = {
     attach: bridge.attach,
+    startDelay,
     routes,
     pageRoutes,
     pageScripts,

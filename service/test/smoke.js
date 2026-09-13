@@ -85,6 +85,27 @@ function checkItCanFetchUpstream() {
     });
 }
 
+// What the page sends to /__tube/journal must be read back from /__tube/log with the service's own lines.
+function checkThePageReachesTheJournal() {
+    var line = 'smoke: a page line on ' + process.version;
+
+    get('/__tube/journal?m=' + encodeURIComponent(line), function (error, status) {
+        if (error || status !== 204) {
+            return fail('/__tube/journal did not take a page line' + (error ? ': ' + error.message : ' (status ' + status + ')'));
+        }
+
+        return get('/__tube/log', function (logError, logStatus, log) {
+            if (logError || logStatus !== 200) return fail('/__tube/log did not answer');
+            if (log.indexOf('page: ' + line) === -1) return fail('/__tube/log does not carry the page line: ' + log.slice(-300));
+            if (log.indexOf('listening: ') === -1) return fail('/__tube/log does not carry the service start');
+
+            pass('a page line lands in /__tube/log beside the service start');
+
+            return checkItCanFetchUpstream();
+        });
+    });
+}
+
 var began = Date.now();
 
 (function waitForPort() {
@@ -130,7 +151,7 @@ var began = Date.now();
 
             pass('/__tube/userScript.js serves ' + Math.round(script.length / 1024) + 'kB');
 
-            return checkItCanFetchUpstream();
+            return checkThePageReachesTheJournal();
         });
     });
 })();

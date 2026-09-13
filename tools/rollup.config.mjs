@@ -15,7 +15,12 @@ const { commit, tree } = gitStamp();
 const ENGINE = 'Chrome 63';
 const ECMA = 2017;
 
-export default {
+const babel = () => getBabelOutputPlugin({
+    babelHelpers: 'bundled',
+    presets: [['@babel/preset-env', { targets: ENGINE }]]
+});
+
+const userScript = {
     input: 'mods/index.js',
     output: {
         file: 'dist/userScript.js',
@@ -40,10 +45,7 @@ export default {
                 __TUBE_TREE__: process.env.ROLLUP_WATCH === 'true' ? 'watch' : tree
             }
         }),
-        getBabelOutputPlugin({
-            babelHelpers: 'bundled',
-            presets: [['@babel/preset-env', { targets: ENGINE }]]
-        }),
+        babel(),
         terser({ ecma: ECMA, mangle: true }),
         replace({
             preventAssignment: false,
@@ -52,3 +54,12 @@ export default {
         })
     ]
 };
+
+// The boot screen's page, which the service writes into the container's content.
+const bootScreen = {
+    input: 'service/boot/index.js',
+    output: { file: 'dist/bootScreen.js', format: 'iife' },
+    plugins: [babel(), terser({ ecma: ECMA, mangle: true })]
+};
+
+export default [userScript, bootScreen];

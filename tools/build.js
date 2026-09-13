@@ -14,7 +14,7 @@ const STEPS = [
         label: 'userscript bundle',
         command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
         after: ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt3']],
-        outputs: [paths.BUNDLE],
+        outputs: [paths.BUNDLE, paths.BOOT_BUNDLE],
         summarise: (sizes) => ui.bytes(sizes[0])
     },
     {

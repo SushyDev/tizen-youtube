@@ -8,6 +8,7 @@
 
 const DIST = 'dist';
 const BUNDLE = 'dist/userScript.js';
+const BOOT_BUNDLE = 'dist/bootScreen.js';
 
 const SERVICE_DIST = 'service/dist';
 const SERVICE_BUNDLE = 'service/dist/index.js';
@@ -28,7 +29,7 @@ const WIDGET = [
 const ARTEFACTS = [DIST, SERVICE_DIST, RELEASE];
 
 module.exports = {
-    DIST, BUNDLE,
+    DIST, BUNDLE, BOOT_BUNDLE,
     SERVICE_DIST, SERVICE_BUNDLE,
     RELEASE, WGT,
     WIDGET, ARTEFACTS

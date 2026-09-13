@@ -12,6 +12,7 @@ module.exports = {
     upgradeRewrite: () => null,
     spoofUserAgent: (text) => text,
     upstreamHeaders: (headers) => headers,
+    startDelay: () => 0,
 
     // Called on the hot path of every proxied request and every tunnel, so it answers rather than
     // being absent: one call returning false, instead of a branch at each call site.

@@ -5,7 +5,7 @@ const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } = req
 const { join } = require('path');
 const { randomBytes } = require('crypto');
 
-const { load } = require('./config.js');
+const { load, gitStamp } = require('./config.js');
 const { injectTokens } = require('./inject.js');
 
 const config = load();
@@ -33,9 +33,17 @@ const devToken = process.env.TUBE_DEV_TOKEN || randomBytes(8).toString('hex');
 // this sentinel to decide whether a remote inspector was asked for.
 const chii = process.env.TUBE_CHII || 'off';
 
+// The Patch string Settings shows.
+const { commit, tree } = gitStamp();
+const stamp = `${config.version}-${commit}-${tree}`;
+
 const tokens = Object.assign(
-    { __TUBE_ORIGIN__: config.origin },
-    dev ? { __TUBE_DEV_TOKEN__: devToken, __TUBE_CHII__: chii } : {}
+    { __TUBE_ORIGIN__: config.origin, __TUBE_STAMP__: stamp },
+    dev ? {
+        __TUBE_DEV_TOKEN__: devToken,
+        __TUBE_CHII__: chii,
+        __TUBE_START_DELAY__: String(Number(process.env.TUBE_START_DELAY) || 0)
+    } : {}
 );
 
 const stamped = injectTokens(readFileSync(bundle, 'utf8'), tokens).code;
@@ -45,18 +53,23 @@ console.log(`      origin: ${config.origin}${dev ? ' (dev build)' : ''}`);
 if (dev && chii !== 'off') console.log(`      inspector: chii at ${chii}`);
 console.log(`      dist/index.js  ${kb(Buffer.byteLength(stamped))}`);
 
-console.log('[3/4] embedding the userscript');
-const userScript = join(modsDist, 'userScript.js');
+console.log('[3/4] embedding the userscript and the boot screen');
 
-if (!existsSync(userScript)) {
-    console.error(`      MISSING ${userScript} — build the userscript first`);
-    console.error('      refusing to ship without it: a first launch must work offline');
-    process.exit(1);
-}
+// Both ship inside the widget: a first launch must work offline.
+const embed = (name) => {
+    const from = join(modsDist, name);
+
+    if (!existsSync(from)) {
+        console.error(`      MISSING ${from} — build the userscript first`);
+        process.exit(1);
+    }
+
+    copyFileSync(from, join(assetsDir, name));
+    console.log(`      dist/assets/${name}  ${kb(readFileSync(from).length)}`);
+};
 
 mkdirSync(assetsDir, { recursive: true });
-copyFileSync(userScript, join(assetsDir, 'userScript.js'));
-console.log(`      dist/assets/userScript.js  ${kb(readFileSync(userScript).length)}`);
+['userScript.js', 'bootScreen.js'].forEach(embed);
 
 console.log('[4/4] verifying the floor');
 run('node', [join(__dirname, 'check-output.js'), bundle, 'node12']);

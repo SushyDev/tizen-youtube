@@ -81,5 +81,32 @@ Two build-time gates, one per side.
   nothing and says nothing.
 - `tools/check-output.js` rejects any built-in newer than Cobalt 3.2.1 / node 12. Babel lowers
   syntax; it does not polyfill a library call.
+- The container is launched directly, so it can come up before the service listens. `--base_url`
+  is therefore `file:///tube/boot.html`, a dmesg-style boot screen ported from the old
+  `ui/src/boot.js`. The page is the ES modules in `service/boot/`, which rollup bundles beside the
+  userscript. `service/lib/bootScreen.js` writes it into the `web/` folder of our `--content` copy
+  after staging, and Cobalt serves it from there.
+  - Before the service answers, it logs the Cobalt, Evergreen and Starboard versions and the wait.
+  - Once the service answers, it polls `/__tube/boot`, which gives the Patch stamp Settings shows,
+    Tizen, the model, node, the userscript, and every service log line since the last.
+  - It moves on to `https://www.youtube.com/tv` only when three things hold: the certificate is
+    ready, the TV can reach YouTube, and `https://www.youtube.com/__tube/ping` answers through
+    Cobalt's proxy and our certificate, the same path the page will take. It carries its own query
+    string, which holds Cobalt's device authentication.
+  - If that answer fails three times, it asks the service, once, to start the container again.
+    That is what a certificate issued during the container's life needs.
+  - Otherwise it stays on the log and says in red what it waits on.
+- A container's claim window counts from when the service starts listening, not from the wake.
+- A dev build with `TUBE_START_DELAY=<ms>` holds the port shut, so the race can be reproduced.
+- `/__tube/log` is the journal: one continuous log from the service's start on, rotated file
+  included. It holds the service's notes, the boot screen's own lines (`screen:`), and the page's
+  (`page:`). The framework's `report()` and `warn()` send those through `/__tube/journal`, along
+  with page errors, rejections and the userscript's boot line. Each distinct line goes once, and
+  at most 100 per page load.
+  - The service's side is noted too: `console.error`/`console.warn` (`error:`/`warning:`), node's
+    own warnings, and errors thrown in a route (`route:`).
+  - How the previous run ended (`uncaught:`, `exit:`) is shown again at the top of the next run
+    as `previous:`. So a crash that restarts the service stays on the boot screen, which also
+    says when the service's pid changes.
 - Three files are excluded from `tsc`, and two of them from the style rules, because live sibling
   branches own them. They come back under both when those branches land.

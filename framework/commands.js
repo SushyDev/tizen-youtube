@@ -1,6 +1,7 @@
 // Offers every command YouTube resolves to the registered interpreters in registration order.
 
 import { findResolver } from './internals.js';
+import { report } from './journal.js';
 
 // An interpreter saying the command was not its business. Anything else is the answer YouTube gets.
 const PASS = { pass: true };
@@ -18,7 +19,7 @@ const ask = (command, at) => state.interpreters.reduce((answer, entry) => {
     try {
         return entry.interpret(command, at);
     } catch (failure) {
-        console.error(`[command:${entry.name}] failed:`, failure);
+        report(`command:${entry.name}`, 'failed', failure);
         return PASS;
     }
 }, PASS);

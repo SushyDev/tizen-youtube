@@ -1,5 +1,6 @@
 import { until } from './schedule.js';
 import { booted } from './register.js';
+import { report, warn } from './journal.js';
 
 // Captured before interception so clone() never re-enters the readers.
 const original = { parse: JSON.parse, stringify: JSON.stringify };
@@ -23,7 +24,7 @@ const file = (index, name, keys, handle) => {
 
 const onResponse = (name, keys, read) => {
     if (booted()) {
-        console.warn(`[json] ${name} registered after interception began; it will not run`);
+        warn('json', `${name} registered after interception began; it will not run`);
         return;
     }
 
@@ -32,7 +33,7 @@ const onResponse = (name, keys, read) => {
 
 const onRequest = (name, keys, write) => {
     if (booted()) {
-        console.warn(`[json] ${name} registered after interception began; it will not run`);
+        warn('json', `${name} registered after interception began; it will not run`);
         return;
     }
 
@@ -57,7 +58,7 @@ const guarded = (handler, value, fallback) => {
     try {
         return handler.handle(value);
     } catch (failure) {
-        console.error(`[${handler.name}] failed:`, failure);
+        report(handler.name, 'failed', failure);
         return fallback;
     }
 };

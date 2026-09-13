@@ -31,7 +31,7 @@ const fresh = (reachUrl) => {
 };
 
 const READY = { needsCertificate: true, prepared: true, failed: null };
-const SCRIPT = { origin: 'bundled', version: 'bundled' };
+const SCRIPT = { bytes: 88064 };
 
 const server = http.createServer((_, res) => { res.writeHead(204); res.end(); });
 

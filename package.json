@@ -22,7 +22,6 @@
     "test:matrix": "node tools/matrix.js",
     "probe:engine": "node tools/engine-probe.js",
     "package": "node tools/package.js",
-    "release": "node tools/release.js",
     "dev": "node tools/dev.js",
     "chii": "node tools/chii.js",
     "dev:service": "node service/index.js",

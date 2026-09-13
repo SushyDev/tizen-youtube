@@ -11,7 +11,7 @@ postmortem.watch();
 printed.attach();
 
 const ports = require('./lib/ports.js');
-const loader = require('./lib/loader.js');
+const { USER_SCRIPT, sized } = require('./lib/shipped.js');
 const proxy = require('./lib/proxy.js');
 const { STAMP } = require('./lib/stamp.js');
 const { capability } = require('./lib/platform.js');
@@ -70,9 +70,7 @@ const POLICIES = {
     none: null
 };
 
-const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
-
-const state = { policy: 'wide', lastUpdateCheck: 0, updateInFlight: false };
+const state = { policy: 'wide' };
 
 app.use((_, res, next) => {
     const chosen = POLICIES[state.policy];
@@ -83,48 +81,9 @@ app.use((_, res, next) => {
     next();
 });
 
-// Checking for an update must never be able to fail the route that triggers it.
-const maybeCheckForUpdate = () => {
-    const now = Date.now();
-    if (state.updateInFlight || now - state.lastUpdateCheck < UPDATE_CHECK_INTERVAL) return;
+const userScript = () => sized(USER_SCRIPT);
 
-    state.lastUpdateCheck = now;
-    state.updateInFlight = true;
-
-    const settle = () => { state.updateInFlight = false; };
-
-    try {
-        loader.checkForUpdate().then(settle, (error) => {
-            postmortem.note('update', error);
-            settle();
-        });
-    } catch (error) {
-        postmortem.note('update', error);
-        settle();
-    }
-};
-
-const describeState = () => {
-    const theScriptThisSetWouldRun = () => {
-        try {
-            const resolved = loader.resolve();
-            return { version: resolved.version, origin: resolved.origin };
-        } catch (e) {
-            return { error: e.message };
-        }
-    };
-
-    return {
-        script: theScriptThisSetWouldRun(),
-        platformVersion,
-        container: containerRoute
-    };
-};
-
-app.get('/__tube/state', (_, res) => {
-    maybeCheckForUpdate();
-    res.json(describeState());
-});
+app.get('/__tube/state', (_, res) => res.json({ script: userScript(), platformVersion, container: containerRoute }));
 
 // The served page's boot line, so each load's requests are traced afresh.
 const retraceOnBoot = (line) => {
@@ -132,7 +91,7 @@ const retraceOnBoot = (line) => {
 };
 
 journalRoutes.attach(app, { heard: retraceOnBoot });
-bootRoutes.attach(app, { cobalt, script: () => describeState().script });
+bootRoutes.attach(app, { cobalt, script: userScript });
 
 // `relaunch` is passed in rather than reached for, because dev/ may not know about the container
 // route — and on a set without one it is simply absent.
@@ -228,5 +187,3 @@ if (cobalt) {
         postmortem.note('cobalt', `prepare threw: ${postmortem.describe(e)}`);
     }
 }
-
-setTimeout(maybeCheckForUpdate, 5000);

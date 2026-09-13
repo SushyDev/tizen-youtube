@@ -76,7 +76,6 @@ const runTheService = () => start('svc', process.execPath, ['index.js'], {
         TUBE_PROXY_PORT: String(ports.proxy),
         TUBE_DEV_UA: process.env.TUBE_DEV_UA || TV_USER_AGENT,
         TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
-        TUBE_CACHE_DIR: join(ROOT, '.dev', 'cache'),
         TUBE_DEV_INJECT: join(__dirname, 'dev', 'remote.js')
     }
 });

@@ -35,7 +35,7 @@ function injectTokens(source, tokens) {
 // carries runtime globals of the same shape — __TUBE_NATIVE_PROXY_PATCHES__ is set by the proxy
 // and is meant to survive into the bundle.
 const BUILD_TOKENS = [
-    '__TUBE_ORIGIN__', '__TUBE_VERSION__', '__TUBE_COMMIT__', '__TUBE_TREE__',
+    '__TUBE_VERSION__', '__TUBE_COMMIT__', '__TUBE_TREE__',
     '__TUBE_DEV_TOOLS__', '__TUBE_DEV_TOKEN__', '__TUBE_CHII__'
 ];
 

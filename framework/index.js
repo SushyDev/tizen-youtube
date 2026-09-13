@@ -23,7 +23,7 @@ export {
 
 export { waitFor } from './waitFor.js';
 export { configRead, configWrite, configChangeEmitter } from './config.js';
-export { VERSION, COMMIT, TREE, assetUrl } from './origin.js';
+export { VERSION, COMMIT, TREE } from './stamp.js';
 export { DEV_TOOLS } from './flags.js';
 export { answerSwitch } from './switches.js';
 

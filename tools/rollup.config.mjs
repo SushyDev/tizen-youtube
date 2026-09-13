@@ -39,7 +39,6 @@ const userScript = {
             preventAssignment: true,
             values: {
                 __TUBE_DEV_TOOLS__: process.env.TUBE_DEV === '1' ? 'on' : 'off',
-                __TUBE_ORIGIN__: config.origin,
                 __TUBE_VERSION__: version,
                 __TUBE_COMMIT__: commit,
                 __TUBE_TREE__: process.env.ROLLUP_WATCH === 'true' ? 'watch' : tree

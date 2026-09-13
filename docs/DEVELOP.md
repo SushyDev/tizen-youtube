@@ -14,7 +14,6 @@
 | `npm run package` | Build the unsigned `.wgt`s for Tizen Homebrew: `tube-tizen-5.5.wgt` and `tube-tizen-5.0.wgt` |
 | `npm run audit` | Check what is inside both `.wgt`s; `-- --release` fails on anything dev-only |
 | `npm run deploy` | Package a dev build and install it on the set; needs `TUBE_DEV_TOKEN` |
-| `npm run release` | Stage `release/origin/` — the userscript, the language names and `latest.json` |
 | `npm run dev` | YouTube with the mods in a browser, no hardware needed |
 | `npm run dev:service` | The service off-TV, on `:8099` |
 | `npm run chii` | Remote inspector for the page inside the container |

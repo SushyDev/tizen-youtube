@@ -89,11 +89,6 @@ function main() {
     const config = load();
 
     ui.heading('build', `v${config.version}`);
-    ui.info('origin', config.origin);
-
-    if (config.placeholders.length) {
-        ui.warn('origin still points at an example host — fine for development, blocked by `npm run release`');
-    }
 
     const started = Date.now();
 
@@ -105,7 +100,7 @@ function main() {
 
     ui.blank();
     ui.note(`Built in ${((Date.now() - started) / 1000).toFixed(1)}s.`);
-    ui.note(ui.style.dim('Next:  npm test   ·   npm run package   ·   npm run release'));
+    ui.note(ui.style.dim('Next:  npm test   ·   npm run package'));
     ui.blank();
 }
 

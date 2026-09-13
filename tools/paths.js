@@ -1,10 +1,6 @@
 'use strict';
 
-// Where everything lands.
-//
-// These were string literals in build.js, clean.js, package.js and release.js, so the artefact
-// contract was written out four times and nothing checked the four agreed. config.js owns what
-// the build *is* — version, origin, the git stamp; this owns where it goes.
+// Where everything lands; config.js owns what the build is.
 
 const DIST = 'dist';
 const BUNDLE = 'dist/userScript.js';

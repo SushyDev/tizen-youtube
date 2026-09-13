@@ -18,9 +18,9 @@ const parsed = (status, text) => {
 export const poll = () => {
     const sending = outgoing();
 
-    get(bootUrl(sending), (status, text) => {
+    get(bootUrl(sending), (status, text, how) => {
         const body = parsed(status, text);
-        if (!body) return silent(poll);
+        if (!body) return silent(poll, status, how);
 
         sent(sending.length);
         return heard(body, poll);

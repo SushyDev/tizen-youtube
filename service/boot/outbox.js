@@ -15,9 +15,9 @@ export const sent = (count) => {
 };
 
 // Sent without waiting: the page may be leaving.
-export const flush = (extra) => {
+export const flush = (extra, base) => {
     if (!held.unsent.length && !extra) return;
 
-    send(`${bootUrl(outgoing())}${extra || ''}`);
+    send(`${bootUrl(outgoing(), base)}${extra || ''}`);
     held.unsent = [];
 };

@@ -1,24 +1,27 @@
 import { TIMING } from './timing.js';
+import { elapsed } from './clock.js';
 
-// Answers once: with the reply, or status 0 when it times out or cannot be sent.
+// Answers once: the reply, or status 0; `how` holds the time taken and whether it timed out.
 export const get = (url, done) => {
     const request = new XMLHttpRequest();
+    const began = elapsed();
     const settled = { yes: false };
 
-    const finish = (status, text) => {
+    const finish = (status, text, timedOut) => {
         if (settled.yes) return;
         settled.yes = true;
-        done(status, text);
+        done(status, text, { ms: Math.round(elapsed() - began), timedOut: !!timedOut });
     };
 
     request.onreadystatechange = () => {
         if (request.readyState === 4) finish(request.status, request.responseText);
     };
 
+    // Settled before the abort, whose own readystatechange would read as a refusal.
     setTimeout(() => {
         if (settled.yes) return;
+        finish(0, '', true);
         try { request.abort(); } catch (e) { /* already gone */ }
-        finish(0, '');
     }, TIMING.askTimeout);
 
     request.open('GET', url, true);

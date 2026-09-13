@@ -37,6 +37,9 @@ const isRetriable = (error) => !!error
 // AbortSignal.
 const SIGNAL = { constructor: { name: 'AbortSignal' } };
 
+// Below node 8 node-fetch refuses any signal beside a streamed body, so those requests go unbounded.
+const SIGNAL_BESIDE_STREAM = 'destroy' in require('stream').Readable.prototype;
+
 const untilHeaders = (make) => {
     const held = { listeners: [] };
     const signal = Object.assign(Object.create(SIGNAL), {
@@ -66,8 +69,9 @@ const send = (url, req, headers, fresh) => {
         agent: fresh ? undefined : agentFor(url)
     };
 
-    const attempt = (changed) => untilHeaders((signal) =>
-        fetch(url, Object.assign({}, options, changed, { signal })));
+    const attempt = (changed) => (body && !SIGNAL_BESIDE_STREAM
+        ? fetch(url, Object.assign({}, options, changed))
+        : untilHeaders((signal) => fetch(url, Object.assign({}, options, changed, { signal }))));
 
     return attempt().catch((error) => {
         if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {

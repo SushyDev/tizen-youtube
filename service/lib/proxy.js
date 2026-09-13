@@ -10,11 +10,15 @@ const forward = require('./forward.js');
 const dev = require('../dev/index.js');
 const ports = require('./ports.js');
 const postmortem = require('./postmortem.js');
+const protection = require('./protection.js');
 const { upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js');
 const { readText, send } = require('./sending.js');
-const { nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants } = require('./rewrites.js');
+const {
+    nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants,
+    hidesWatermark, withHiddenWatermark, rewriteStaticHosts
+} = require('./rewrites.js');
 
 const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
@@ -25,6 +29,9 @@ const CSP_HEADER = 'content-security-policy';
 const TRACE_LIMIT = 40;
 
 const state = { traced: 0 };
+
+// Readable.destroy arrived in node 8; before it the stream is unhooked and drained instead.
+const release = (stream) => (typeof stream.destroy === 'function' ? stream.destroy() : stream.unpipe().resume());
 
 // A wildcard is refused for a request that carries cookies, so when the page names itself the
 // answer names it back.
@@ -42,7 +49,7 @@ const create = () => {
         next();
     });
 
-    app.use((req, _, next) => {
+    app.use((req, res, next) => {
         const watching = dev.journal.wanted();
         const tracing = state.traced < TRACE_LIMIT;
         if (!watching && !tracing) return next();
@@ -55,9 +62,11 @@ const create = () => {
         // Our own /__tube/ requests would drown the page's in the journal.
         if (watching && !ours) dev.journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
 
-        if (tracing && overOurTls(req) && !ours) {
+        // Noted when answered, so the status shows what the page actually got back.
+        if (tracing && !ours) {
             state.traced += 1;
-            postmortem.note('req', `${req.method} ${req.headers.host || '?'}${path.slice(0, 120)}`);
+            res.on('finish', () => postmortem.note('req',
+                `${req.method} ${req.headers.host || '?'}${path.slice(0, 110)} → ${res.statusCode}`));
         }
 
         return next();
@@ -142,6 +151,12 @@ const attachFallback = (app) => {
         }
 
         const route = routeFor(req);
+
+        // Served as ourselves, the page has to say so in its own URL before kabuki reads it.
+        if (!route.asTheRealHost && req.path === '/tv' && !hidesWatermark(req.url)) {
+            return res.redirect(302, withHiddenWatermark(req.url));
+        }
+
         const headers = headersFor(req, route);
 
         // An unhandled 'error' on the response socket is an uncaught exception, and the postmortem
@@ -174,8 +189,16 @@ const attachFallback = (app) => {
                     // A viewer who closes the page leaves a media stream being pulled into a socket
                     // nothing reads; and a source that breaks mid-pipe would otherwise hang the
                     // client for ever.
-                    res.on('close', () => response.body.destroy());
-                    response.body.on('error', (error) => fail('upstream stream broke', error));
+                    // A break after the viewer dropped the stream is our own release, not upstream's.
+                    const dropped = { yes: false };
+                    res.on('close', () => {
+                        dropped.yes = true;
+                        release(response.body);
+                    });
+                    response.body.on('error', (error) => {
+                        if (!dropped.yes) fail('upstream stream broke', error);
+                    });
+                    protection.watch(route.url, response.body);
 
                     return response.body.pipe(res);
                 }
@@ -196,9 +219,12 @@ const attachFallback = (app) => {
                         ? html
                         : rewriteAttestation(html);
 
+                    // Served as ourselves, engine-loaded statics must not inherit our http origin.
+                    const served = route.asTheRealHost ? injected : rewriteStaticHosts(injected);
+
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
 
-                    res.send(abr ? rerouteAbr(injected) : injected);
+                    res.send(abr ? rerouteAbr(served) : served);
                 });
             })
             .catch((error) => fail('upstream failed', error));
@@ -206,4 +232,9 @@ const attachFallback = (app) => {
 
     return app;
 };
-module.exports = { create, attachFallback };
+// Each page load gets its own trace, so a launch that failed before a working one is still on record.
+const retrace = () => {
+    state.traced = 0;
+};
+
+module.exports = { create, attachFallback, retrace };

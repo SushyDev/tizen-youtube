@@ -2,7 +2,7 @@
 
 // Refuses a bundle that reaches for a built-in newer than the runtime it will land on.
 //
-//   node tools/check-output.js <file> <node12|cobalt3>
+//   node tools/check-output.js <file> <node12|cobalt3|node4>
 
 const { readFileSync } = require('fs');
 const acorn = require('acorn');
@@ -36,7 +36,9 @@ const SINCE = {
         toReversed: 'Chrome 110',
         toSpliced: 'Chrome 110',
         groupBy: 'Chrome 117'
-    }
+    },
+    // core-js supplies every built-in node 4.4.3 lacks.
+    node4: {}
 };
 
 const GLOBALS_SINCE = {
@@ -46,20 +48,24 @@ const GLOBALS_SINCE = {
         structuredClone: 'Chrome 98',
         queueMicrotask: 'Chrome 71',
         URLSearchParams: 'absent from Cobalt'
-    }
+    },
+    node4: {}
 };
 
 // Same reason: a property Cobalt's own URL does not define, whatever Chrome does.
 const PROPERTIES_ABSENT = {
     node12: {},
-    cobalt3: { searchParams: "absent from Cobalt's URL" }
+    cobalt3: { searchParams: "absent from Cobalt's URL" },
+    node4: {}
 };
 
 // Node 12 parses exactly ES2019, while a browser engine maps onto no ECMAScript year, so its parse
 // only proves the file is valid JavaScript.
 const FLOORS = {
     node12: { label: 'node 12', ecmaVersion: 2019 },
-    cobalt3: { label: 'Cobalt 3.2.1', ecmaVersion: 2022 }
+    cobalt3: { label: 'Cobalt 3.2.1', ecmaVersion: 2022 },
+    // ES5, which node 4.4.3 reads safely.
+    node4: { label: 'node 4.4.3', ecmaVersion: 5 }
 };
 
 const file = process.argv[2];
@@ -67,7 +73,7 @@ const which = process.argv[3];
 const floor = FLOORS[which];
 
 if (!file || !floor) {
-    console.error('usage: check-output.js <file> <node12|cobalt3>');
+    console.error('usage: check-output.js <file> <node12|cobalt3|node4>');
     process.exit(2);
 }
 

@@ -81,7 +81,7 @@ const cookies = rewriteSetCookie(['__Secure-3PSID=abc; Domain=.youtube.com; Secu
 const attributes = cookies[0].split(/;\s*/).slice(1);
 check('__Secure- cookie is renamed and de-secured',
     cookies[0].indexOf('__LocalSecure-3PSID') === 0
-    && attributes.indexOf('Domain=localhost') !== -1
+    && attributes.indexOf('Domain=tv.example') !== -1
     && attributes.indexOf('Secure') === -1
     && attributes.indexOf('SameSite=None') === -1,
     cookies[0]);
@@ -123,6 +123,27 @@ check('every policy in a combined header is widened',
     && both.split(',').every((one) => /connect-src \* data: blob: ws: wss:/.test(one))
     && both.split(',').every((one) => /img-src \* data: blob:/.test(one)),
     both);
+
+// The page's reporter is injected from its own source, so it has to run as well as parse.
+const pageScripts = (rewriteBody('<html><body></body></html>', '/tv').match(/<script>[^<]*<\/script>/g) || [])
+    .map((tag) => tag.replace(/<\/?script>/g, ''));
+const beacons = [];
+const listeners = {};
+const page = {
+    fetch: () => undefined,
+    addEventListener: (type, handle) => { listeners[type] = handle; },
+    Image: function Image() { Object.defineProperty(this, 'src', { set: (to) => beacons.push(decodeURIComponent(to)) }); }
+};
+
+pageScripts.forEach((code) => require('vm').runInNewContext(code, { window: page }));
+page.onerror('boom', 'https://www.youtube.com/tv', 3, 7);
+listeners.unhandledrejection({ reason: { message: 'quota' } });
+
+check('the page reporter sends the page\'s errors to the journal',
+    beacons.indexOf(`${ORIGIN}/__tube/journal?m=boom @ https://www.youtube.com/tv:3:7`) !== -1, beacons.join(' | '));
+check('and its rejections', beacons.some((to) => /m=rejection: quota$/.test(to)), beacons.join(' | '));
+check('and says whether the userscript ran', beacons.some((to) => /m=booted \d\d:\d\d:\d\d: fetch untouched$/.test(to)),
+    beacons.join(' | '));
 
 console.log(`\n${tally.total - tally.failures}/${tally.total} checks passed.`);
 process.exit(tally.failures ? 1 : 0);

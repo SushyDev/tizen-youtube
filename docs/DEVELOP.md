@@ -5,13 +5,14 @@
 | | |
 | --- | --- |
 | `npm run doctor` | Check prerequisites when something looks wrong |
-| `npm run build` | Userscript and service |
+| `npm run build` | The userscript, and the service twice: for Tizen 5.5+, and on node 4.4.3 for 5.0+ |
 | `npm run typecheck` | `tsc --noEmit` on its own |
 | `npm test` | Lint, types, then the userscript and service suites |
 | `npm run test:e2e` | The userscript against real YouTube, in Chromium cut down to the container |
 | `npm run test:cobalt` | The same in Cobalt itself, from the published image; needs Docker and a `TUBE_DEV=1` build |
-| `npm run package` | Build an unsigned `.wgt` for Tizen Homebrew |
-| `npm run audit` | Check what is inside the `.wgt`; `-- --release` fails on anything dev-only |
+| `npm run test:matrix` | Load both service bundles on every Node from 4.4.3 up; needs fnm |
+| `npm run package` | Build the unsigned `.wgt`s for Tizen Homebrew: `tube-tizen-5.5.wgt` and `tube-tizen-5.0.wgt` |
+| `npm run audit` | Check what is inside both `.wgt`s; `-- --release` fails on anything dev-only |
 | `npm run deploy` | Package a dev build and install it on the set; needs `TUBE_DEV_TOKEN` |
 | `npm run release` | Stage `release/origin/` — the userscript, the language names and `latest.json` |
 | `npm run dev` | YouTube with the mods in a browser, no hardware needed |

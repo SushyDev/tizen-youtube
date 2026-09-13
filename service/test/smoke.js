@@ -3,6 +3,8 @@
 // Never transpiled, so kept to what node 4.4.3 parses: strict-mode const, arrows, template strings.
 
 const http = require('http');
+const net = require('net');
+const tls = require('tls');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -31,7 +33,11 @@ const scratch = path.join(os.tmpdir(), `tube-smoke-${process.pid}-${Date.now()}`
 fs.mkdirSync(scratch);
 
 process.on('exit', () => {
-    (fs.rmSync || fs.rmdirSync)(scratch, { recursive: true, force: true });
+    try {
+        (fs.rmSync || fs.rmdirSync)(scratch, { recursive: true, force: true });
+    } catch (e) {
+        // rmdir cannot recurse below node 12.10.
+    }
 });
 
 process.env.TUBE_PROXY_PORT = String(PORT);
@@ -41,7 +47,12 @@ process.env.TUBE_LOG = path.join(scratch, 'service.log');
 // A closed loopback port, so the update check fails at once instead of reaching the network from CI.
 process.env.TUBE_ORIGIN = 'http://127.0.0.1:1';
 
-const entry = path.join(__dirname, '..', 'dist', 'index.js');
+// A test CA that is never packaged, so the intercepted path runs; node 4 used to abort on it.
+process.env.TUBE_MITM_DIR = path.join(__dirname, 'fixtures', 'mitm');
+
+const entry = process.env.TUBE_SMOKE_ENTRY
+    ? path.resolve(process.env.TUBE_SMOKE_ENTRY)
+    : path.join(__dirname, '..', 'dist', 'index.js');
 
 if (!fs.existsSync(entry)) fail(`no bundle at ${entry} — run \`npm run build\` first.`);
 
@@ -53,30 +64,162 @@ try {
 
 pass(`the bundle loads on ${process.version}`);
 
+const collect = (stream, done) => {
+    const parts = [];
+    stream.on('data', (chunk) => parts.push(chunk));
+    stream.on('end', () => done(parts.join('')));
+};
+
 const get = (pathname, done) => {
     const request = http.get({ host: '127.0.0.1', port: PORT, path: pathname }, (response) => {
-        const parts = [];
-        response.on('data', (chunk) => parts.push(chunk));
-        response.on('end', () => done(null, response.statusCode, parts.join('')));
+        collect(response, (body) => done(null, response.statusCode, body));
     });
 
     request.on('error', (error) => done(error));
     request.setTimeout(4000, () => request.destroy());
 };
 
+const post = (pathname, payload, done) => {
+    const request = http.request({
+        host: '127.0.0.1',
+        port: PORT,
+        path: pathname,
+        method: 'POST',
+        headers: { 'content-type': 'text/plain', 'content-length': Buffer.byteLength(payload) }
+    }, (response) => collect(response, (body) => done(null, response.statusCode, body)));
+
+    request.on('error', (error) => done(error));
+    request.setTimeout(4000, () => request.abort());
+    request.end(payload);
+};
+
+// The container's whole route, and a path no plain GET touches. Answered locally, so no network.
+const checkItInterceptsTls = () => {
+    const socket = net.connect(PORT, '127.0.0.1', () => {
+        socket.write('CONNECT www.youtube.com:443 HTTP/1.1\r\nHost: www.youtube.com:443\r\n\r\n');
+    });
+
+    socket.setTimeout(8000, () => fail('the intercepted CONNECT never finished'));
+    socket.on('error', (error) => fail(`the intercepted CONNECT broke: ${error.message}`));
+
+    socket.once('data', (reply) => {
+        if (String(reply).indexOf(' 200 ') === -1) return fail(`CONNECT answered ${String(reply).split('\r\n')[0]}`);
+
+        const held = { issuer: null };
+
+        const secure = tls.connect({ socket, servername: 'www.youtube.com', rejectUnauthorized: false }, () => {
+            held.issuer = secure.getPeerCertificate().issuer.CN;
+            secure.write('GET /__tube/state HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n');
+        });
+
+        secure.on('error', (error) => fail(`TLS through the interception broke: ${error.message}`));
+
+        return collect(secure, (answer) => {
+            if (held.issuer !== 'Tube Smoke Test CA') return fail(`www.youtube.com was not intercepted (issuer ${held.issuer})`);
+            if (answer.indexOf('HTTP/1.1 200') !== 0) return fail(`the intercepted request answered ${answer.split('\r\n')[0]}`);
+
+            pass('it intercepts TLS and answers through it');
+
+            process.stdout.write(`\nSmoke passed on ${process.version}.\n`);
+            return process.exit(0);
+        });
+    });
+};
+
+// The player drops media requests all the time, and node below 8 has no stream destroy: it crashed.
+const checkItSurvivesADroppedStream = () => {
+    const chunk = 'x'.repeat(65536);
+
+    const upstream = http.createServer((request, response) => {
+        response.writeHead(200, { 'content-type': 'application/octet-stream' });
+        response.write(chunk);
+
+        const timer = setInterval(() => response.write(chunk), 20);
+        response.on('close', () => clearInterval(timer));
+        setTimeout(() => {
+            clearInterval(timer);
+            response.end();
+        }, 3000);
+    });
+
+    upstream.listen(0, '127.0.0.1', () => {
+        const target = `http://127.0.0.1:${upstream.address().port}/media`;
+
+        const request = http.get({ host: '127.0.0.1', port: PORT, path: `/cors-bypass/${target}` }, (response) => {
+            response.once('data', () => {
+                request.abort();
+
+                setTimeout(() => get('/__tube/state', (error, status) => {
+                    upstream.close();
+
+                    if (error || status !== 200) {
+                        return fail(`the service did not survive a dropped media stream${error ? `: ${error.message}` : ` (status ${status})`}`);
+                    }
+
+                    pass('it survives a media stream the page drops');
+
+                    return checkItInterceptsTls();
+                }), 300);
+            });
+        });
+
+        request.on('error', () => undefined);
+    });
+};
+
+// Every innertube call is a POST, and node below 8 once refused them all.
+const checkItCanPost = (upstream, target) => post(`/cors-bypass/${target}`, 'ping', (postError, postStatus, echoed) => {
+    upstream.close();
+
+    if (postError) return fail(`a POST through the proxy broke: ${postError.message}`);
+
+    if (postStatus !== 200 || echoed !== 'posted ping') {
+        return fail(`a POST through the proxy answered ${postStatus}: ${readable(echoed).slice(0, 200)}`);
+    }
+
+    pass('it can send a request body upstream');
+
+    return checkItSurvivesADroppedStream();
+});
+
+// Below node 14, node-fetch tied a close listener to a kept-alive socket for every request.
+const REUSES = 12;
+
+// One kept-alive socket, as Cobalt holds them, so the service's own socket upstream is reused.
+const KEPT_ALIVE = new http.Agent({ keepAlive: true, maxSockets: 1 });
+
+const fetchRepeatedly = (target, left, done) => {
+    if (!left) return done();
+
+    const request = http.get({ host: '127.0.0.1', port: PORT, path: `/cors-bypass/${target}`, agent: KEPT_ALIVE },
+        (response) => collect(response, () => fetchRepeatedly(target, left - 1, done)));
+
+    request.on('error', (error) => fail(`a repeated fetch broke: ${error.message}`));
+    return undefined;
+};
+
+const checkSocketsStayClean = (target, next) => fetchRepeatedly(target, REUSES, () => get('/__tube/log', (error, status, log) => {
+    if (error || status !== 200) return fail('/__tube/log did not answer');
+    if (/memory leak/i.test(log)) return fail('a kept-alive socket collects a listener per request');
+
+    pass(`${REUSES} requests over kept-alive sockets leave no listener behind`);
+
+    return next();
+}));
+
 // Local routes answer even when fetch is broken; only an upstream round trip proves it works.
 const checkItCanFetchUpstream = () => {
     const upstream = http.createServer((request, response) => {
-        response.writeHead(200, { 'content-type': 'text/plain' });
-        response.end('pong');
+        collect(request, (received) => {
+            response.writeHead(200, { 'content-type': 'text/plain' });
+            response.end(request.method === 'POST' ? `posted ${received}` : 'pong');
+        });
     });
 
     upstream.listen(0, '127.0.0.1', () => {
         const target = `http://127.0.0.1:${upstream.address().port}/ping`;
 
         get(`/cors-bypass/${target}`, (error, status, body) => {
-            upstream.close();
-
             if (error) return fail(`the proxy could not reach a local upstream: ${error.message}`);
 
             if (status !== 200 || body !== 'pong') {
@@ -85,8 +228,7 @@ const checkItCanFetchUpstream = () => {
 
             pass('it can fetch upstream and hand the answer back');
 
-            process.stdout.write(`\nSmoke passed on ${process.version}.\n`);
-            return process.exit(0);
+            return checkSocketsStayClean(target, () => checkItCanPost(upstream, target));
         });
     });
 };

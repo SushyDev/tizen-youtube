@@ -12,9 +12,13 @@ const BOOT_BUNDLE = 'dist/bootScreen.js';
 
 const SERVICE_DIST = 'service/dist';
 const SERVICE_BUNDLE = 'service/dist/index.js';
+const SERVICE_DIST_LEGACY = 'service/dist-legacy';
+const SERVICE_BUNDLE_LEGACY = 'service/dist-legacy/index.js';
 
 const RELEASE = 'release';
-const WGT = 'release/tube.wgt';
+// Named for the oldest Tizen each installs on.
+const WGT = 'release/tube-tizen-5.5.wgt';
+const WGT_LEGACY = 'release/tube-tizen-5.0.wgt';
 
 // app/ is a source directory, not an archive path. Tizen resolves <content src> and <icon src>
 // relative to the archive root, and service/lib/cobalt.js reads ../../config.xml at runtime from
@@ -26,11 +30,16 @@ const WIDGET = [
     { from: 'service/dist', to: 'service/dist' }
 ];
 
-const ARTEFACTS = [DIST, SERVICE_DIST, RELEASE];
+// Staged at service/dist, where config.xml points for both widgets.
+const WIDGET_LEGACY = WIDGET.map((entry) => (entry.from === SERVICE_DIST
+    ? { from: SERVICE_DIST_LEGACY, to: entry.to }
+    : entry));
+
+const ARTEFACTS = [DIST, SERVICE_DIST, SERVICE_DIST_LEGACY, RELEASE];
 
 module.exports = {
     DIST, BUNDLE, BOOT_BUNDLE,
-    SERVICE_DIST, SERVICE_BUNDLE,
-    RELEASE, WGT,
-    WIDGET, ARTEFACTS
+    SERVICE_DIST, SERVICE_BUNDLE, SERVICE_DIST_LEGACY, SERVICE_BUNDLE_LEGACY,
+    RELEASE, WGT, WGT_LEGACY,
+    WIDGET, WIDGET_LEGACY, ARTEFACTS
 };

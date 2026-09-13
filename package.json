@@ -39,6 +39,7 @@
     "test:cobalt": "node test/cobalt/run.js"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.22.9",
     "@playwright/test": "^1.49.0",
     "@rollup/plugin-babel": "^6.0.3",
@@ -48,6 +49,7 @@
     "@rollup/plugin-replace": "^6.0.3",
     "@rollup/plugin-terser": "^1.0.0",
     "acorn": "^8.14.0",
+    "core-js": "^3.50.0",
     "eslint": "^10.9.1",
     "jszip": "^3.10.1",
     "rollup": "^3.26.2",

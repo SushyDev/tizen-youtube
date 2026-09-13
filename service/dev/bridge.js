@@ -7,6 +7,7 @@ const cors = require('cors');
 
 const ports = require('../lib/ports.js');
 const journal = require('./journal.js');
+const { survey } = require('./env.js');
 const postmortem = require('../lib/postmortem.js');
 
 const STALE_AFTER = 10000;
@@ -86,6 +87,8 @@ const start = () => {
 
         return ask(source, req.query.seconds).then((answer) => res.json(answer));
     });
+
+    app.post('/env', express.json({ limit: '256kb' }), trusted, (req, res) => res.json(survey(req.body && req.body.switches)));
 
     app.post('/command', express.json({ limit: '64kb' }), trusted, (req, res) => {
         if (!req.body || req.body.action !== 'eval') return res.status(400).json({ error: 'not an eval' });

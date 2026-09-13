@@ -3,7 +3,7 @@
 // Checks what is inside the packaged .wgt, and with --release fails on any dev-only surface in it.
 
 const { readFileSync, existsSync } = require('fs');
-const { join } = require('path');
+const { basename, join } = require('path');
 const JSZip = require('jszip');
 
 const ui = require('./report.js');
@@ -47,10 +47,10 @@ const manifestFailures = (config, ports) => [].concat(
         `config.xml does not launch the container at the proxy port ${ports.proxy}`)
 );
 
-const audit = async () => {
-    const wgt = join(ROOT, paths.WGT);
+const audit = async (widget) => {
+    const wgt = join(ROOT, widget);
     if (!existsSync(wgt)) {
-        throw Object.assign(new Error(`No widget at ${paths.WGT}\n  Run: npm run package`),
+        throw Object.assign(new Error(`No widget at ${widget}\n  Run: npm run package`),
             { isFriendly: true });
     }
 
@@ -92,22 +92,30 @@ const audit = async () => {
     return { named, size, failures, notes };
 };
 
+const WIDGETS = [paths.WGT, paths.WGT_LEGACY];
+
 const main = async () => {
     ui.heading(RELEASE ? 'audit (release)' : 'audit');
 
-    const { named, size, failures, notes } = await audit();
+    const audited = await Promise.all(WIDGETS.map((widget) => audit(widget)
+        .then((result) => Object.assign({ widget }, result))));
+
+    const failures = audited.flatMap((result) => result.failures
+        .map((message) => ({ widget: result.widget, message })));
 
     if (failures.length) {
-        failures.forEach((message) => ui.fail('widget', message));
+        failures.forEach((failure) => ui.fail(basename(failure.widget), failure.message));
         ui.blank();
-        ui.note(`${failures.length} problem${failures.length === 1 ? '' : 's'} in the widget.`);
+        ui.note(`${failures.length} problem${failures.length === 1 ? '' : 's'} in the widgets.`);
         process.exit(1);
     }
 
-    ui.ok('widget', `${named.length} entries · userscript ${ui.bytes(size)}`);
-    notes.forEach((note) => ui.warn(note));
+    audited.forEach((result) => {
+        ui.ok(basename(result.widget), `${result.named.length} entries · userscript ${ui.bytes(result.size)}`);
+        result.notes.forEach((note) => ui.warn(note));
+    });
     ui.blank();
-    ui.note(RELEASE ? 'Nothing dev-only is in it.' : 'Contents are as expected.');
+    ui.note(RELEASE ? 'Nothing dev-only is in them.' : 'Contents are as expected.');
 };
 
 main().catch((error) => ui.crash(error));

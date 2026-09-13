@@ -4,7 +4,8 @@
 
 const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
-const { localOrigin, proxyPrefix } = require('./origin.js');
+const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
+const { reporter, bootBeacon } = require('./pageReporter.js');
 
 const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
 
@@ -67,6 +68,23 @@ const withOurGrants = (policy) => {
     return String(policy).split(',').map((one) => GRANTS.reduce(granted, one)).join(',');
 };
 
+// Served as ourselves over http, the engine loads fonts and CSS images directly (the page's fetch
+// hook never sees them), and a protocol-relative //gstatic URL inherits our http: — which Cobalt
+// refuses to a public host. Route those through the bypass so they come from our own origin.
+const STATIC_HOSTS = ['www.gstatic.com', 'fonts.gstatic.com'];
+
+const rewriteStaticHosts = (text) => {
+    const prefix = proxyPrefix();
+
+    return STATIC_HOSTS.reduce((out, host) => {
+        const escaped = host.replace(/\./g, '\\.');
+
+        return out
+            .replace(new RegExp(`https?://${escaped}`, 'g'), `${prefix}https://${host}`)
+            .replace(new RegExp(`(["'(])//${escaped}`, 'g'), `$1${prefix}https://${host}`);
+    }, text);
+};
+
 const rewriteBody = (text, url, injectionOrigin, nonce) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
@@ -81,10 +99,14 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
 
     const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
         + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
+        + `<script${stamp}>${bootBeacon(origin)}</script>`
         + dev.pageScripts(origin, stamp);
 
+    // First in the body, so it sees the page's errors; Cobalt ignores what is added to <head>.
+    const reported = tuned.replace(/<body[^>]*>/, (open) => `${open}<script${stamp}>${reporter(origin)}</script>`);
+
     // Appended past </html> a browser still runs it; Cobalt's parser drops it.
-    return tuned.indexOf('</body>') !== -1 ? tuned.replace('</body>', `${tag}</body>`) : tuned + tag;
+    return reported.indexOf('</body>') !== -1 ? reported.replace('</body>', `${tag}</body>`) : reported + tag;
 };
 
 // __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are renamed in both
@@ -92,7 +114,7 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
 const rewriteSetCookie = (values) => values.map((cookie) => cookie
     .replace(/^__Secure-/i, '__LocalSecure-')
     .replace(/^__Host-/i, '__LocalHost-')
-    .replace(/Domain=[^;]+/i, 'Domain=localhost')
+    .replace(/Domain=[^;]+/i, `Domain=${PROXY_HOST}`)
     .replace(/;\s*Secure/i, '')
     .replace(/;\s*SameSite=None/i, '')
     .replace(/;\s*;/g, ';')
@@ -102,7 +124,16 @@ const restoreCookiePrefixes = (header) => header
     .replace(/__LocalSecure-/g, '__Secure-')
     .replace(/__LocalHost-/g, '__Host-');
 
+// kabuki reads env_ switches from its own URL, and draws a debug watermark on any origin but
+// YouTube's unless env_hideWatermark says otherwise.
+const HIDE_WATERMARK = 'env_hideWatermark=true';
+
+const hidesWatermark = (url) => String(url).indexOf('env_hideWatermark=') !== -1;
+
+const withHiddenWatermark = (url) => `${url}${String(url).indexOf('?') === -1 ? '?' : '&'}${HIDE_WATERMARK}`;
+
 module.exports = {
     nonceOf, rerouteAbr, overrideInnertubeHost, rewriteAttestation, retuneFlags,
-    withOurGrants, rewriteBody, rewriteSetCookie, restoreCookiePrefixes
+    withOurGrants, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
+    hidesWatermark, withHiddenWatermark, rewriteStaticHosts
 };

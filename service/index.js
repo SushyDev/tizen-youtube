@@ -14,6 +14,8 @@ const ports = require('./lib/ports.js');
 const loader = require('./lib/loader.js');
 const proxy = require('./lib/proxy.js');
 const { STAMP } = require('./lib/stamp.js');
+const { capability } = require('./lib/platform.js');
+const claimants = require('./lib/claimants.js');
 const bootRoutes = require('./lib/bootRoutes.js');
 const journalRoutes = require('./lib/journalRoutes.js');
 const routeErrors = require('./lib/routeErrors.js');
@@ -43,7 +45,10 @@ const platformVersion = isTV
     ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
-postmortem.note('platform', `tizen ${platformVersion || 'none'}, patch ${STAMP}`);
+postmortem.note('platform', `tizen ${platformVersion || 'none'}, node ${process.version}, `
+    + `${capability('http://tizen.org/system/model_name') || 'unknown model'}, patch ${STAMP}`);
+
+claimants.survey();
 
 const app = proxy.create();
 
@@ -121,7 +126,12 @@ app.get('/__tube/state', (_, res) => {
     res.json(describeState());
 });
 
-journalRoutes.attach(app);
+// The served page's boot line, so each load's requests are traced afresh.
+const retraceOnBoot = (line) => {
+    if (line.indexOf('booted ') === 0) proxy.retrace();
+};
+
+journalRoutes.attach(app, { heard: retraceOnBoot });
 bootRoutes.attach(app, { cobalt, script: () => describeState().script });
 
 // `relaunch` is passed in rather than reached for, because dev/ may not know about the container

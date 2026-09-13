@@ -9,9 +9,11 @@ const { load, ROOT } = require('./config.js');
 const paths = require('./paths.js');
 const { assertNoTokens } = require('./inject.js');
 
+// Both services embed the userscript, so it builds first.
 const STEPS = [
     {
         label: 'userscript bundle',
+        target: 'modern',
         command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
         after: ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt3']],
         outputs: [paths.BUNDLE, paths.BOOT_BUNDLE],
@@ -19,8 +21,16 @@ const STEPS = [
     },
     {
         label: 'service bundle',
+        target: 'modern',
         command: ['node', ['tools/build-service.js']],
         outputs: [paths.SERVICE_BUNDLE],
+        summarise: (sizes) => `${ui.bytes(sizes[0])} · floor verified`
+    },
+    {
+        label: 'legacy service bundle',
+        target: 'legacy',
+        command: ['node', ['tools/build-service.js']],
+        outputs: [paths.SERVICE_BUNDLE_LEGACY],
         summarise: (sizes) => `${ui.bytes(sizes[0])} · floor verified`
     }
 ];
@@ -48,6 +58,7 @@ function runStep(step) {
     try {
         commands.forEach(([command, args]) => execFileSync(command, args, {
             cwd: ROOT,
+            env: Object.assign({}, process.env, { TUBE_TARGET: step.target }),
             stdio: 'pipe',
             encoding: 'utf8'
         }));

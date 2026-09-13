@@ -5,6 +5,7 @@
 #   ./install-dev.sh              package a dev build, then install it
 #   ./install-dev.sh --no-build   install whatever is already in release/
 #   TUBE_TV=192.168.1.40 ./install-dev.sh
+#   TUBE_WGT=release/tube-tizen-5.0.wgt ./install-dev.sh
 #
 # Developer Mode's Host PC IP must be 127.0.0.1, or Homebrew answers sdbUnreachable.
 
@@ -15,7 +16,7 @@ PORT="${TUBE_HOMEBREW_PORT:-8091}"
 PIN="${TUBE_HOMEBREW_PIN:-000000}"
 # Set TUBE_CHII=<laptop>:<port> to have every page carry a remote-inspector target script.
 CHII="${TUBE_CHII:-}"
-WGT="release/tube.wgt"
+WGT="${TUBE_WGT:-release/tube-tizen-5.5.wgt}"
 
 cd "$(dirname "$0")"
 
@@ -29,7 +30,7 @@ printf 'installing %s (%s) on %s\n' "$WGT" "$(wc -c < "$WGT" | tr -d ' ') bytes"
 
 answer=$(curl -sS -m 180 -X POST "http://$TV:$PORT/install" \
     -H "x-homebrew-pin: $PIN" \
-    -H 'x-homebrew-name: tube.wgt' \
+    -H "x-homebrew-name: $(basename "$WGT")" \
     -H 'content-type: application/octet-stream' \
     --data-binary "@$WGT")
 

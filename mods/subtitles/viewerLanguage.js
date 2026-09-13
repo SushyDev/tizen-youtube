@@ -1,4 +1,4 @@
-import { displayLanguage } from './languageNames.js';
+import { languageName } from './languageNames.js';
 
 // The viewer's language, guessed from the account country; none without Intl.Locale (Chrome 74).
 
@@ -25,7 +25,7 @@ const viewerLanguage = () => {
     const region = String(country).toUpperCase();
     const code = CHINESE[region] || likelyLanguage(region);
 
-    return code ? { code, name: displayLanguage(code) } : null;
+    return code ? { code, name: languageName(code) } : null;
 };
 
 export { viewerLanguage };

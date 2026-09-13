@@ -3,7 +3,7 @@
 Five layers, and the directory listing is the map.
 
 ```
-app/          config.xml · index.html · icon.png · assets/    what the .wgt is made of
+app/          config.xml · index.html · icon.png    what the .wgt is made of
 framework/    the patch framework — knows YouTube, never knows a feature
 mods/         features only, grouped by what they act on
 service/      the Node service that ships inside the widget

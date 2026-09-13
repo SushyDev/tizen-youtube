@@ -5,7 +5,7 @@
 
 const express = require('express');
 
-const loader = require('./loader.js');
+const { USER_SCRIPT, read } = require('./shipped.js');
 const forward = require('./forward.js');
 const dev = require('../dev/index.js');
 const ports = require('./ports.js');
@@ -93,7 +93,7 @@ const create = () => {
 
     app.get('/__tube/userScript.js', (_, res) => {
         try {
-            res.type('application/javascript').send(loader.resolve().source);
+            res.type('application/javascript').send(read(USER_SCRIPT));
         } catch (e) {
             postmortem.note('userscript', e);
             res.status(500).type('application/javascript')

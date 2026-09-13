@@ -36,7 +36,7 @@ run('npx', ['vite', 'build']);
 const built = readFileSync(bundle, 'utf8');
 const source = legacy ? lowerToEs5(built) : built;
 
-console.log('[2/4] stamping the origin and the dev token');
+console.log('[2/4] stamping the patch and the dev token');
 // __TUBE_DEV_TOKEN__ lives only in the dev bridge, which a ship build resolves away — and
 // injectTokens throws on a token it cannot find, so the list has to follow the build mode.
 const dev = process.env.TUBE_DEV === '1';
@@ -51,7 +51,7 @@ const { commit, tree } = gitStamp();
 const stamp = `${config.version}-${commit}-${tree}`;
 
 const tokens = Object.assign(
-    { __TUBE_ORIGIN__: config.origin, __TUBE_STAMP__: stamp },
+    { __TUBE_STAMP__: stamp },
     dev ? {
         __TUBE_DEV_TOKEN__: devToken,
         __TUBE_CHII__: chii,
@@ -62,18 +62,18 @@ const tokens = Object.assign(
 const stamped = injectTokens(source, tokens).code;
 
 writeFileSync(bundle, stamped);
-console.log(`      origin: ${config.origin}${dev ? ' (dev build)' : ''}`);
+console.log(`      patch: ${stamp}${dev ? ' (dev build)' : ''}`);
 if (dev && chii !== 'off') console.log(`      inspector: chii at ${chii}`);
 console.log(`      ${basename(outDir)}/index.js  ${kb(Buffer.byteLength(stamped))}`);
 
 console.log('[3/4] embedding the userscript and the boot screen');
 
-// Both ship inside the widget: a first launch must work offline.
-const embed = (bundled) => {
-    const from = join(__dirname, '..', bundled);
+// The service serves them from the widget itself.
+const embed = (shipped) => {
+    const from = join(__dirname, '..', shipped);
 
     if (!existsSync(from)) {
-        console.error(`      MISSING ${from} — build the userscript first`);
+        console.error(`      MISSING ${from} — run npm run build`);
         process.exit(1);
     }
 

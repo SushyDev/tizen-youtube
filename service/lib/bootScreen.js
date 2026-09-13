@@ -9,6 +9,7 @@ const path = require('path');
 const ports = require('./ports.js');
 const { SCREEN } = require('./pageLines.js');
 const { STAMP } = require('./stamp.js');
+const { BOOT_PAGE, read } = require('./shipped.js');
 
 const BOOT_URL = 'file:///tube/boot.html';
 
@@ -54,17 +55,6 @@ body { color: #aaaaaa; font-family: monospace; font-size: 19px; line-height: 29p
 .bad { color: #ff5555; }
 .note { color: #55ffff; }`;
 
-// Built by rollup from service/boot/.
-const ASSET = 'bootScreen.js';
-const PLACES = [path.join(__dirname, 'assets'), path.join(__dirname, '..', 'dist', 'assets')];
-
-const pageScript = () => {
-    const found = PLACES.map((place) => path.join(place, ASSET)).find((file) => fs.existsSync(file));
-    if (!found) throw new Error(`no ${ASSET} among the service's assets`);
-
-    return fs.readFileSync(found, 'utf8');
-};
-
 const page = (script, config) => `<!DOCTYPE html>
 <html>
 <head>
@@ -91,7 +81,7 @@ const writeBootScreen = (content, script) => {
     const file = path.join(content, RELATIVE);
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, html(script || pageScript()));
+    fs.writeFileSync(file, html(script || read(BOOT_PAGE)));
 
     return file;
 };

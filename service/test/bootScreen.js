@@ -115,7 +115,7 @@ const toneOf = (lines, fragment) => (lines.find((line) => line.text.indexOf(frag
 
 const FACTS = {
     patch: '1.0.1-abc1234-clean', tizen: '9.0', model: 'QE65S93DATXXN', node: 'v18.18.2', pid: 4384,
-    script: { origin: 'bundled', version: 'bundled' }
+    script: { bytes: 88064 }
 };
 
 const ready = { facts: FACTS, ready: true, waiting: null, log: [{ seq: 0, what: 'listening', text: '0.0.0.0:8099' }], next: 1 };

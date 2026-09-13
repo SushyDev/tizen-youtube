@@ -41,11 +41,7 @@ process.on('exit', () => {
 });
 
 process.env.TUBE_PROXY_PORT = String(PORT);
-process.env.TUBE_CACHE_DIR = scratch;
 process.env.TUBE_LOG = path.join(scratch, 'service.log');
-
-// A closed loopback port, so the update check fails at once instead of reaching the network from CI.
-process.env.TUBE_ORIGIN = 'http://127.0.0.1:1';
 
 // A test CA that is never packaged, so the intercepted path runs; node 4 used to abort on it.
 process.env.TUBE_MITM_DIR = path.join(__dirname, 'fixtures', 'mitm');
@@ -273,11 +269,11 @@ const waitForPort = () => get('/__tube/state', (error, status, body) => {
 
     pass(`/__tube/state answers on port ${PORT} after ${Date.now() - began}ms`);
 
-    if (!state.script || typeof state.script.origin !== 'string') {
+    if (!state.script || typeof state.script.bytes !== 'number') {
         return fail(`/__tube/state reports no userscript: ${JSON.stringify(state.script)}`);
     }
 
-    pass(`it can serve the ${state.script.origin} userscript`);
+    pass(`it ships a ${Math.round(state.script.bytes / 1024)}kB userscript`);
 
     return get('/__tube/userScript.js', (scriptError, scriptStatus, script) => {
         if (scriptError || scriptStatus !== 200) {

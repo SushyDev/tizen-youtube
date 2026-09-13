@@ -10,7 +10,7 @@ const showOnce = (facts) => {
     say('service', `node ${facts.node}, pid ${facts.pid}`);
 
     if (!facts.script) return;
-    say('userscript', facts.script.error || `${facts.script.origin} ${facts.script.version}`, facts.script.error ? 'bad' : '');
+    say('userscript', facts.script.error || `${Math.round(facts.script.bytes / 1024)}kB`, facts.script.error ? 'bad' : '');
 };
 
 // The build and the set once, and any restart behind the screen.

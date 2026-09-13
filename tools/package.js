@@ -208,8 +208,7 @@ async function packageApp(config, app) {
 }
 
 async function main() {
-    const release = process.argv.indexOf('--release') !== -1;
-    const config = load({ requireReal: release });
+    const config = load();
 
     ui.heading('package', `v${config.version}`);
     if (wantsGameMode()) ui.note(ui.style.dim('  use.game.mode is on: a package for measuring, not for watching.'));

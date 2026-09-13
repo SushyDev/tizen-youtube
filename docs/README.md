@@ -8,7 +8,7 @@ Ad-free YouTube on a Samsung TV.
 - Its own app; the stock YouTube app is left alone
 - Tizen 5.5 and up, on sets with Samsung's Cobalt container (5.5 not yet confirmed on a set)
 - Tizen 5.0 with a widget of its own, which also plays on 5.5
-- Updates over the air, digest-verified, with the shipped copy as the floor
+- Nothing fetched from a CDN: the mods ship inside the app and the TV serves them itself
 
 **Discord**: https://discord.gg/WjxVnrsV4A
 
@@ -30,7 +30,7 @@ the player's own controls, and every setting is a real row in YouTube's own Sett
 | --- | --- | --- | --- |
 | Runs on | Samsung TVs, Tizen 5.0+ | Samsung TVs, Tizen 3+ | Android TV, Google TV, Fire TV |
 | Engine | Samsung's own Cobalt, same as stock YouTube | The TV's browser | Its own rebuild of Cobalt, not the official one |
-| Updates | Mods over the air, digest-verified | Mods pulled from a public CDN at launch, unchecked; if it's unreachable, the ads are back | App updates itself; mods pulled from the same CDN at launch, unchecked |
+| Updates | Through Tizen Homebrew; the mods ship inside the app, so nothing is fetched at launch | Mods pulled from a public CDN at launch, unchecked; if it's unreachable, the ads are back | App updates itself; mods pulled from the same CDN at launch, unchecked |
 | Settings | Real rows in YouTube's own Settings | A separate pop-up menu, behind one Settings entry or the green button | A separate pop-up menu, behind one Settings entry or the green button |
 | Ad blocking | ✓ | ✓ | ✓ |
 | SponsorBlock bar | Drawn onto YouTube's own chapters, fading with the controls | A fixed-width strip, misaligned on chaptered videos, popping in and out | A fixed-width strip, misaligned on chaptered videos, popping in and out |

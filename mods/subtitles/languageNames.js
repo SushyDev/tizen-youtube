@@ -1,80 +1,87 @@
-import { assetUrl } from '../../framework/index.js';
+// What each caption translation language is called, the same on every engine.
 
-const CACHE_KEY = 'tube-display-names';
+export const LANGUAGE_NAMES = {
+    af: 'Afrikaans',
+    sq: 'Albanian',
+    am: 'Amharic',
+    ar: 'Arabic',
+    hy: 'Armenian',
+    as: 'Assamese',
+    az: 'Azerbaijani',
+    bn: 'Bangla',
+    eu: 'Basque',
+    be: 'Belarusian',
+    bs: 'Bosnian',
+    bg: 'Bulgarian',
+    my: 'Burmese',
+    ca: 'Catalan',
+    'zh-CN': 'Chinese (China)',
+    'zh-HK': 'Chinese (Hong Kong)',
+    'zh-TW': 'Chinese (Taiwan)',
+    hr: 'Croatian',
+    cs: 'Czech',
+    da: 'Danish',
+    nl: 'Dutch',
+    en: 'English',
+    et: 'Estonian',
+    fil: 'Filipino',
+    fi: 'Finnish',
+    fr: 'French',
+    gl: 'Galician',
+    ka: 'Georgian',
+    de: 'German',
+    el: 'Greek',
+    gu: 'Gujarati',
+    he: 'Hebrew',
+    hi: 'Hindi',
+    hu: 'Hungarian',
+    is: 'Icelandic',
+    id: 'Indonesian',
+    ga: 'Irish',
+    it: 'Italian',
+    ja: 'Japanese',
+    kn: 'Kannada',
+    kk: 'Kazakh',
+    km: 'Khmer',
+    ko: 'Korean',
+    ky: 'Kyrgyz',
+    lo: 'Lao',
+    lv: 'Latvian',
+    lt: 'Lithuanian',
+    mk: 'Macedonian',
+    ms: 'Malay',
+    ml: 'Malayalam',
+    mt: 'Maltese',
+    mr: 'Marathi',
+    mn: 'Mongolian',
+    ne: 'Nepali',
+    no: 'Norwegian',
+    or: 'Odia',
+    fa: 'Persian',
+    pl: 'Polish',
+    pt: 'Portuguese',
+    pa: 'Punjabi',
+    ro: 'Romanian',
+    ru: 'Russian',
+    sr: 'Serbian',
+    si: 'Sinhala',
+    sk: 'Slovak',
+    sl: 'Slovenian',
+    es: 'Spanish',
+    sw: 'Swahili',
+    sv: 'Swedish',
+    ta: 'Tamil',
+    te: 'Telugu',
+    th: 'Thai',
+    tr: 'Turkish',
+    uk: 'Ukrainian',
+    ur: 'Urdu',
+    uz: 'Uzbek',
+    vi: 'Vietnamese',
+    cy: 'Welsh',
+    yi: 'Yiddish',
+    yo: 'Yoruba',
+    zu: 'Zulu'
+};
 
-function intlIsUsable() {
-    try {
-        return typeof Intl !== 'undefined'
-            && typeof Intl.DisplayNames === 'function'
-            && !!new Intl.DisplayNames(['en'], { type: 'language' });
-    } catch (e) {
-        return false;
-    }
-}
-
-const hasIntl = intlIsUsable();
-
-const intlLanguage = hasIntl ? new Intl.DisplayNames(['en'], { type: 'language' }) : null;
-const intlRegion = hasIntl ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
-
-const fallback = { data: null };
-
-function primeFallback() {
-    if (hasIntl || fallback.data) return;
-
-    try {
-        const cached = window.localStorage.getItem(CACHE_KEY);
-        if (cached) {
-            fallback.data = JSON.parse(cached);
-            return;
-        }
-    } catch (e) {
-    }
-
-    fetch(assetUrl('language-names.json'))
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-            if (!data) return;
-            fallback.data = data;
-            try {
-                window.localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-            } catch (e) { }
-        })
-        .catch(() => { });
-}
-
-primeFallback();
-
-export function displayLanguage(code) {
-    if (!code) return code;
-
-    if (intlLanguage) {
-        try {
-            const name = intlLanguage.of(code);
-            if (name && name !== code) return name;
-        } catch (e) { }
-    }
-
-    if (fallback.data && fallback.data.language && fallback.data.language.standard) {
-        return fallback.data.language.standard.long[code] || code;
-    }
-
-    return code;
-}
-
-export function displayRegion(code) {
-    if (!code) return code;
-
-    if (intlRegion) {
-        try {
-            const name = intlRegion.of(String(code).toUpperCase());
-            if (name && name !== code) return name;
-        } catch (e) { }
-    }
-
-    if (fallback.data && fallback.data.region) {
-        return fallback.data.region.long[code] || code;
-    }
-
-    return code;
-}
+export const languageName = (code) => LANGUAGE_NAMES[code] || code;

@@ -1,6 +1,6 @@
 // The page's own errors, and one line saying which userscript booted.
 
-import { VERSION, COMMIT, TREE } from './origin.js';
+import { VERSION, COMMIT, TREE } from './stamp.js';
 import { send, line, describe } from './journal.js';
 
 const state = { watching: false };

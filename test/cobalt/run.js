@@ -47,8 +47,7 @@ const serve = () => spawn(process.execPath, ['index.js'], {
         TUBE_DEV_TOKEN: TOKEN,
         TUBE_DEV_UA: AGENT,
         TUBE_PLATFORM_VERSION: '9.0',
-        TUBE_BUNDLE_DIR: join(ROOT, 'dist'),
-        TUBE_CACHE_DIR: join(ROOT, '.dev', 'cobalt-cache')
+        TUBE_BUNDLE_DIR: join(ROOT, 'dist')
     })
 });
 

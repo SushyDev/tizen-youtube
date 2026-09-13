@@ -13,9 +13,6 @@ jobs:
     name: Build the widget
     runs-on: ubuntu-latest
 
-    env:
-      TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -46,29 +43,10 @@ jobs:
         run: npm test
 
       - name: Package
-        env:
-          STRICT: ${{ (startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') && vars.TUBE_ORIGIN != '') && '--release' || '' }}
-        run: npm run package -- $STRICT
+        run: npm run package
 
       - name: Audit the widget
         run: npm run audit -- --release
-
-      - name: Say the origin is a placeholder
-        if: vars.TUBE_ORIGIN == ''
-        run: |
-          echo "::warning::No TUBE_ORIGIN variable is set, so this build carries the placeholder origin and will never update itself over the air. The bundles inside the package still work."
-
-      - name: Stage the origin release
-        if: vars.TUBE_ORIGIN != ''
-        run: npm run release
-
-      - name: Upload the origin release
-        if: vars.TUBE_ORIGIN != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: origin-${{ github.ref_name }}
-          path: release/origin/
-          if-no-files-found: error
 
       - name: Name the widgets after the version
         id: widget
@@ -159,8 +137,6 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          TUBE_ORIGIN: ${{ vars.TUBE_ORIGIN }}
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

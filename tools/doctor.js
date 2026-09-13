@@ -37,13 +37,7 @@ check('dependencies installed', () => {
     return { detail: `${probes.length} key packages present` };
 });
 
-check('tizen.config.json', () => {
-    const config = load();
-    if (config.placeholders.length) {
-        return { detail: `valid, but ${config.placeholders.join(' and ')} still points at an example host` };
-    }
-    return { detail: `version ${config.version}` };
-});
+check('tizen.config.json', () => ({ detail: `version ${load().version}` }));
 
 ui.heading('doctor', CONFIG_PATH.replace(`${ROOT}/`, ''));
 ui.blank();

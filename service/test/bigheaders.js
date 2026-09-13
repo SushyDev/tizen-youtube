@@ -8,16 +8,16 @@ const x509 = require('../lib/x509.js');
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-let failures = 0;
+const tally = { failures: 0 };
 
 function check(label, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok || !detail ? '' : `  ${detail}`}`);
-    if (!ok) failures += 1;
+    if (!ok) tally.failures += 1;
 }
 
 const finish = () => {
-    console.log(failures ? `\n${failures} failed.` : '\nall checks passed');
-    process.exit(failures ? 1 : 0);
+    console.log(tally.failures ? `\n${tally.failures} failed.` : '\nall checks passed');
+    process.exit(tally.failures ? 1 : 0);
 };
 
 check('an overflow is recognised by its code', bigheaders.isHeaderOverflow({ code: 'HPE_HEADER_OVERFLOW' }));

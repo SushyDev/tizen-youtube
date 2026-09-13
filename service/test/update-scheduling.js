@@ -16,11 +16,11 @@ function check(name, ok, detail) {
 // A port of its own, so the suite runs beside a dev server holding the default.
 const PORT = 8399;
 
-let manifestRequests = 0;
+const manifest = { requests: 0 };
 
 const origin = http.createServer((req, res) => {
     if (req.url === '/latest.json') {
-        manifestRequests++;
+        manifest.requests++;
         res.setHeader('content-type', 'application/json');
         return res.end(JSON.stringify({ version: '0.0.0' }));
     }
@@ -31,9 +31,9 @@ const origin = http.createServer((req, res) => {
 function get(path) {
     return new Promise((resolve, reject) => {
         const req = http.get({ host: '127.0.0.1', port: PORT, path, timeout: 8000 }, (res) => {
-            let body = '';
-            res.on('data', (c) => { body += c; });
-            res.on('end', () => resolve(body));
+            const parts = [];
+            res.on('data', (c) => parts.push(c));
+            res.on('end', () => resolve(parts.join('')));
         });
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('timed out')); });
@@ -92,8 +92,8 @@ origin.listen(0, '127.0.0.1', async () => {
             return wait(600);
         })
         .then(() => {
-            check('a launch triggers an update check', manifestRequests >= 1, `${manifestRequests} requests`);
-            const after = manifestRequests;
+            check('a launch triggers an update check', manifest.requests >= 1, `${manifest.requests} requests`);
+            const after = manifest.requests;
 
             return get('/__tube/state')
                 .then(() => get('/__tube/state'))
@@ -103,8 +103,8 @@ origin.listen(0, '127.0.0.1', async () => {
                 .then(() => wait(600))
                 .then(() => {
                     check('repeated launches do not re-hit the origin',
-                        manifestRequests === after,
-                        `${manifestRequests - after} extra requests`);
+                        manifest.requests === after,
+                        `${manifest.requests - after} extra requests`);
                 });
         })
         .then(() => {

@@ -76,9 +76,9 @@ const reporting = () => fetch(`http://127.0.0.1:${DEV_PORT}/stats`)
 
 // Each answers with the empty string when it holds, and with what is wrong when it does not.
 const IN_THE_PAGE = `(async function () {
-    var checks = {};
-    var yttv = window._yttv || {};
-    var switches = (window.tectonicConfig || {}).featureSwitches;
+    const checks = {};
+    const yttv = window._yttv || {};
+    const switches = (window.tectonicConfig || {}).featureSwitches;
 
     checks['our bundle was injected'] = typeof window.__TUBE_NATIVE_PROXY_PATCHES__ !== 'undefined'
         ? '' : 'the page was not dressed by the proxy';

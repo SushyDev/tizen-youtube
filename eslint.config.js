@@ -200,6 +200,17 @@ module.exports = [
         rules: STYLE_RULES
     },
 
+    // var is banned everywhere, tests included; let too, outside the sibling-owned files.
+    {
+        files: STYLED.concat(['test/**/*.js', '*.js']),
+        ignores: SIBLING_OWNED,
+        rules: { 'no-var': 'error', 'prefer-const': ['error', { destructuring: 'all' }] }
+    },
+    {
+        files: ['service/test/**/*.js', 'test/**/*.js'],
+        rules: { 'no-restricted-syntax': ['error', STYLE_SELECTORS[0]] }
+    },
+
     {
         files: ['framework/**/*.js'],
         rules: {

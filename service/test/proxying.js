@@ -15,7 +15,7 @@ const http = require('http');
 const proxy = require('../lib/proxy.js');
 const knobs = require('../lib/knobs.js');
 
-const ATTESTED = 'var a="https://jnn-pa.googleapis.com";var b="\\/\\/www.google.com\\/js\\/th\\/p.js";';
+const ATTESTED = 'const a="https://jnn-pa.googleapis.com";const b="\\/\\/www.google.com\\/js\\/th\\/p.js";';
 
 const results = [];
 

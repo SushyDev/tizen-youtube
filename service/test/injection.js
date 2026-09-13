@@ -9,22 +9,21 @@ const {
 
 const ORIGIN = 'http://tv.example:8099';
 
-let failures = 0;
-let total = 0;
+const tally = { failures: 0, total: 0 };
 
 function check(label, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok || !detail ? '' : `  ${detail}`}`);
-    total += 1;
-    if (!ok) failures += 1;
+    tally.total += 1;
+    if (!ok) tally.failures += 1;
 }
 
 const UNTOUCHED = [
-    ['absolute googlevideo', 'var u="https://r5---sn-abc.googlevideo.com/videoplayback?x=1";'],
-    ['escaped googlevideo', 'var u="https:\\/\\/r5---sn-abc.googlevideo.com\\/videoplayback";'],
+    ['absolute googlevideo', 'const u="https://r5---sn-abc.googlevideo.com/videoplayback?x=1";'],
+    ['escaped googlevideo', 'const u="https:\\/\\/r5---sn-abc.googlevideo.com\\/videoplayback";'],
     ['protocol-relative gv', 'src="//r1---sn-xyz.googlevideo.com/foo"'],
     ['gstatic', 'a="https://www.gstatic.com/x";'],
-    ['origin allowlist', 'var o=new Set(["www.youtube.com","accounts.google.com"]);'],
-    ['location href', 'var a=window.location.href;'],
+    ['origin allowlist', 'const o=new Set(["www.youtube.com","accounts.google.com"]);'],
+    ['location href', 'const a=window.location.href;'],
     ['player scheme', 'this.scheme="https";this.host="x"']
 ];
 
@@ -51,7 +50,7 @@ check('over our TLS the script comes from the page\'s own origin',
 check('over our TLS every injected tag carries the page\'s nonce',
     overTlsTags.length > 0 && overTlsTags.every((tag) => tag.indexOf(' nonce="n0nce+/="') !== -1), overTlsTags.join(' '));
 
-const player = rewriteAttestation('var x="https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT";');
+const player = rewriteAttestation('const x="https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT";');
 check('jnn-pa is routed through the service', player.indexOf(`${ORIGIN}/cors-bypass/https://jnn-pa.googleapis.com`) !== -1, player);
 
 const wrapped = rewriteAttestation(
@@ -70,7 +69,7 @@ check('and stays valid JSON', (() => { try { return !!JSON.parse(escaped); } cat
 const renamed = rewriteAttestation('{"programSource":"//www.google.com/js/th/b.js","rpc":"https://jnn-pa.googleapis.com"}');
 check('a field YouTube renames is still routed', renamed.split(`${ORIGIN}/cors-bypass/https://`).length === 3, renamed);
 
-const literal = rewriteAttestation('var r=/^https:\\/\\/jnn-pa.googleapis.com\\//;');
+const literal = rewriteAttestation('const r=/^https:\\/\\/jnn-pa.googleapis.com\\//;');
 check('a regex literal naming jnn-pa still parses', (() => {
     try { return !!new (require('vm').Script)(literal); } catch (e) { return false; }
 })(), literal);
@@ -125,5 +124,5 @@ check('every policy in a combined header is widened',
     && both.split(',').every((one) => /img-src \* data: blob:/.test(one)),
     both);
 
-console.log(`\n${total - failures}/${total} checks passed.`);
-process.exit(failures ? 1 : 0);
+console.log(`\n${tally.total - tally.failures}/${tally.total} checks passed.`);
+process.exit(tally.failures ? 1 : 0);

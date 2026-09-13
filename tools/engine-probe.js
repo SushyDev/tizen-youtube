@@ -22,7 +22,7 @@ function asJson(text) {
 
 // Named so the reply reads as a table rather than a list of booleans.
 const PROBE = `(function () {
-    var has = {
+    const has = {
         'flat (Chrome 69)': typeof [].flat === 'function',
         'flatMap (Chrome 69)': typeof [].flatMap === 'function',
         'Object.fromEntries (Chrome 73)': typeof Object.fromEntries === 'function',

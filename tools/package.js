@@ -12,13 +12,15 @@ const { PROXY } = require('../service/lib/ports.js');
 
 // Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the page from the service instead.
 const APPS = [
-    { label: 'youtube 5.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null },
+    { label: 'youtube 5.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null, packageId: null },
     {
         label: 'youtube 5.0+',
         output: paths.WGT_LEGACY,
         include: paths.WIDGET_LEGACY,
         requiredVersion: '5.0',
-        servedFrom: `http://127.0.0.2:${PROXY}/tv`
+        servedFrom: `http://127.0.0.2:${PROXY}/tv`,
+        // Its own package, so neither widget installs over the other.
+        packageId: 'tUb3Xq7L50'
     }
 ];
 
@@ -142,6 +144,18 @@ function setRequiredVersion(staging, version) {
     writeFileSync(path, xml.replace(expression, `$1${version}$2`));
 }
 
+// Renames the package everywhere config.xml names it: the package, the app and the service.
+function setPackageId(staging, id) {
+    const path = join(staging, 'config.xml');
+    const xml = readFileSync(path, 'utf8');
+    const found = /<tizen:application\b[^>]*\bpackage="([^"]+)"/.exec(xml);
+
+    if (!found) throw friendly('config.xml names no package to rename.');
+    if (!/^[0-9A-Za-z]{10}$/.test(id)) throw friendly(`A package id is ten letters and digits, not ${id}.`);
+
+    writeFileSync(path, xml.split(found[1]).join(id));
+}
+
 // Points --base_url at the service and drops --content, which Cobalt 20 does not have.
 function servePage(staging, baseUrl) {
     const path = join(staging, 'config.xml');
@@ -195,6 +209,7 @@ async function packageApp(config, app) {
     try {
         stageContents(staging, app);
         if (app.requiredVersion) setRequiredVersion(staging, app.requiredVersion);
+        if (app.packageId) setPackageId(staging, app.packageId);
         if (app.servedFrom) servePage(staging, app.servedFrom);
         addCobaltProfile(staging);
         checkThePortsAgree(staging, config.ports.proxy);

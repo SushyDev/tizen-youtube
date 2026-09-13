@@ -76,6 +76,7 @@ const survives = (run) => {
 check('waking beside a container we may not kill does not throw', survives(() => cobalt.wake()));
 check('and launches ours anyway', launched.indexOf(ME) !== -1);
 check('and says why in the log', readFileSync(LOG, 'utf8').indexOf('could not close it: Permission denied') !== -1);
+check('and says so when the container never reaches us', readFileSync(LOG, 'utf8').indexOf('it is not running our switches') !== -1);
 
 const answered = { error: undefined };
 launched.length = 0;

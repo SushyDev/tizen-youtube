@@ -12,9 +12,10 @@ const { CONTAINER, appId, configuredContent, container, switches } = require('./
 const { MITM_DIR, existingMaterial, installCa, issue, stillGood } = require('./cobaltCa.js');
 const { STOCK, discover, locate, stageOrFail } = require('./cobaltContent.js');
 const { writeBootScreen } = require('./bootScreen.js');
-const { guarded, launch, launchOver, restart } = require('./cobaltLaunch.js');
+const { guarded, launch, launchOver, restart, containerUp } = require('./cobaltLaunch.js');
 
 const RELAUNCH_QUIET = 20000;
+const SILENT_AFTER = 20000;
 const CLAIM_WITHIN = 10000;
 const LOOKUP_QUIET = 5000;
 const KILL_SETTLE = 1200;
@@ -98,6 +99,16 @@ const listened = () => {
     waiting.forEach((then) => then());
 };
 
+// Our boot screen asks us within a second, so a launch that stays silent did not run our switches.
+const expectContact = (me, since) => setTimeout(() => {
+    if (proxied.at >= since) return;
+
+    containerUp((up) => note('silent', up
+        ? `the container is up but nothing from it has reached us ${SILENT_AFTER / 1000}s after launching ${me}: `
+            + 'either it is not running our switches or it cannot reach our address'
+        : `nothing is running ${SILENT_AFTER / 1000}s after launching ${me}`));
+}, SILENT_AFTER);
+
 const replaceUnlessOurs = (up, me, since) => {
     if (up.id === proxied.context) return;
 
@@ -116,6 +127,7 @@ const replaceUnlessOurs = (up, me, since) => {
                     launchOver(me);
                 }
             );
+            expectContact(me, Date.now());
         }, CLAIM_WITHIN);
     });
 };
@@ -136,13 +148,14 @@ const wake = () => {
         if (up) return replaceUnlessOurs(up, me, now);
 
         note('woken', `the container is not up; launching ${me}`);
-        return launch(me);
+        launch(me);
+        return expectContact(me, now);
     }, () => {});
 };
 
 const LAUNCH_AFTER_KILL = 1200;
 
-// Kills the cobalt-yt context as well as ours, because that context holds the running bundle.
+// Kills the container's context as well as ours, because that context holds the running bundle.
 const relaunch = (done) => {
     if (typeof tizen === 'undefined') return done(new Error('not on a television'));
 

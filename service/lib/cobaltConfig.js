@@ -5,11 +5,11 @@
 const fs = require('fs');
 const path = require('path');
 
-// The nativeID this package claims, which is also the app id the launched container runs under.
-const CONTAINER = 'com.samsung.tv.cobalt-yt';
-
 // Correct inside the widget, where lib/ sits two levels under the archive root.
 const CONFIG = path.join(__dirname, '..', '..', 'config.xml');
+
+// Stock YouTube's slot, for when there is no config.xml to name one.
+const DEFAULT_SLOT = 'com.samsung.tv.cobalt-yt';
 
 // Read once and remembered, including the failure: off the set there is no config.xml, and
 // retrying the same missing file on every question would be a stat per call.
@@ -26,6 +26,10 @@ const config = () => {
 
     return state.config;
 };
+
+// The nativeID this package claims, which is also the app id the launched container runs under.
+const claimed = /nativeID"\s+value="([^"]+)"/.exec(config() || '');
+const CONTAINER = claimed ? claimed[1] : DEFAULT_SLOT;
 
 // Our own switches, so the staging lands where --content says rather than by convention.
 const switches = () => {

@@ -1,6 +1,6 @@
 'use strict';
 
-// Stages a copy of Cobalt's own content, because --content replaces the directory wholesale.
+// Stages Cobalt's own content as links, because --content replaces the directory wholesale.
 
 const fs = require('fs');
 const path = require('path');
@@ -15,23 +15,32 @@ const MOST_FOUND = 12;
 
 const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.describe(detail)}`);
 
-// Same size is enough to call a file done: a firmware update replaces the whole directory.
-const copyInto = (from, to) => {
+const isLink = (file) => {
+    try {
+        return fs.lstatSync(file).isSymbolicLink();
+    } catch (e) {
+        return false;
+    }
+};
+
+// Folders stay real, so our certificate, the boot screen and Evergreen's files can be written beside
+// the links; a folder linked whole is replaced, and a real copy an older build made becomes a link.
+const linkInto = (from, to) => {
+    if (isLink(to)) fs.unlinkSync(to);
     fs.mkdirSync(to, { recursive: true });
 
-    return fs.readdirSync(from).reduce((copied, entry) => {
+    return fs.readdirSync(from).reduce((linked, entry) => {
         const source = path.join(from, entry);
         const target = path.join(to, entry);
-        const info = fs.statSync(source);
 
-        if (info.isDirectory()) return copied + copyInto(source, target);
+        if (fs.statSync(source).isDirectory()) return linked + linkInto(source, target);
+        if (isLink(target)) return linked;
 
-        try {
-            if (fs.statSync(target).size === info.size) return copied;
-        } catch (e) { /* absent, so copy it */ }
-
-        fs.writeFileSync(target, fs.readFileSync(source));
-        return copied + 1;
+        // Renamed into place, so a Cobalt starting meanwhile never finds the file missing.
+        const staged = `${target}.${process.pid}`;
+        fs.symlinkSync(source, staged);
+        fs.renameSync(staged, target);
+        return linked + 1;
     }, 0);
 };
 
@@ -77,8 +86,8 @@ const discover = () => {
 // else in prepare() is.
 const stageOrFail = (content, from = STOCK) => {
     try {
-        const copied = copyInto(from, content);
-        if (copied) note('staged', `${copied} files into ${content}`);
+        const linked = linkInto(from, content);
+        if (linked) note('staged', `${linked} files linked into ${content}`);
 
         return {};
     } catch (error) {

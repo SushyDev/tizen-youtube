@@ -37,6 +37,7 @@ const run = (script, replies, turns, options) => {
     const probeStatus = options && options.probe !== undefined ? options.probe : 204;
     const elsewhereStatus = options && options.elsewhere !== undefined ? options.elsewhere : 0;
     const hangs = !!(options && options.hang);
+    const updater = options && options.updater;
     const answered = { count: 0 };
     const node = () => ({ className: '', textContent: '', kids: [], appendChild(kid) { this.kids.push(kid); } });
     const log = {
@@ -87,6 +88,7 @@ const run = (script, replies, turns, options) => {
             innerWidth: 1920,
             innerHeight: 1080,
             devicePixelRatio: 1,
+            h5vcc: updater ? { updater } : undefined,
             location: { search: '?launch=menu&cert_scope=samsung', hash: '', replace: (to) => replaced.push(to) }
         }
     };
@@ -124,6 +126,24 @@ const checks = (script) => {
     const handed = run(script, [null, null, ready], 12);
 
     check('it names the Cobalt it runs in', has(handed.lines, 'boot screen, cobalt 25.lts.30.1034943-gold, evergreen 5.30.2, starboard 16'));
+
+    const pinned = run(script, [ready], 3, {
+        updater: { getInstallationIndex: () => 1000, getUpdaterChannel: () => 'prod', getUpdateStatus: () => '' }
+    });
+    check('it says when updates are off', has(pinned.lines, 'cobalt: installation 1000 (built-in, updates off), channel prod'),
+        pinned.lines.map((line) => line.text).join(' | '));
+
+    const updated = run(script, [ready], 3, {
+        updater: {
+            getInstallationIndex: () => 1,
+            getUpdaterChannel: () => { throw new Error('refused'); },
+            getUpdateStatus: () => 'Update installed, pending restart'
+        }
+    });
+    check('and which Evergreen update runs, leaving out what it cannot read',
+        has(updated.lines, 'cobalt: installation 1 (evergreen update 1), update Update installed, pending restart'),
+        updated.lines.map((line) => line.text).join(' | '));
+    check('a Cobalt without an updater says nothing of it', !has(handed.lines, 'cobalt: '));
     check('it says when the service answers', has(handed.lines, 'service: answering after'));
     check('it prints the Patch stamp Settings shows', has(handed.lines, 'tube: patch 1.0.1-abc1234-clean'));
     check('and the Tizen version, model and node', has(handed.lines, 'platform: tizen 9.0, QE65S93DATXXN')

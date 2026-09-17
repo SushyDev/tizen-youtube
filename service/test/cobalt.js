@@ -63,6 +63,54 @@ check('waking the container off a set does nothing rather than throwing', () => 
     cobalt.wake();
 });
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+check('staging links Cobalt\'s own files in and leaves ours as they are', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-stage-'));
+    const stock = path.join(root, 'stock');
+    const content = path.join(root, 'content');
+    const put = (file, text) => {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, text);
+    };
+
+    put(path.join(stock, 'fonts', 'fonts.xml'), 'built-in fonts');
+    put(path.join(stock, 'icu', 'icudt56l', 'root.res'), 'icu 56');
+    put(path.join(stock, 'ssl', 'certs', 'a.0'), 'built-in certificate');
+    put(path.join(stock, 'licenses', 'l.txt'), 'licence');
+
+    // What an older build and Evergreen leave behind: a real copy, our CA, a merged file, a folder linked whole.
+    put(path.join(content, 'fonts', 'fonts.xml'), 'built-in fonts');
+    put(path.join(content, 'ssl', 'certs', 'ours.0'), 'our CA');
+    put(path.join(content, 'icu', 'icudt68l.dat'), 'merged from an update');
+    fs.symlinkSync(path.join(stock, 'licenses'), path.join(content, 'licenses'));
+
+    assert.deepStrictEqual(cobaltContent.stageOrFail(content, stock), {});
+
+    const linkOf = (name) => {
+        const file = path.join(content, name);
+        return fs.lstatSync(file).isSymbolicLink() ? fs.readlinkSync(file) : null;
+    };
+
+    assert.strictEqual(linkOf('fonts/fonts.xml'), path.join(stock, 'fonts', 'fonts.xml'), 'an old copy was not replaced by a link');
+    assert.strictEqual(linkOf('icu/icudt56l/root.res'), path.join(stock, 'icu', 'icudt56l', 'root.res'));
+    assert.strictEqual(linkOf('ssl/certs/a.0'), path.join(stock, 'ssl', 'certs', 'a.0'));
+    assert.strictEqual(linkOf('licenses'), null, 'a folder linked whole was kept, so a merge into it would write into Cobalt');
+    assert.strictEqual(linkOf('licenses/l.txt'), path.join(stock, 'licenses', 'l.txt'));
+    assert.strictEqual(linkOf('ssl/certs/ours.0'), null, 'our CA was replaced');
+    assert.strictEqual(fs.readFileSync(path.join(content, 'ssl', 'certs', 'ours.0'), 'utf8'), 'our CA');
+    assert.strictEqual(fs.readFileSync(path.join(content, 'icu', 'icudt68l.dat'), 'utf8'), 'merged from an update');
+    assert.strictEqual(fs.readdirSync(path.join(content, 'fonts')).join(), 'fonts.xml', 'a staged name was left behind');
+
+    const inode = fs.lstatSync(path.join(content, 'fonts', 'fonts.xml')).ino;
+    assert.deepStrictEqual(cobaltContent.stageOrFail(content, stock), {});
+    assert.strictEqual(fs.lstatSync(path.join(content, 'fonts', 'fonts.xml')).ino, inode, 'a second staging made the links again');
+
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
 const failed = results.filter((ok) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

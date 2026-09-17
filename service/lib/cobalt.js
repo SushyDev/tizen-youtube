@@ -12,9 +12,11 @@ const { CONTAINER, appId, configuredContent, container, switches } = require('./
 const { MITM_DIR, existingMaterial, installCa, issue, stillGood } = require('./cobaltCa.js');
 const { STOCK, discover, locate, stageOrFail } = require('./cobaltContent.js');
 const { writeBootScreen } = require('./bootScreen.js');
-const { guarded, launch, launchOver, restart, containerUp } = require('./cobaltLaunch.js');
+const evergreen = require('./evergreen.js');
+const { guarded, launch, launchOver, restart } = require('./cobaltLaunch.js');
 
 const RELAUNCH_QUIET = 20000;
+const BOOT_QUIET = 120;
 const SILENT_AFTER = 20000;
 const CLAIM_WITHIN = 10000;
 const LOOKUP_QUIET = 5000;
@@ -99,15 +101,45 @@ const listened = () => {
     waiting.forEach((then) => then());
 };
 
+const replace = (id, me) => guarded(
+    () => tizen.application.kill(id, () => setTimeout(() => launch(me), KILL_SETTLE), () => launchOver(me)),
+    (error) => {
+        note('woken', `could not close it: ${error.message}`);
+        launchOver(me);
+    }
+);
+
 // Our boot screen asks us within a second, so a launch that stays silent did not run our switches.
-const expectContact = (me, since) => setTimeout(() => {
+// Replaced once, holding off the wake that launch sends, so it cannot loop.
+const expectContact = (me, since, again) => setTimeout(() => {
     if (proxied.at >= since) return;
 
-    containerUp((up) => note('silent', up
-        ? `the container is up but nothing from it has reached us ${SILENT_AFTER / 1000}s after launching ${me}: `
-            + 'either it is not running our switches or it cannot reach our address'
-        : `nothing is running ${SILENT_AFTER / 1000}s after launching ${me}`));
+    guarded(() => tizen.application.getAppsContext((contexts) => {
+        const up = contexts.find((context) => context.appId === CONTAINER);
+        if (!up) {
+            note('silent', `nothing is running ${SILENT_AFTER / 1000}s after launching ${me}`);
+            return again ? relaunchAfterMerge(me, since) : undefined;
+        }
+
+        note('silent', `the container is up but nothing from it has reached us ${SILENT_AFTER / 1000}s after launching ${me}: `
+            + `either it is not running our switches or it cannot reach our address${again ? '; replacing it' : ''}`);
+        if (!again) return undefined;
+
+        state.lastWake = Date.now();
+        replace(up.id, me);
+        return expectContact(me, Date.now(), false);
+    }, () => {}), () => {});
 }, SILENT_AFTER);
+
+// Cobalt dies at once on content it lacks, so a launch that raced Evergreen's merge is made again.
+const relaunchAfterMerge = (me, since) => evergreen.settled().then(() => {
+    if (!evergreen.mergedSince(since)) return;
+
+    note('silent', `Evergreen content arrived after launching ${me}; launching it again`);
+    state.lastWake = Date.now();
+    launch(me);
+    expectContact(me, Date.now(), false);
+});
 
 const replaceUnlessOurs = (up, me, since) => {
     if (up.id === proxied.context) return;
@@ -120,14 +152,8 @@ const replaceUnlessOurs = (up, me, since) => {
             if (up.id === proxied.context) return;
 
             note('woken', `the container is not ours; launching ${me}`);
-            guarded(
-                () => tizen.application.kill(up.id, () => setTimeout(() => launch(me), KILL_SETTLE), () => launchOver(me)),
-                (error) => {
-                    note('woken', `could not close it: ${error.message}`);
-                    launchOver(me);
-                }
-            );
-            expectContact(me, Date.now());
+            replace(up.id, me);
+            expectContact(me, Date.now(), true);
         }, CLAIM_WITHIN);
     });
 };
@@ -139,6 +165,12 @@ const wake = () => {
     const me = appId();
     if (!me || !container()) return;
 
+    // A wake this early is the platform starting the service at power-on, not a viewer opening the
+    // app, and launching here would open YouTube on every boot.
+    if (os.uptime() < BOOT_QUIET) {
+        return note('woken', `the set booted ${Math.round(os.uptime())}s ago, so the container is left alone`);
+    }
+
     const now = Date.now();
     if (now - state.lastWake < RELAUNCH_QUIET) return;
     state.lastWake = now;
@@ -149,7 +181,7 @@ const wake = () => {
 
         note('woken', `the container is not up; launching ${me}`);
         launch(me);
-        return expectContact(me, now);
+        return expectContact(me, now, true);
     }, () => {});
 };
 
@@ -236,6 +268,7 @@ const prepare = (done) => {
     if (staged.error) return finish(staged.error);
 
     guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
+    guarded(() => evergreen.bootstrap(content, from), (error) => note('evergreen', error));
 
     const material = existingMaterial();
 
@@ -289,4 +322,7 @@ const status = () => {
     };
 };
 
-module.exports = { prepare, wake, served, listened, status, restart, relaunch, material, container, appId, MITM_DIR };
+module.exports = {
+    prepare, wake, served, listened, status, restart, relaunch, material, container, appId, MITM_DIR,
+    heardOffer: evergreen.heardOffer
+};

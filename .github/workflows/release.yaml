@@ -11,12 +11,12 @@ permissions:
 jobs:
   widget:
     name: Build the widget
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -57,7 +57,7 @@ jobs:
           echo "path=release/tizen-youtube-${version}*.wgt" >> "$GITHUB_OUTPUT"
 
       - name: Keep the service bundles for the runtime matrix
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-service-bundle
           path: |
@@ -67,7 +67,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload it as an artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tizen-youtube-widget
           path: ${{ steps.widget.outputs.path }}
@@ -76,7 +76,7 @@ jobs:
   runtimes:
     name: node ${{ matrix.node }}
     needs: widget
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -98,14 +98,14 @@ jobs:
           - node: '22.12.0'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-service-bundle
           path: service
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
 
@@ -122,12 +122,12 @@ jobs:
   browser:
     name: Against real YouTube
     needs: widget
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -144,7 +144,7 @@ jobs:
       - name: Test
         run: npm run test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: release-playwright-report
@@ -156,16 +156,16 @@ jobs:
     name: Publish the draft
     needs: [widget, runtimes, browser]
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tizen-youtube-widget
           path: release
 
       - name: Open a draft release with it
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           draft: true

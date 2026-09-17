@@ -22,19 +22,19 @@ env:
 jobs:
   build:
     name: Build and publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
 
     steps:
       - name: Check out Cobalt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: youtube/cobalt
           ref: ${{ env.COBALT_REF }}
           path: cobalt
 
       - name: Check out ours
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: tube
 
@@ -47,7 +47,7 @@ jobs:
 
       # Bound to a cached host path: compose otherwise keeps ccache in a Docker volume nothing saves.
       - name: Cache the compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.ccache
           key: cobalt-ccache-${{ env.COBALT_REF }}-${{ github.run_id }}
@@ -84,7 +84,7 @@ jobs:
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/cobalt" >> "$GITHUB_ENV"
 
       - name: Log in to the registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

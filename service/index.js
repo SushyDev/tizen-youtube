@@ -109,6 +109,19 @@ routeErrors.attach(app);
 // Every interface, because the container is another package and cannot reach our 127.0.0.1.
 const BIND = '0.0.0.0';
 const RETRY_LISTEN_AFTER = 5000;
+const REPEAT_AFTER = 60000;
+
+const repeated = { text: '', at: 0 };
+
+// The same refusal every five seconds fills a 64KB log with itself and pushes out what explains it.
+const noteRarely = (what, text) => {
+    const now = Date.now();
+    if (text === repeated.text && now - repeated.at < REPEAT_AFTER) return;
+
+    repeated.text = text;
+    repeated.at = now;
+    postmortem.note(what, text);
+};
 
 // Fallbacks, because a LAN address still binds while another server holds the port on loopback.
 const candidates = () => {
@@ -143,11 +156,14 @@ const listen = (addresses, index) => {
     // Handled rather than fatal, and never advanced once the port is ours: a later error would
     // otherwise start a second server beside the one already answering.
     server.on('error', (error) => {
+        // Both widgets carry a service and install side by side, so the other one holding the port
+        // is as likely as an older build of this one.
         const why = error.code === 'EADDRINUSE'
-            ? 'something already holds that port — an older build of this app is the usual cause'
+            ? 'something already holds that port — the other Tube widget, or an older build of this '
+                + 'one, is the usual cause; only one of the two can serve the container'
             : postmortem.describe(error);
 
-        postmortem.note('listen', `${address}:${ports.PROXY} — ${why}`);
+        noteRarely('listen', `${address}:${ports.PROXY} — ${why}`);
         if (serving.yes) return undefined;
 
         const next = index + 1;

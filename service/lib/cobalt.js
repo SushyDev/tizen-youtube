@@ -171,6 +171,15 @@ const wake = () => {
         return note('woken', `the set booted ${Math.round(os.uptime())}s ago, so the container is left alone`);
     }
 
+    // Launching before the port is ours aims the container at whatever else holds it, which is what
+    // two installed widgets do to each other. Held rather than dropped: a wake arriving while the
+    // server is still opening is the ordinary cold start, and only a port that never becomes ours
+    // leaves the container alone for good.
+    if (!state.listeningAt) {
+        note('woken', 'the proxy port is not ours yet, so the launch waits for it');
+        return whenListening(wake);
+    }
+
     const now = Date.now();
     if (now - state.lastWake < RELAUNCH_QUIET) return;
     state.lastWake = now;

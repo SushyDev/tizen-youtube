@@ -4,6 +4,7 @@
 
 const postmortem = require('./postmortem.js');
 const reach = require('./reach.js');
+const { diagnose } = require('./diagnosis.js');
 const { facts } = require('./platform.js');
 
 // What still stands before the handover, or null.
@@ -20,8 +21,11 @@ const waitingFor = (status) => {
 
 const firstLine = (text) => String(text).split('\n')[0];
 
-const report = ({ since, status, script }) => {
+const report = ({ since, status, script, stuck }) => {
     reach.check();
+
+    // Before the log is read, so this ask carries the checks rather than the next one.
+    if (stuck) diagnose();
 
     const log = postmortem.since(Number(since) || 0);
     const waiting = waitingFor(status);

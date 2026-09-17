@@ -5,6 +5,7 @@ import { elapsed } from './clock.js';
 import { say } from './screen.js';
 import { failureOf } from './failure.js';
 import { lookElsewhere } from './elsewhere.js';
+import { sayHelp } from './help.js';
 
 const HOST = service.replace('http://', '');
 
@@ -23,6 +24,8 @@ const tell = (failure) => {
 const nag = (waited) => {
     if (waited - held.nagged < TIMING.nag) return;
 
+    // Nothing can be asked of a service that is not answering, so the check waits for the first reply.
+    held.stuck = true;
     held.nagged = waited;
     say('service', `not answering yet (${Math.round(waited / 1000)}s)`, 'warn');
     lookElsewhere();
@@ -42,6 +45,7 @@ export const silent = (again, status, how) => {
     if (!held.gaveUp && waited > TIMING.giveUp) {
         held.gaveUp = true;
         say('service', GIVE_UP, 'bad');
+        sayHelp();
     }
 
     setTimeout(again, TIMING.every);

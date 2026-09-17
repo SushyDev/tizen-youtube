@@ -1,6 +1,6 @@
 {
   "name": "tube-service",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Injection and proxy for the tube app.",
   "main": "index.js",
   "license": "GPL-3.0-only",

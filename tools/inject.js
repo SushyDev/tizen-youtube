@@ -31,16 +31,14 @@ function injectTokens(source, tokens) {
     return { code, applied };
 }
 
-// Every name the build substitutes. Named rather than matched by pattern, because the page also
-// carries runtime globals of the same shape — __TUBE_NATIVE_PROXY_PATCHES__ is set by the proxy
-// and is meant to survive into the bundle.
+// Named rather than matched by pattern: the page carries runtime globals of the same shape, such
+// as __TUBE_NATIVE_PROXY_PATCHES__, which is meant to survive into the bundle.
 const BUILD_TOKENS = [
     '__TUBE_VERSION__', '__TUBE_COMMIT__', '__TUBE_TREE__',
     '__TUBE_DEV_TOOLS__', '__TUBE_DEV_TOKEN__', '__TUBE_CHII__'
 ];
 
-// rollup's `replace` plugin substitutes silently, which is what this catches for the userscript
-// pipeline without forcing the two to share a mechanism.
+// rollup's `replace` plugin substitutes silently, so the userscript pipeline is checked here.
 function assertNoTokens(code, where) {
     const unique = BUILD_TOKENS.filter((token) => code.indexOf(token) !== -1);
     if (!unique.length) return;

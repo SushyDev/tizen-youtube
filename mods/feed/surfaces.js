@@ -2,8 +2,7 @@ import {
     DEV_TOOLS, GRID, PIVOT, SHELF, TILES, nativeJson, onResponse, walkShelves, walkTiles
 } from '../../framework/index.js';
 
-// The only file that knows where YouTube keeps its tiles; a surface missing from DESCENTS goes out
-// undressed.
+// A surface missing from DESCENTS goes out undressed.
 
 const browse = (r) => r?.contents?.tvBrowseRenderer?.content?.tvSurfaceContentRenderer?.content;
 
@@ -22,8 +21,7 @@ const tilesAt = (holder, surface) => {
     return true;
 };
 
-// The subscriptions page: each channel is a tab carrying its own surface, grouped as YouTube sends
-// them — "All", the channels with something new, an "A-Z" divider, then every channel.
+// Each subscriptions tab carries its own surface.
 const subscriptionTabs = (r) => {
     const sections = r?.contents?.tvBrowseRenderer?.content?.tvSecondaryNavRenderer?.sections;
     if (!sections) return false;

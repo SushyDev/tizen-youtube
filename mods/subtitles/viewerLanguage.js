@@ -1,9 +1,9 @@
 import { languageName } from './languageNames.js';
 
-// The viewer's language, guessed from the account country; none without Intl.Locale (Chrome 74).
+// Guessed from the account country; there is no Intl.Locale before Chrome 74.
 
-// The one case the maximiser gets wrong for this purpose. It answers `zh`, but caption tracks are
-// per-script, so the region has to pick which of the three to offer.
+// The maximiser answers `zh`, but caption tracks are per-script, so the region picks which of the
+// three to offer.
 const CHINESE = { CN: 'zh-CN', TW: 'zh-TW', HK: 'zh-HK', SG: 'zh-CN' };
 
 const countryCode = () => window.yt?.config_?.GL || null;

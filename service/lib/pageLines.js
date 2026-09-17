@@ -1,7 +1,5 @@
 'use strict';
 
-// Lines a page sends for /__tube/log: the userscript's and the boot screen's.
-
 const postmortem = require('./postmortem.js');
 
 const PAGE = 'page';

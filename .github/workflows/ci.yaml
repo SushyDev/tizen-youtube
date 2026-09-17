@@ -1,7 +1,4 @@
 # Everything that can be checked without a television.
-#
-# The build runs here because `tools/check-output.js` refuses a built-in newer than the floor, and
-# `npm test` gates on eslint, `tsc --noEmit`, the userscript suites and the service suites.
 
 name: CI
 
@@ -38,15 +35,13 @@ jobs:
       - name: Test
         run: npm test
 
-      # Packaged on every change, not only on a tag: the widget is where staging, the manifest and
-      # the bundles meet, and none of the checks above opens one.
+      # Packaged on every change, because none of the checks above opens a widget.
       - name: Package
         run: npm run package
 
       - name: Audit the widget
         run: npm run audit
 
-      # The bundles are self-contained, so they are the whole of what the matrix below needs.
       - uses: actions/upload-artifact@v4
         with:
           name: service-bundle
@@ -146,6 +141,7 @@ jobs:
     # A package published from a workflow is private until someone says otherwise, so reading it
     # needs the token even on a public repository.
     permissions:
+
       contents: read
       packages: read
 

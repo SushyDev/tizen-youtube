@@ -1,7 +1,5 @@
 'use strict';
 
-// Reads googlevideo's STREAM_PROTECTION_STATUS from the first bytes of a media answer.
-
 const { statusOf } = require('../lib/protection.js');
 
 const results = [];

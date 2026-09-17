@@ -1,6 +1,3 @@
-// The page's side of /__tube/log: what the framework catches reaches the service as well as the
-// console, once per distinct line, and never so often that a failing tick floods the log.
-
 import assert from 'assert';
 
 const listeners = {};

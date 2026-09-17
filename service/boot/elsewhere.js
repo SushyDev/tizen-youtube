@@ -12,7 +12,6 @@ const answeredAt = (answered) => {
     say('service', `answers at ${answered.map(host).join(', ')} but not at ${host(service)}: `
         + `this TV blocks ${host(service)}, so YouTube cannot reach the proxy either`, 'bad');
 
-    // The service's log gets the screen's lines through the address that works.
     flush('', answered[0]);
 };
 
@@ -31,7 +30,7 @@ const settle = (answered) => {
     return answered.length ? answeredAt(answered) : nowhere(late);
 };
 
-// Asks the service's other addresses, to tell a blocked address from a dead service.
+// Tells a blocked address from a dead service.
 export const lookElsewhere = () => {
     if (held.looking || !alternates.length) return;
     held.looking = true;

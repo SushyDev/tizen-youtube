@@ -1,15 +1,12 @@
 import { ButtonRenderer, configRead, onResponse } from '../../framework/index.js';
 
-// Transport-control buttons, dressed in the response; the container already ships a speed button.
-
 const type = (entry) => String((entry && entry.type) || '');
 
 const is = (name) => (entry) => type(entry) === `TRANSPORT_CONTROLS_BUTTON_TYPE_${name}`;
 
 const without = (actions, name) => actions.filter((entry) => !is(name)(entry));
 
-// The mini player is genuinely absent — there is no PIP button in settingActions on this build —
-// so this one adds rather than removes.
+// This build ships no PIP button in settingActions, so this one adds rather than removes.
 const miniPlayer = () => ({
     type: 'TRANSPORT_CONTROLS_BUTTON_TYPE_PIP',
     button: {

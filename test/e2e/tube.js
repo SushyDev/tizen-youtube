@@ -1,5 +1,3 @@
-// Opening the app with a given set of our settings, and the handful of questions every spec asks.
-
 import { test as base, expect } from '@playwright/test';
 import { asCobalt } from './cobalt.js';
 

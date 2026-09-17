@@ -1,7 +1,5 @@
 'use strict';
 
-// The overrides exist so tests and the runtime matrix can run beside a dev service already
-// holding the default.
 const port = (name, fallback) => Number(process.env[name]) || fallback;
 
 module.exports = {

@@ -7,8 +7,8 @@ const { join } = require('path');
 const ui = require('./report.js');
 const { load, ROOT } = require('./config.js');
 
-// Read from tizen.config.json rather than from service/lib/ports.js: a build tool reaching into
-// shipped runtime code is the wrong direction, and the number has a home now.
+// Read from tizen.config.json rather than service/lib/ports.js: a build tool must not reach into
+// shipped runtime code.
 const ports = load().ports;
 
 // YouTube serves the TV site only to a TV user agent.
@@ -68,8 +68,8 @@ const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'tools/ro
     cwd: ROOT
 });
 
-// TUBE_DEV_INJECT puts the remote in the page: the TV's coloured buttons have no key on a
-// keyboard, and the mods listen for their key codes and nothing else.
+// The TV's coloured buttons have no key on a keyboard, and the mods listen for their key codes
+// and nothing else.
 const runTheService = () => start('svc', process.execPath, ['index.js'], {
     cwd: join(ROOT, 'service'),
     env: {

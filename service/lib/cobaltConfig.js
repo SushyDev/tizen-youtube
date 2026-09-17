@@ -1,7 +1,5 @@
 'use strict';
 
-// Reads the container switches from this package's config.xml; never writes them.
-
 const fs = require('fs');
 const path = require('path');
 
@@ -11,8 +9,8 @@ const CONFIG = path.join(__dirname, '..', '..', 'config.xml');
 // Stock YouTube's slot, for when there is no config.xml to name one.
 const DEFAULT_SLOT = 'com.samsung.tv.cobalt-yt';
 
-// Read once and remembered, including the failure: off the set there is no config.xml, and
-// retrying the same missing file on every question would be a stat per call.
+// The failure is remembered too, because off the set there is no config.xml and every question
+// would then cost a stat.
 const state = { config: undefined };
 
 const config = () => {
@@ -31,7 +29,6 @@ const config = () => {
 const claimed = /nativeID"\s+value="([^"]+)"/.exec(config() || '');
 const CONTAINER = claimed ? claimed[1] : DEFAULT_SLOT;
 
-// Our own switches, so the staging lands where --content says rather than by convention.
 const switches = () => {
     const found = /native\.userdata"\s+value="([^"]*)"/.exec(config() || '');
     return found ? found[1].replace(/&quot;/g, '"') : null;
@@ -44,7 +41,6 @@ const configuredContent = () => {
     return found ? found[1] : null;
 };
 
-// The container slot this package claims, or null when it claims none.
 const container = () => {
     if (config() === null) return null;
 

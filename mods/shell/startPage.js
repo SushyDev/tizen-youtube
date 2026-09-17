@@ -1,15 +1,11 @@
 import { PASS, configRead, onCommand } from '../../framework/index.js';
 
-// Opens the chosen browse page by writing kabuki's `c` launch parameter, and fills it into
-// account-switch commands whose nextEndpoint is absent or home.
-
 // kabuki parses only what follows the `?`; the path mirrors the route it writes for itself.
 const ROUTE = '/browse?c=';
 
 // kabuki's route writer omits `c` for these browseIds, so a nextEndpoint naming one means home.
 const HOME = ['default', 'FEtopics'];
 
-// Commands that read nextEndpoint as the place to go after an account change.
 const AFTER_AN_ACCOUNT = [
     'onIdentityChanged',
     'reloadOnAccountSwitch',
@@ -27,8 +23,8 @@ const isHome = (endpoint) => !!endpoint
     && !endpoint.browseEndpoint.params
     && HOME.indexOf(endpoint.browseEndpoint.browseId) !== -1;
 
-// Absent means home to all of these — each reads the field as `nextEndpoint || <home>` — so an
-// absent one and a home one are the same answer, and both are ours to replace.
+// Each of these reads the field as `nextEndpoint || <home>`, so an absent one and a home one are
+// the same answer.
 const sendTo = (holder, endpoint) => {
     if (!holder || typeof holder !== 'object') return;
     if (holder.nextEndpoint !== undefined && !isHome(holder.nextEndpoint)) return;

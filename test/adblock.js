@@ -1,4 +1,4 @@
-// The playback-context rewrite follows enableAdBlock; its own file because it takes over JSON.
+// In its own file because it takes over the process's JSON.
 
 import assert from 'assert';
 

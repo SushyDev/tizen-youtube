@@ -15,7 +15,6 @@ const library = (index) => {
     return `evergreen update ${index}`;
 };
 
-// Which library runs and what the updater is doing, or null where there is no updater.
 export const evergreen = () => {
     const updater = window.h5vcc && window.h5vcc.updater;
     if (!updater) return null;

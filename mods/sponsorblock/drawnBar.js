@@ -1,6 +1,6 @@
 import { layersAbove, shiftOf } from './transitions.js';
 
-// Both, so a build that still uses the older name keeps working.
+// Both names, because older builds still use the other one.
 const TRACK = 'ytlr-multi-markers-player-bar-renderer div[idomkey="progress-bar"], div[idomkey="slider"]';
 
 const CHAPTER = 'chapter-';
@@ -26,8 +26,7 @@ const piecesOf = (track) => {
     const whole = track.querySelector(WHOLE_BAR);
     if (whole) return [whole];
 
-    // The plain slider and the decorated bar have neither chapters nor a segment, so the track is
-    // the one piece.
+    // The plain slider and the decorated bar have neither chapters nor a segment.
     return insideTheBar(track.parentElement, 8) ? [track] : [];
 };
 
@@ -40,8 +39,7 @@ const chapterIn = (element) => {
     return { from: chapter.start, to: chapter.end };
 };
 
-// YouTube's own chapter times where every piece carries them, because a chapter fits its time into
-// a box narrower than its share of the track.
+// A chapter fits its time into a box narrower than its share of the track, so its own times win where every piece carries them.
 const spansFor = (pieces, trackBox, duration) => {
     const carried = pieces.map(({ element }) => chapterIn(element));
     if (carried.every((span) => span)) return carried;

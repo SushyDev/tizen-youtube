@@ -1,11 +1,9 @@
 'use strict';
 
-// The address this service answers on, as the container has to see it.
-
 const ports = require('./ports.js');
 const { switches } = require('./cobaltConfig.js');
 
-// A build that serves the page itself names its own origin in --base_url; the container reaches nothing else.
+// The container reaches nothing but the origin named in --base_url.
 const servedHost = () => (/--base_url=http:\/\/([^/:\s"]+)/.exec(switches() || '') || [])[1] || null;
 
 const PROXY_HOST = process.env.TUBE_PROXY_HOST || servedHost() || 'localhost';

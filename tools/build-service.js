@@ -68,7 +68,6 @@ console.log(`      ${basename(outDir)}/index.js  ${kb(Buffer.byteLength(stamped)
 
 console.log('[3/4] embedding the userscript and the boot screen');
 
-// The service serves them from the widget itself.
 const embed = (shipped) => {
     const from = join(__dirname, '..', shipped);
 

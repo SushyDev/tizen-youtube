@@ -1,7 +1,7 @@
 import { GRID, PIVOT, SHELF, TILES, configRead, onTile } from '../../framework/index.js';
 
-// Thumbnails at the size a television wants. YouTube offers this client the one sized for a
-// phone; sddefault is the same image, larger, and the query it was signed with still applies.
+// YouTube sends this client a phone-sized thumbnail; sddefault is the same image larger, and the
+// query it was signed with still applies.
 
 // Only i.ytimg.com URLs are enlarged, so a DeArrow thumbnail set earlier survives.
 const YOUTUBE_THUMBNAIL = /^https?:\/\/i\.ytimg\.com\//;

@@ -108,8 +108,8 @@ check('and left alone with the setting off', () => {
     });
 });
 
-// Someone else's host is not ours to rewrite: a substituted thumbnail would be replaced by a
-// YouTube URL for the same video, which is the DeArrow picture silently undone.
+// Someone else's host is not ours to rewrite: a YouTube URL for the same video would silently
+// undo the DeArrow picture.
 check('a thumbnail from another host is left alone', () => {
     withConfig({ enableHqThumbnails: true }, () => {
         const tile = video('abc');

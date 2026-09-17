@@ -1,7 +1,5 @@
 'use strict';
 
-// Serves chii's target script and routes its socket under the page's own origin.
-
 const fetch = require('node-fetch');
 const postmortem = require('../lib/postmortem.js');
 

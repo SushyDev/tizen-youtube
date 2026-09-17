@@ -176,8 +176,7 @@ const skipWhosWatchingOnExit = (command, original, self, context) => {
     return false;
 };
 
-// The triggers that mean "before anything has been asked for", as against a locked account, a PIN
-// or an upgrade, where a real answer is needed.
+// Triggers that mean "before anything has been asked for", unlike a locked account, a PIN or an upgrade, where a real answer is needed.
 const ON_ARRIVAL = [
     'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
     'ACCOUNT_EVENT_TRIGGER_WHO_FALLBACK',
@@ -198,8 +197,7 @@ const skipWhosWatchingOnArrival = (command) => {
     return false;
 };
 
-// Named here rather than taken from each function, because terser mangles our own names and an
-// error would otherwise be reported as coming from `t`.
+// Named here because terser mangles our own names and an error would otherwise be reported as coming from `t`.
 const INTERPRETERS = [
     { name: 'our settings', interpret: applyOurSettings },
     { name: 'custom actions', interpret: runCustomActions },

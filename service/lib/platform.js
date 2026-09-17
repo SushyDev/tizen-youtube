@@ -1,7 +1,5 @@
 'use strict';
 
-// What the boot screen prints about this set and build.
-
 const { STAMP } = require('./stamp.js');
 
 const capability = (key) => {

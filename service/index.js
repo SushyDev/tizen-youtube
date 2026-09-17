@@ -25,8 +25,7 @@ const forward = require('./lib/forward.js');
 const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
 
-// Guarded, and the guard is the point. Everything the container route needs is a convenience laid
-// on a proxy that has to start regardless.
+// A cobalt.js that will not load must not stop the proxy starting.
 const cobalt = require('./lib/cobaltIfItLoads.js')();
 
 const isTV = typeof tizen !== 'undefined';
@@ -77,7 +76,6 @@ const userScript = () => sized(USER_SCRIPT);
 
 app.get('/__tube/state', (_, res) => res.json({ script: userScript(), platformVersion, container: containerRoute }));
 
-// The served page's boot line, so each load's requests are traced afresh.
 const retraceOnBoot = (line) => {
     if (line.indexOf('booted ') === 0) proxy.retrace();
 };
@@ -86,8 +84,7 @@ journalRoutes.attach(app, { heard: retraceOnBoot });
 bootRoutes.attach(app, { cobalt, script: userScript });
 diagRoutes.attach(app);
 
-// `relaunch` is passed in rather than reached for, because dev/ may not know about the container
-// route — and on a set without one it is simply absent.
+// dev/ may not know about the container route, and on a set without one it is absent.
 dev.routes(app, {
     policies: POLICIES,
     state,
@@ -116,7 +113,7 @@ const noteRarely = (what, text) => {
     postmortem.note(what, text);
 };
 
-// Fallbacks, because a LAN address still binds while another server holds the port on loopback.
+// A LAN address still binds while another server holds the port on loopback.
 const candidates = () => {
     const interfaces = os.networkInterfaces();
 
@@ -142,15 +139,13 @@ const listen = (addresses, index) => {
     // network at all.
     forward.tunnel(server);
 
-    // And an upgrade is not a request express ever sees, so without this every WebSocket the page
-    // opens is accepted and then never answered — a hang rather than a failure.
+    // An upgrade is not a request express ever sees, and an unanswered one hangs rather than fails.
     upgrade.attach(server, { rewrite: dev.upgradeRewrite });
 
-    // Handled rather than fatal, and never advanced once the port is ours: a later error would
-    // otherwise start a second server beside the one already answering.
+    // A later error once the port is ours would otherwise start a second server beside the one
+    // already answering.
     server.on('error', (error) => {
-        // Both widgets carry a service and install side by side, so the other one holding the port
-        // is as likely as an older build of this one.
+        // Both widgets carry a service and install side by side.
         const why = error.code === 'EADDRINUSE'
             ? 'something already holds that port — the other Tube widget, or an older build of this '
                 + 'one, is the usual cause; only one of the two can serve the container'
@@ -162,8 +157,7 @@ const listen = (addresses, index) => {
         const next = index + 1;
         if (next < addresses.length) return listen(addresses, next);
 
-        // Wait for whatever holds it to go away rather than exiting, which would only be restarted
-        // into the same failure.
+        // Exiting would only be restarted into the same failure.
         return setTimeout(() => listen(candidates(), 0), RETRY_LISTEN_AFTER);
     });
 };
@@ -177,9 +171,8 @@ setTimeout(() => listen(candidates(), 0), holdFor);
 module.exports = {
     onStart: () => {},
 
-    // The platform wakes the service when the app is launched, which is the only notice anything
-    // of ours gets that a viewer opened it: the container is started instead of our content, so no
-    // page of ours runs.
+    // This wake is the only notice we get that a viewer opened the app, since the container starts
+    // instead of our content.
     onRequest: () => {
         if (!cobalt) return;
         try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }

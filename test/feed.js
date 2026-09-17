@@ -2,9 +2,7 @@
 
 import assert from 'assert';
 
-// Set before the graph loads: config.js reads window.localStorage at module scope. It catches a
-// failure and falls back to defaults, but then configWrite has nowhere to persist and the
-// scenarios below could not toggle anything.
+// Set before the graph loads: config.js reads window.localStorage at module scope.
 global.window = { localStorage: { 'tube.settings': '{}' } };
 global.location = { hash: '#/' };
 
@@ -19,11 +17,8 @@ const { MenuServiceItemRenderer } = await import('../framework/renderers.js');
 const { longPressData } = await import('../mods/feed/longPressMenu.js');
 const { SHELF, PIVOT, TILES, GRID, walkTiles, walkShelves } = await import('../framework/feed.js');
 
-// Importing for its registrations, which is the whole point: the visitor table under test is the
-// one the shipped code installs, not one written for the test.
+// Imported for its registrations: the visitor table under test is the one the shipped code installs.
 await import('../mods/feed/index.js');
-
-// -- the oracle: exactly what these were before ------------------------------------------------
 
 function oracleDeArrowify(items) {
     items.filter((item) => item.adSlotRenderer)
@@ -135,8 +130,6 @@ function oracleTiles(items) {
     return oracleHideVideo(items);
 }
 
-// -- fixtures ----------------------------------------------------------------------------------
-
 const tile = (id, extra) => Object.assign({
     tileRenderer: Object.assign({
         contentId: id,
@@ -183,8 +176,6 @@ const shelf = (items, type) => ({
 
 const SHORTS_SHELF = 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS';
 
-// -- running -----------------------------------------------------------------------------------
-
 const results = [];
 
 const check = (name, run) => {
@@ -220,8 +211,8 @@ const sameShelves = (name, shelves, settings) => check(name, () => {
     });
 });
 
-// For the cases where the walk is deliberately not the oracle any more: the fixture goes through
-// the real walk and the assertion says what should have happened to it.
+// Where the walk is deliberately not the oracle any more: the assertion says what should have
+// happened to the fixture.
 const checkShelves = (name, shelves, settings, assertion) => check(name, () => {
     withConfig(settings || {}, () => {
         const walked = copy(shelves);
@@ -272,8 +263,8 @@ const ON = { enableHqThumbnails: true };
 
 sameShelves('a plain shelf', [shelf([tile('a'), tile('b')])], ON);
 
-// The reordering under test: advert removal used to happen before every dresser and is now a
-// keeper that runs after. Sound only because no dresser touches an item without a tileRenderer.
+// Advert removal is now a keeper running after the dressers, sound only because no dresser
+// touches an item without a tileRenderer.
 sameShelves('an advert first in the shelf', [shelf([advert(), tile('a')])], ON);
 sameShelves('two adjacent adverts', [shelf([advert(), advert(), tile('a')])], ON);
 sameShelves('an advert last', [shelf([tile('a'), advert()])], ON);
@@ -357,10 +348,8 @@ check('and keeps them when shorts are wanted', () => {
 sameGrid('a grid is filtered like a shelf', [tile('a'), shortTile('s'), advert()], ON);
 sameGrid('a grid with a menu tile', [menuTile('m'), tile('a')], ON);
 
-// DeArrow is asked about every tile the walk dresses, including ones a later keeper drops —
-// asking the keepers first would change how many requests leave the television. What changed in
-// the rewrite is that the answer is remembered: the same video in a second shelf, or on the way
-// back to the feed, is not asked about again.
+// DeArrow is asked about every tile the walk dresses, including ones a later keeper drops, and
+// each video only once.
 check('deArrow asks about tiles that are later dropped', () => {
     withConfig({
         enableDeArrow: true,

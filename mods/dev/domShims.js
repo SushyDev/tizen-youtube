@@ -1,5 +1,3 @@
-// DOM behaviour a debugger needs that this engine lacks.
-
 const holder = { element: null };
 
 // kabuki's Text.prototype.data setter dereferences parentNode, which is null on detached nodes.

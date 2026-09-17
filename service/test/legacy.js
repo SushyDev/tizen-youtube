@@ -1,7 +1,5 @@
 'use strict';
 
-// Checks the 5.0+ service's stand-ins for what old node lacks.
-
 const fs = require('fs');
 const os = require('os');
 const { join } = require('path');

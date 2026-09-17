@@ -1,5 +1,3 @@
-// Every surface YouTube keeps a feed on, walked.
-
 import assert from 'assert';
 
 global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };
@@ -11,8 +9,7 @@ const { configRead, configWrite } = await import('../framework/config.js');
 const { interceptJson } = await import('../framework/json.js');
 await import('../mods/feed/index.js');
 
-// Not a feed mod, but it registers against the same walk — which is the point of the last two
-// checks below.
+// Not a feed mod, but it registers against the same walk.
 await import('../mods/queue/shelf.js');
 
 interceptJson();
@@ -64,7 +61,6 @@ const shelf = (items, type) => ({
     )
 });
 
-// One advert row, one shorts row, one ordinary row carrying a shorts tile and an advert slot.
 const sections = () => ([
     { adSlotRenderer: {} },
     shelf([tile('a')], SHORTS_SHELF),
@@ -73,8 +69,6 @@ const sections = () => ([
 
 const tiles = () => ([tile('b'), shortsTile('s'), { adSlotRenderer: {} }]);
 
-// What a walked section list looks like: the advert row and the shorts row gone, and the ordinary
-// row left holding only its ordinary tile.
 const walkedSections = (list, where) => {
     assert.strictEqual(list.length, 1, `${where}: expected one row, got ${list.length}`);
     const items = list[0].shelfRenderer.content.horizontalListRenderer.items;

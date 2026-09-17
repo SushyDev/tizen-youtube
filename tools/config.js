@@ -1,7 +1,5 @@
 'use strict';
 
-// What the build is: tizen.config.json, and the commit it is built from.
-
 const { execFileSync } = require('child_process');
 const { readFileSync, existsSync } = require('fs');
 const { join } = require('path');

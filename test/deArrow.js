@@ -1,6 +1,3 @@
-// DeArrow: which answer to believe, hqify leaving substitutions alone, and the store dressing
-// across launches.
-
 import assert from 'assert';
 
 const storage = { data: {} };
@@ -62,8 +59,7 @@ const withConfig = (settings, run) => {
     }
 };
 
-// The async twin. withConfig's `finally` fires the moment an async run() hands back its promise,
-// which would put every setting back before the awaited half of the test had run.
+// withConfig's `finally` would put every setting back before the awaited half of the test had run.
 const withConfigAsync = async (settings, run) => {
     const before = Object.keys(settings).map((key) => [key, configRead(key)]);
     Object.keys(settings).forEach((key) => configWrite(key, settings[key]));
@@ -198,7 +194,6 @@ const suite = async () => {
         });
     });
 
-    // The whole point of the store: this is what a relaunch looks like.
     await checkAsync('what DeArrow said survives a restart', async () => {
         answers.body = RICK;
 

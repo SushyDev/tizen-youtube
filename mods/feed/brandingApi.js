@@ -1,11 +1,9 @@
-// Picks the entry DeArrow shows: locked beats votes; originals and downvoted entries never win.
-
 const API = 'https://sponsor.ajay.app/api/branding';
 
 // Downvoted into the negative is DeArrow's way of saying "do not show this".
 const showable = (entry) => entry && entry.votes >= 0 && !entry.original;
 
-// Locked first, then votes. Ties keep the earlier entry, which is the order the server sent.
+// Ties keep the earlier entry, which is the order the server sent.
 const preferred = (entries) => (entries || [])
     .filter(showable)
     .reduce((best, one) => {
@@ -20,7 +18,6 @@ const bestOf = (data) => {
 
     return {
         title: title ? title.title : null,
-        // A thumbnail with no timestamp names no frame, so it is nothing to show.
         timestamp: thumbnail && typeof thumbnail.timestamp === 'number' ? thumbnail.timestamp : null
     };
 };

@@ -3,9 +3,6 @@ import { nameOf } from './segments.js';
 import { segmentsForVideo } from './sponsorblock.js';
 import { skipTo } from './skipTo.js';
 
-// A card offering to skip each segment the viewer chose to skip by hand rather than
-// automatically, shown over the picture for as long as the segment lasts.
-
 const cardFor = (segment) => timelyAction(
     `Skip ${nameOf(segment)}`,
     'SKIP_NEXT',

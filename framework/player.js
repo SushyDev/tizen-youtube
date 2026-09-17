@@ -1,5 +1,3 @@
-// Tracks the player and video elements and re-announces them when the page swaps them.
-
 import { until, stop } from './schedule.js';
 import { report } from './journal.js';
 
@@ -43,8 +41,8 @@ const watch = () => {
     if (held.watching) return;
     held.watching = true;
 
-    // until() gives up, which is the point: a page that never grows a player stops costing
-    // anything. A navigation re-arms it, because that is when a new one appears.
+    // until() gives up, so a page that never grows a player stops costing anything, and a
+    // navigation re-arms it.
     const look = () => {
         if (settle()) return;
         until('player watch', 250, () => { if (settle()) stop('player watch'); }, 60000);
@@ -60,7 +58,7 @@ const whenPlayer = (name, onPlayer) => {
     const entry = { name, run: onPlayer };
     wanted.player = wanted.player.concat([entry]);
 
-    // A late subscriber is told at once about a player that is already there, and only it is.
+    // A late subscriber is told at once about a player that is already there.
     if (held.player) say(entry, held.player);
 
     return () => { wanted.player = wanted.player.filter((one) => one !== entry); };
@@ -76,7 +74,6 @@ const whenVideo = (name, onVideo) => {
     return () => { wanted.video = wanted.video.filter((one) => one !== entry); };
 };
 
-// For code already inside a handler, where the waiting has happened.
 const player = () => (held.player && held.player.isConnected === false ? null : held.player);
 const video = () => (held.video && held.video.isConnected === false ? null : held.video);
 

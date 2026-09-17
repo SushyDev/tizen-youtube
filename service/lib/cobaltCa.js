@@ -40,7 +40,7 @@ const stillGood = (material) => {
 
         return left > REISSUE_WITHIN && names === HOSTS.slice().sort().join();
     } catch (e) {
-        // No X509Certificate before Node 15. Trusting what is on disk beats refusing to run.
+        // No X509Certificate before Node 15, and trusting what is on disk beats refusing to run.
         return true;
     }
 };
@@ -70,9 +70,8 @@ const issue = (done) => {
     });
 };
 
-// The store is an OpenSSL hashed directory, so the file name is the lookup: <subject_hash>.0, and
-// again under -subject_hash_old because which is used depends on how the verifier was built. A
-// name off by a byte is indistinguishable from an absent CA.
+// The store is an OpenSSL hashed directory, so a name off by a byte is indistinguishable from an
+// absent CA, and which of the two hashes is used depends on how the verifier was built.
 const installCa = (certs, ca) => {
     fs.mkdirSync(certs, { recursive: true });
 
@@ -80,8 +79,6 @@ const installCa = (certs, ca) => {
         try { return fs.readFileSync(file, 'utf8'); } catch (e) { return null; }
     };
 
-    // A collision with one of the roots already there would be remarkable, but stepping the suffix
-    // is what OpenSSL itself does, and the log has to name the file it really wrote.
     const place = (hash) => {
         const slots = Array.from({ length: SLOTS }, (_, suffix) => ({
             suffix,

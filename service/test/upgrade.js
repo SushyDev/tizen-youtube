@@ -72,7 +72,6 @@ const run = async () => {
         byHost.text.indexOf('101') !== -1 && byHost.text.indexOf('PONG') !== -1,
         JSON.stringify(byHost.text.slice(0, 160)));
 
-    // The whole point: a dead end must end the socket, never hold it open.
     const nowhere = await ask(server,
         'GET http://127.0.0.1:9/socket HTTP/1.1\r\nHost: 127.0.0.1:9\r\n'
         + 'Upgrade: websocket\r\nConnection: Upgrade\r\n\r\n', null);

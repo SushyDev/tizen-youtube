@@ -242,11 +242,9 @@ await asyncCheck('three presses during a move land as three moves', async () => 
         startRapidPress();
         await sleep(400);
 
-        // The first lands while the list is still, and moves it.
         component.onKeyDown(Object.assign({}, PRESS));
         assert.strictEqual(component.seen.length, 1);
 
-        // Three more while it is moving. YouTube's handler must not see them yet.
         moving.now = true;
         await sleep(120);
         await pressing(component, 3, 120);

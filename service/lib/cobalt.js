@@ -1,7 +1,5 @@
 'use strict';
 
-// Bringing the container up, and keeping it reachable.
-
 const os = require('os');
 const path = require('path');
 const dns = require('dns');
@@ -16,6 +14,9 @@ const evergreen = require('./evergreen.js');
 const { guarded, launch, launchOver, restart } = require('./cobaltLaunch.js');
 
 const RELAUNCH_QUIET = 20000;
+
+// Seconds within which a wake is the platform's rather than a viewer's.
+const BOOT_WAKE = 5;
 const BOOT_QUIET = 120;
 const SILENT_AFTER = 20000;
 const CLAIM_WITHIN = 10000;
@@ -26,7 +27,10 @@ const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.
 
 const state = {
     prepared: null, preparing: false, settled: false, failed: null,
-    lastWake: 0, waiting: [], listeningAt: 0, onListening: []
+    lastWake: 0, waiting: [], listeningAt: 0, onListening: [],
+
+    // What checkAddress() made of the --proxy host.
+    addressed: null
 };
 const proxied = { context: null, at: 0, lookedAt: 0 };
 
@@ -38,22 +42,27 @@ const addresses = () => {
     );
 };
 
-// Loopback is this set, whichever loopback it is. The switch names 127.0.0.2 precisely because
-// that is a fixed way of saying "here" — only 127.0.0.1 appears in the interface list, so
-// comparing against that alone reports the one configuration that is always right as misdirected.
+// The switch names 127.0.0.2, which is not in the interface list, so matching 127.0.0.1 alone
+// would call a correct configuration misdirected.
 const isLoopback = (address) => address === '::1' || String(address).indexOf('127.') === 0;
 
-// Cobalt resolves the set's own hostname, which leans on the router registering DHCP names. When
-// it does not, the alternative is a silent network error with nothing anywhere to explain it.
+// Cobalt resolves the set's own hostname, and a router that registers no DHCP name gives a silent
+// network error.
 const checkAddress = () => {
     const named = /--proxy=http:\/\/([^:\s]+)/.exec(switches() || '');
-    if (!named) return;
+    if (!named) {
+        state.addressed = { ok: true, why: 'no --proxy switch names a host to check' };
+        return;
+    }
 
     const mine = addresses();
     const here = `This set is ${os.hostname()} at ${mine.join(', ')}.`;
 
+    const verdict = (ok, why) => { state.addressed = { ok, why }; };
+
     dns.lookup(named[1], { all: true }, (error, found) => {
         if (error) {
+            verdict(false, `--proxy names ${named[1]}, which does not resolve on this set (${error.code})`);
             return note('unreachable', `--proxy names ${named[1]}, which does not resolve here `
                 + `(${error.code}). ${here}`);
         }
@@ -61,12 +70,18 @@ const checkAddress = () => {
         const resolved = found.map((entry) => entry.address);
         const ours = (address) => isLoopback(address) || mine.indexOf(address) !== -1;
 
-        if (resolved.some(ours)) return undefined;
+        if (resolved.some(ours)) {
+            verdict(true, `--proxy names ${named[1]}, which is this set`);
+            return undefined;
+        }
 
+        verdict(false, `--proxy names ${named[1]}, which resolves to ${resolved.join(', ')} — not this set`);
         return note('misdirected', `--proxy names ${named[1]}, which resolves to `
             + `${resolved.join(', ')} — not this set. ${here}`);
     });
 };
+
+const addressing = () => state.addressed;
 
 const served = () => {
     const now = Date.now();
@@ -84,6 +99,9 @@ const served = () => {
         note('served', e);
     }
 };
+
+// A slot another app also claims is only a fault when nothing of ours has arrived.
+const contact = () => ({ at: proxied.at, context: proxied.context });
 
 // The claim window counts from the port opening, or the wake if later.
 const whenListening = (then) => {
@@ -110,7 +128,6 @@ const replace = (id, me) => guarded(
 );
 
 // Our boot screen asks us within a second, so a launch that stays silent did not run our switches.
-// Replaced once, holding off the wake that launch sends, so it cannot loop.
 const expectContact = (me, since, again) => setTimeout(() => {
     if (proxied.at >= since) return;
 
@@ -165,16 +182,15 @@ const wake = () => {
     const me = appId();
     if (!me || !container()) return;
 
-    // A wake this early is the platform starting the service at power-on, not a viewer opening the
-    // app, and launching here would open YouTube on every boot.
-    if (os.uptime() < BOOT_QUIET) {
-        return note('woken', `the set booted ${Math.round(os.uptime())}s ago, so the container is left alone`);
+    // A wake arriving with our own start on a set only just powered on is the platform's, and
+    // launching there would open YouTube on every boot.
+    if (process.uptime() < BOOT_WAKE && os.uptime() < BOOT_QUIET) {
+        return note('woken', `this wake came with the service's own start (${process.uptime().toFixed(1)}s) `
+            + `on a set booted ${Math.round(os.uptime())}s ago, so it is the platform's and the `
+            + 'container is left alone');
     }
 
-    // Launching before the port is ours aims the container at whatever else holds it, which is what
-    // two installed widgets do to each other. Held rather than dropped: a wake arriving while the
-    // server is still opening is the ordinary cold start, and only a port that never becomes ours
-    // leaves the container alone for good.
+    // Launching before the port is ours aims the container at whatever else holds it.
     if (!state.listeningAt) {
         note('woken', 'the proxy port is not ours yet, so the launch waits for it');
         return whenListening(wake);
@@ -196,7 +212,7 @@ const wake = () => {
 
 const LAUNCH_AFTER_KILL = 1200;
 
-// Kills the container's context as well as ours, because that context holds the running bundle.
+// The container's context holds the running bundle, so it is killed as well as ours.
 const relaunch = (done) => {
     if (typeof tizen === 'undefined') return done(new Error('not on a television'));
 
@@ -252,14 +268,12 @@ const prepare = (done) => {
 
     if (state.prepared) return done ? done(null, state.prepared) : undefined;
 
-    // Held rather than answered: telling a caller "finished, nothing to do" while the work is
-    // still running reports an empty result as a real one.
+    // Answering while the work is still running would report an empty result as a real one.
     if (state.preparing) return undefined;
 
     state.preparing = true;
 
-    // Reported either way and before anything else: on a set the service cannot be reached from,
-    // this one line is the whole diagnosis. Not every Tizen device has the container.
+    // On a set the service cannot be reached from, this one line is the whole diagnosis.
     const from = locate();
 
     note(from ? 'present' : 'absent', from
@@ -293,19 +307,15 @@ const prepare = (done) => {
 
     if (material && stillGood(material)) return trust(material);
 
-    // Key generation is seconds on this hardware, so it runs off the event loop and the service
-    // answers normally while it happens.
     if (!x509.available()) return finish(null, null);
 
-    // Pure JavaScript on the oldest sets, so the log shows it has begun rather than nothing.
+    // Key generation is pure JavaScript on the oldest sets, so the log shows it has begun.
     note('issuing', 'making the CA and leaf; everything tunnels untouched until they exist');
 
     return issue((error, issued) => (error ? finish(error) : trust(issued)));
 };
 
-// What forward.js needs to stand in front of a TLS connection, or null while it is still being
-// made. Read from disk so a service that started before the staging finished picks it up.
-// A widget without --content cannot plant our CA, so there interception would only break TLS.
+// A widget without --content cannot plant our CA, so interception there would only break TLS.
 const trusted = () => !switches() || !!configuredContent();
 
 const material = () => {
@@ -319,7 +329,6 @@ const material = () => {
     return { key: existing.key, cert: existing.chain };
 };
 
-// Whether the boot screen must wait for our certificate.
 const status = () => {
     const needed = !!configuredContent();
     const unmade = needed && state.settled && !state.prepared && !state.failed;
@@ -333,5 +342,6 @@ const status = () => {
 
 module.exports = {
     prepare, wake, served, listened, status, restart, relaunch, material, container, appId, MITM_DIR,
+    contact, addressing,
     heardOffer: evergreen.heardOffer
 };

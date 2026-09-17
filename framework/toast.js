@@ -1,7 +1,5 @@
 import { resolve as resolveCommand } from './internals.js';
 
-// A toast opened through the app's own command resolver.
-
 const showToast = (title, subtitle, thumbnails) => {
     // Left off entirely when there is none: an empty `image` draws the space for a thumbnail.
     const image = thumbnails ? { image: { thumbnails } } : {};

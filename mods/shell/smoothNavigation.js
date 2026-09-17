@@ -1,7 +1,5 @@
 import { answerSwitch, configRead } from '../../framework/index.js';
 
-// Sets three render-path switches that cut per-move work; tiles stop sliding individually.
-
 const SWITCHES = {
     enableCancellableJobDeferral: true,
     enableDeferredThumbnailOnScroll: true,

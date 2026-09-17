@@ -39,8 +39,7 @@ const transitionOf = (style) => {
 
 const SLIDE = /^translate[XY]?\(\s*-?[\d.]+px\s*(,\s*-?[\d.]+px\s*)?\)$/;
 
-// A translation lands the same on a box of no size in the corner of the screen; a scale or a
-// percentage does not. YouTube hides the bar before it scales the player behind a panel.
+// A translation lands the same on a box of no size in the corner of the screen; a scale or a percentage does not.
 const slideOf = (transform) => {
     const parts = String(transform || '').match(/[\w-]+\([^)]*\)/g) || [];
     return parts.length && parts.every((part) => SLIDE.test(part)) ? parts.join(' ') : 'none';
@@ -53,9 +52,7 @@ const nameOf = (node) => {
     return key ? `${tag}[${key}]` : tag;
 };
 
-// Every ancestor, not only the moving ones, because YouTube also hides the bar with no transition
-// at all. Cobalt's getComputedStyle reports a transition's end value, so they are mirrored, not
-// sampled.
+// Cobalt's getComputedStyle reports a transition's end value, so every ancestor is mirrored rather than sampled.
 const layersAbove = (node, found) => {
     if (!node || !node.tagName || node === document.body) return found;
 

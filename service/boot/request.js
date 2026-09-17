@@ -1,7 +1,6 @@
 import { TIMING } from './timing.js';
 import { elapsed } from './clock.js';
 
-// Answers once: the reply, or status 0; `how` holds the time taken and whether it timed out.
 export const get = (url, done) => {
     const request = new XMLHttpRequest();
     const began = elapsed();
@@ -28,7 +27,6 @@ export const get = (url, done) => {
     try { request.send(); } catch (e) { finish(0, ''); }
 };
 
-// Fire and forget.
 export const send = (url) => {
     try {
         const request = new XMLHttpRequest();

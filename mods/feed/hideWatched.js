@@ -1,7 +1,5 @@
 import { GRID, PIVOT, SHELF, TILES, configRead, keepTile } from '../../framework/index.js';
 
-// Videos already finished, dropped from the shelves on the pages the viewer chose.
-
 const pageName = () => {
     const hash = location.hash.substring(1);
     if (hash === '/') return 'home';

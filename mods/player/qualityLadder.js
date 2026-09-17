@@ -1,5 +1,3 @@
-// Which rung a preference means, given the ladder a video offers.
-
 // The player's own rung names, so a preference can be pinned before any ladder exists.
 const NAMED = {
     2160: 'hd2160', 1440: 'hd1440', 1080: 'hd1080', 720: 'hd720',
@@ -13,8 +11,6 @@ const highestOf = (available) => {
     return best.quality;
 };
 
-// Nearest at or below the target, never above it: a viewer who asked for 1080p on a link that can
-// carry more asked for less, and answering 2160p would be answering a different question.
 const nearestBelow = (available, target) => {
     const below = available
         .filter((entry) => pixels(entry) <= target)

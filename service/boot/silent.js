@@ -1,4 +1,4 @@
-import { service } from './config.js';
+import { service, diag } from './config.js';
 import { TIMING } from './timing.js';
 import { held } from './state.js';
 import { elapsed } from './clock.js';
@@ -12,12 +12,21 @@ const HOST = service.replace('http://', '');
 const GIVE_UP = `still not answering after ${TIMING.giveUp / 1000}s: if this screen stays, `
     + 'turn the TV off and on again; reinstall the app if it keeps happening';
 
-// Said at once, and again whenever the way it fails changes.
+// Named even though the service is failing: a phone asks for the page over the network, not through
+// the path the container just failed on.
+const advise = () => {
+    if (held.advised) return;
+    held.advised = true;
+
+    say('tube', `open ${diag} on a phone to see what, and what to do`, 'note');
+};
+
 const tell = (failure) => {
     if (failure.kind === held.failure) return;
 
     held.failure = failure.kind;
     say('service', `${HOST}: ${failure.words}`, 'warn');
+    advise();
     lookElsewhere();
 };
 

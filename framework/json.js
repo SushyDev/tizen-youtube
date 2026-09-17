@@ -7,7 +7,6 @@ const original = { parse: JSON.parse, stringify: JSON.stringify };
 
 const clone = (value) => original.parse(original.stringify(value));
 
-// Handlers are indexed by key so a response reaches only the handlers that asked for one of its keys.
 const readers = Object.create(null);
 const writers = Object.create(null);
 
@@ -49,8 +48,8 @@ const matching = (value, index) => {
 
     if (!found.length) return null;
 
-    // Registration order, not the order the keys happened to appear in. The writer pipeline
-    // reduces, so for those it is the difference between a rewrite landing and being overwritten.
+    // Registration order, not key order: the writer pipeline reduces, so a rewrite would otherwise
+    // be overwritten.
     return found.slice().sort((a, b) => a.id - b.id);
 };
 
@@ -75,8 +74,7 @@ const adopt = () => {
     if (!registry) return;
 
     Object.keys(registry).forEach((key) => {
-        // Boot alone is some 240 passes over the registry. Remembering which modules have already
-        // been taken makes all but the first a walk of the names rather than of their contents.
+        // Boot alone is some 240 passes over the registry, so modules already taken are skipped.
         if (taken[key]) return;
 
         try {
@@ -95,8 +93,7 @@ const adopt = () => {
 const ADOPTION_WINDOW = 60000;
 const ADOPTION_INTERVAL = 250;
 
-// Navigating loads modules that did not exist at boot, so each one reopens a short window. until()
-// extends the window already running rather than starting a second interval beside it.
+// Navigating loads modules that did not exist at boot, so each navigation reopens a short window.
 const AFTER_NAVIGATION = 5000;
 
 const keepAdopting = (forMs) => {
@@ -135,9 +132,7 @@ const interceptJson = () => {
     window.addEventListener('hashchange', () => keepAdopting(AFTER_NAVIGATION));
 };
 
-// The unpatched pair, for code that must not be seen by our own hooks. clone() uses it, and a dev
-// build hands it to the inspector: a debugger that serialises through a patched JSON is measuring
-// us rather than the page.
+// The unpatched pair, for code that must not be seen by our own hooks.
 const nativeJson = () => ({ parse: original.parse, stringify: original.stringify });
 
 export { onResponse, onRequest, interceptJson, clone, nativeJson };

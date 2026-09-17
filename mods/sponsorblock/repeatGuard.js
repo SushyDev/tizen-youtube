@@ -1,12 +1,9 @@
-// Stops skipping a segment the viewer re-enters within WINDOW ms, and says so once.
-
 const WINDOW = 1000;
 
 const repeatGuard = () => {
     const seen = new Map();
 
-    // Returns what the caller should do: skip it, or leave it — and whether this is the moment to
-    // say why. `announce` is true exactly once per segment, however many times it repeats after.
+    // `announce` is true exactly once per segment, however many times it repeats after.
     const judge = (uuid, now) => {
         const before = seen.get(uuid);
 

@@ -1,6 +1,6 @@
 'use strict';
 
-// A CRX3 package's content/ files, taken only once the package matches the SHA-256 Omaha offered.
+// A package is taken only once it matches the SHA-256 Omaha offered.
 
 const crypto = require('crypto');
 const http = require('http');
@@ -56,7 +56,6 @@ const unpack = (zip, entry) => {
     return entry.method === DEFLATED ? zlib.inflateRawSync(packed) : packed;
 };
 
-// Every file under content/, as { name, data } with the name relative to content/.
 const contentOf = (address, sha256) => download(address).then((crx) => {
     const hash = crypto.createHash('sha256').update(crx).digest('hex');
     if (hash !== String(sha256).toLowerCase()) throw new Error(`${address} does not match the SHA-256 it was offered with`);

@@ -38,8 +38,7 @@ test('smoother navigation answers three switches, and only while it is on', asyn
 
     expect(ours).toEqual(SWITCHES);
 
-    // If YouTube already ships all three the way we want them, there is nothing to tell apart —
-    // which is worth saying rather than passing on.
+    // If YouTube already ships all three the way we want them, there is nothing to tell apart.
     test.skip(names.every((name) => theirs[name] === SWITCHES[name]),
         `YouTube already serves all three as we would set them: ${JSON.stringify(theirs)}`);
 

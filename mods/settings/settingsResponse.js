@@ -1,9 +1,7 @@
-// The settings response: where a category is in it, and what one looks like.
-
 const runs = (text) => ({ runs: [{ text }] });
 
-// The same text, read back. A title arrives as runs on one renderer and as simpleText on another,
-// and a comparison against the wrong one silently never matches.
+// A title arrives as runs on one renderer and as simpleText on another, and a comparison against
+// the wrong one silently never matches.
 const textOf = (text) => {
     if (!text) return '';
     if (Array.isArray(text.runs)) return text.runs.map((run) => run.text).join('');
@@ -12,8 +10,7 @@ const textOf = (text) => {
 
 const categoryOf = (item) => item && item.settingCategoryCollectionRenderer;
 
-// The end of the list when the category is not there, so an insertion point is always valid: a
-// category we expected to sit before may simply not be on this build.
+// Returns the end of the list when the category is missing, since it may not exist on this build.
 const indexOfCategory = (items, categoryId) => {
     const index = items.findIndex((item) => {
         const found = categoryOf(item);

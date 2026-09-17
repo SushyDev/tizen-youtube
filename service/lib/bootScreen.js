@@ -1,7 +1,5 @@
 'use strict';
 
-// Writes the boot screen where Cobalt's file:// resolves.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -34,8 +32,8 @@ const alternates = () => ['127.0.0.1'].concat(lanAddresses()).map((address) => `
 
 const HELP = { discord: DISCORD, repo: REPO };
 
-// A LAN address, because the viewer reads this one on a phone and loopback is useless off the set.
-const journal = () => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}/__tube/log`;
+// The viewer reads these on a phone, where loopback is useless.
+const onTheLan = (route) => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}${route}`;
 
 const configFor = () => ({
     service: SERVICE,
@@ -43,7 +41,8 @@ const configFor = () => ({
     target: `${YOUTUBE}/tv`,
     probeUrl: `${YOUTUBE}/__tube/ping`,
     screen: SCREEN,
-    journal: journal(),
+    journal: onTheLan('/__tube/log'),
+    diag: onTheLan('/diag'),
     help: HELP,
     written: { at: Date.now(), patch: STAMP, pid: process.pid }
 });
@@ -52,7 +51,6 @@ const configFor = () => ({
 const policyFor = (config) => `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; `
     + `connect-src ${[config.service].concat(config.alternates).join(' ')} ${YOUTUBE}; h5vcc-location-src ${YOUTUBE}`;
 
-// The old boot screen's palette.
 const STYLE = `html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000000; }
 body { color: #aaaaaa; font-family: monospace; font-size: 19px; line-height: 29px; }
 #log { position: absolute; left: 24px; right: 24px; top: 16px; white-space: pre; }

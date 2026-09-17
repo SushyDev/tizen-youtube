@@ -1,5 +1,3 @@
-// The captions menu: own-language and other-language rows, driven through the command bus.
-
 import assert from 'assert';
 
 global.window = {

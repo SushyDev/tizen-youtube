@@ -1,8 +1,4 @@
-// The only file a mod imports.
-//
-// Everything else under framework/ is private. A feature that needs a new way to reach YouTube
-// adds it here rather than reaching for window._yttv itself — which is how three files ended up
-// with their own copies of findBySource and findMap.
+// The only file a mod imports; everything else under framework/ is private.
 
 export { register, boot } from './register.js';
 export { report, warn } from './journal.js';
@@ -27,7 +23,6 @@ export { VERSION, COMMIT, TREE } from './stamp.js';
 export { DEV_TOOLS } from './flags.js';
 export { answerSwitch } from './switches.js';
 
-// Reached by a mod, so it belongs to the surface rather than to the framework's insides.
 export { default as sha256 } from './tiny-sha256.js';
 export { findAssignedProperty } from './findAssignments.js';
 export { showToast } from './toast.js';

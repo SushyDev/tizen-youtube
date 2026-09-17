@@ -130,8 +130,7 @@ const findRedraw = (instance) => {
 };
 
 function redrawSettingRows() {
-    // The name is found once and remembered: locating it reads the source of every method on the
-    // prototype chain.
+    // Locating the name reads the source of every method on the prototype chain, so it is remembered.
     const redraw = (row) => {
         const instance = row.__instance;
         if (!instance) return;

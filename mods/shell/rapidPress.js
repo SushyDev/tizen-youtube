@@ -2,9 +2,6 @@ import {
     configRead, every, isListMoving, stop, virtualListPrototype, whenFound
 } from '../../framework/index.js';
 
-// Holds direction presses made while a list is still moving and hands them to YouTube's own
-// handler one move at a time.
-
 const ARROWS = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40 };
 
 const AXES = {
@@ -29,8 +26,7 @@ const held = {
     lastSeen: new Map(),
     judged: new WeakMap(),
 
-    // Per component, because two lists move independently — a shelf inside a feed is its own list
-    // with its own stash.
+    // Per component, because a shelf inside a feed is its own list with its own stash.
     lists: new WeakMap()
 };
 
@@ -110,7 +106,6 @@ const judge = (event) => {
     return press;
 };
 
-// What the handler being skipped would have done with it.
 const consume = (event) => {
     if (typeof event.preventDefault === 'function') event.preventDefault();
     if (typeof event.stopPropagation === 'function') event.stopPropagation();

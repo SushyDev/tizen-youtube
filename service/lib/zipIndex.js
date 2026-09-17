@@ -1,7 +1,5 @@
 'use strict';
 
-// A zip's central directory, read from the end of the file.
-
 const END_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
@@ -46,7 +44,6 @@ const entriesOf = (central, count) => Array.from({ length: count }).reduce((foun
     return { at: read.next, list: found.list.concat([read.entry]) };
 }, { at: 0, list: [] }).list;
 
-// The packed bytes of an entry whose local header starts at `at`.
 const dataOf = (buffer, at, entry) => {
     if (buffer.readUInt32LE(at) !== LOCAL_SIGNATURE) throw new Error(`zip: no local header for ${entry.name}`);
 

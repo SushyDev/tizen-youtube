@@ -7,7 +7,6 @@ export const elapsed = () => now() - started;
 // dmesg's [    1.234567].
 export const stamp = () => `[${(elapsed() / 1000).toFixed(6).padStart(12)}] `;
 
-// How long ago a wall-clock time was, roughly.
 export const ago = (at) => {
     const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
 

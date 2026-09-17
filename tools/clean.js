@@ -11,8 +11,7 @@ const ARTEFACTS = require('./paths.js').ARTEFACTS;
 
 const DEEP = ['node_modules'];
 
-// `du` reports what the tree occupies; statSync only ever describes the directory entry itself,
-// so it is the fallback rather than the answer.
+// `du` reports what the tree occupies; statSync only describes the directory entry itself.
 function sizeOf(path) {
     try {
         return execFileSync('du', ['-sk', path], { encoding: 'utf8' }).split('\t')[0].trim() * 1024;

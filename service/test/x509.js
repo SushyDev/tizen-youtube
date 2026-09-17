@@ -1,7 +1,5 @@
 'use strict';
 
-// Checks the issuer's certificates and subject hashes against openssl.
-
 const { execFileSync } = require('child_process');
 const { mkdtempSync, rmSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');

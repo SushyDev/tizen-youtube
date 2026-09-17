@@ -74,7 +74,6 @@ const resolve = (command, context) => {
     return resolver ? resolver.resolveCommand(command, context) : undefined;
 };
 
-// Keep looking until the registry yields, then hand it over once.
 const whenFound = (name, look, onFound, options) => waitFor(look, (found) => {
     try {
         return onFound(found);
@@ -140,16 +139,15 @@ const reloadGuide = () => {
     }
 };
 
-// The class is not in the module registry under any name we could ask for, but an instance of it
-// is on every list the page draws, and the element hands its component over.
+// The class is not in the module registry under any name, but every list the page draws holds an
+// instance and the element hands its component over.
 const virtualListPrototype = () => {
     const list = document.querySelector('yt-virtual-list');
     const component = list && list.__instance;
     return component ? Object.getPrototypeOf(component) : null;
 };
 
-// `isActive` is an interface name, but the driver field `j` is minified; if it is renamed this
-// reads as never moving.
+// The driver field `j` is minified, so a release that renames it makes this read as never moving.
 const isListMoving = (component) => {
     const driver = component && component.j;
     return !!driver && typeof driver.isActive === 'function' && driver.isActive();

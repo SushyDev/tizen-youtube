@@ -1,7 +1,5 @@
 'use strict';
 
-// The page at /diag, read on a phone rather than on the television.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -58,6 +56,9 @@ check('a failing one stands out without a stylesheet',
 check('the checks open themselves when something failed', html.indexOf('<details open>') !== -1);
 check('and the failure is called out at the top', /<strong>\d+ of \d+ checks failed\./.test(html));
 
+// The address it took from the router is the one a viewer is asked for and cannot find.
+check('it names the addresses this TV answers on', html.indexOf('<dt>On the network</dt>') !== -1);
+
 check('it carries no stylesheet at all', html.indexOf('<style') === -1 && html.indexOf('style=') === -1);
 check('and the count is said at the top', /checks (failed|passed)/.test(html));
 
@@ -73,7 +74,6 @@ page('h');
 check('reading it leaves no trace in the journal', postmortem.read().indexOf('check:') === -1,
     postmortem.read().slice(-200));
 
-// A detail carrying markup must not be able to write tags into the page.
 fs.writeFileSync(path.join(content, '<img src=x onerror=alert(1)>'), 'x');
 check('a file name is escaped rather than rendered', page('h').indexOf('<img src=x') === -1);
 

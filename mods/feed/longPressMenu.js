@@ -1,10 +1,7 @@
 import { MenuNavigationItemRenderer, MenuServiceItemRenderer } from '../../framework/index.js';
 
-// What holding Select on a video tile offers.
-
 const WATCH_LATER = 'WL';
 
-// The same row toggles: on a tile already in Watch Later it removes, everywhere else it adds.
 const watchLaterRow = (data) => {
     const saved = data.watchEndpointData.playlistId === WATCH_LATER;
 
@@ -22,8 +19,7 @@ const watchLaterRow = (data) => {
     });
 };
 
-// Add to Queue carries the whole tile rather than an id: the queue draws its own shelf from these,
-// and re-fetching a tile it was already handed would be a request per long press.
+// The queue draws its own shelf from these, so the whole tile travels rather than an id.
 const queueRow = (data) => MenuServiceItemRenderer('Add to Queue', {
     clickTrackingParams: null,
     playlistEditEndpoint: {

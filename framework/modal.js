@@ -10,7 +10,7 @@ const headerOf = (header) => {
 const panelHeader = (header) => {
     const named = headerOf(header);
 
-    // A caller may hand over the finished renderer, in which case it is used as it stands.
+    // A caller may hand over the finished renderer, which is then used as it stands.
     const renderer = named.overlayPanelHeaderRenderer || { title: { simpleText: named.title } };
 
     const subtitle = named.subtitle ? { subtitle: { simpleText: named.subtitle } } : {};
@@ -18,8 +18,7 @@ const panelHeader = (header) => {
     return Object.assign({}, renderer, subtitle);
 };
 
-// `update` redraws a modal already on screen instead of opening a second one over it, which is
-// what makes a settings switch flip in place rather than stacking panels.
+// `update` redraws a modal already on screen instead of opening a second one over it.
 const Modal = (header, content, id, update) => {
     const modal = {
         openPopupAction: Object.assign({

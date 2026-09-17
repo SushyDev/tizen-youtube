@@ -1,15 +1,12 @@
 import { GRID, MenuServiceItemRenderer, PIVOT, SHELF, TILES, clone, onTile } from '../../framework/index.js';
 import { longPressData } from './longPressMenu.js';
 
-// The menu on holding Select. The container supplies its own on most tiles — Play, Watch Later,
-// Save to playlist, Go to channel, Not interested, Don't recommend channel — so the usual job
-// here is to append one item to it, and only to build the whole menu when there is none.
+// Most tiles arrive with a menu from the container, so the usual job is appending one item to it.
 
 const addLongPress = (item) => {
     if (!item.tileRenderer) return;
     if (item.tileRenderer.style !== 'TILE_STYLE_YTLR_DEFAULT') return;
 
-    // A tile that already has a menu gets Add to Queue appended, not a new menu.
     if (item.tileRenderer.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
         const copiedItem = clone(item);
         item.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer('Add to Queue', {

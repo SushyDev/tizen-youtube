@@ -1,8 +1,5 @@
 'use strict';
 
-// Keeps our content copy able to run whichever Cobalt Evergreen installs, by adding each offered
-// package's content files to it.
-
 const fs = require('fs');
 const path = require('path');
 
@@ -15,7 +12,7 @@ const { sabiOf, versionOf } = require('./builtInCobalt.js');
 const SHARE = process.env.TUBE_SHARE || '/home/owner/share/tube';
 const STATE = path.join(SHARE, 'evergreen.json');
 
-// Omaha offers by model year, which the set does not name, so every year since Evergreen began is asked.
+// Omaha offers by model year, which the set does not name.
 const FIRST_YEAR = 2016;
 
 const note = (what, detail) => postmortem.note('evergreen', `${what}: ${postmortem.describe(detail)}`);
@@ -65,7 +62,6 @@ const years = () => Array.from(
     (_, index) => FIRST_YEAR + index
 );
 
-// Every distinct package offered for any year.
 const offersFor = (query) => years().reduce((done, year) => done.then((offers) => omaha.ask(Object.assign({ year }, query))
     .then((offer) => (offer && !offers.some((other) => other.name === offer.name) ? offers.concat([offer]) : offers))
     .catch((error) => {
@@ -103,7 +99,6 @@ const heardOffer = (text) => {
     return queued(() => take(offer));
 };
 
-// When the work in hand is done, and whether it added files after a moment.
 const settled = () => held.queue;
 const mergedSince = (since) => held.mergedAt >= since;
 

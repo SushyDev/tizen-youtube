@@ -5,8 +5,8 @@ const { execFileSync } = require('child_process');
 const ui = require('./report.js');
 const { ROOT } = require('./config.js');
 
-// Two kinds of thing run here. A gate is a command judged only by its exit status; a suite prints
-// `n/m checks passed` per file and is judged by the sum of those lines as well.
+// A gate is judged only by its exit status; a suite is judged by the sum of its `n/m checks
+// passed` lines too.
 const GATES = [
     { name: 'lint', command: 'npx', args: ['eslint', '.'] },
     { name: 'types', command: 'npx', args: ['tsc', '--noEmit'] }
@@ -40,7 +40,7 @@ const invocationOf = (suite) => (suite.workspace
     ? ['npm', ['test', '--workspace', suite.workspace]]
     : suite.command);
 
-// A failed suite is still read for its counts: knowing 88 of 90 passed says more than "it failed".
+// A failed suite is still read for its counts.
 const attempt = (suite) => {
     const invocation = invocationOf(suite);
     try {
@@ -70,8 +70,7 @@ const runSuite = (suite) => {
 
     ui.fail(suite.name, detail);
 
-    // What failed, before what passed. Taking the first thirty spoken lines showed thirty PASSes
-    // and not one failure, which is what a suite is read for — and on CI the output is all there is.
+    // Failures first: the first thirty spoken lines were once all PASSes and no failure.
     const spoken = run.output.split('\n').map((line) => line.trim())
         .filter((line) => /^(FAIL|PASS)|Error|error:/.test(line) && !/^npm error/.test(line));
     const broke = spoken.filter((line) => /^FAIL|Error|error:/.test(line));

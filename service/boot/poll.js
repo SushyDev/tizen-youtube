@@ -14,7 +14,6 @@ const parsed = (status, text) => {
     }
 };
 
-// Asks the service, sending the screen's own lines along.
 export const poll = () => {
     const sending = outgoing();
 

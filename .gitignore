@@ -1,7 +1,6 @@
 node_modules/
 dist/
 dist-legacy/
-# `npm run dev` keeps the service's update cache here.
 .dev/
 release/
 .package/
@@ -13,7 +12,6 @@ release/
 */package-lock.json
 !/package-lock.json
 
-# macOS finder metadata
 .DS_Store
 
 docs-internal/

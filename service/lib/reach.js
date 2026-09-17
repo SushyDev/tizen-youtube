@@ -1,7 +1,5 @@
 'use strict';
 
-// Whether the TV reaches YouTube directly, apart from Cobalt and us.
-
 const postmortem = require('./postmortem.js');
 
 // By hand: node 4.4.3 has no URL.

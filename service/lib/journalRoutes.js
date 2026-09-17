@@ -1,7 +1,5 @@
 'use strict';
 
-// The journal: reading it, and the page's side of it.
-
 const postmortem = require('./postmortem.js');
 const { fromPage } = require('./pageLines.js');
 

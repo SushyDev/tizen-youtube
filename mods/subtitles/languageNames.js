@@ -1,5 +1,3 @@
-// What each caption translation language is called, the same on every engine.
-
 export const LANGUAGE_NAMES = {
     af: 'Afrikaans',
     sq: 'Albanian',

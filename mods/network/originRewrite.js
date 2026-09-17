@@ -15,7 +15,7 @@ const OURS = ['youtube.com', 'www.youtube.com'];
 const throughTheService = (hostname) =>
     PROXIED.some((host) => hostname === host || hostname.endsWith(`.${host}`));
 
-// Read by hand: Cobalt 20 cannot construct a URL at all. A relative URL is already ours.
+// Read by hand: Cobalt 20 cannot construct a URL at all.
 const ABSOLUTE = /^(https?:)?\/\/([^/?#:]+)(:\d+)?(.*)$/i;
 
 function redirectUrl(originalUrl) {
@@ -36,8 +36,7 @@ function redirectUrl(originalUrl) {
     return originalUrl;
 }
 
-// Redirects on assignment without taking the property over: a bare `set` drops the getter, and
-// reading el.src afterwards gives undefined.
+// A bare `set` would drop the getter, and reading el.src afterwards gives undefined.
 const redirectOnAssignment = (kind, name) => {
     const descriptor = Object.getOwnPropertyDescriptor(kind.prototype, name);
     if (!descriptor || typeof descriptor.set !== 'function') return;

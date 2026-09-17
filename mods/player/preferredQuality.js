@@ -3,8 +3,7 @@ import { NAMED, chooseQuality } from './qualityLadder.js';
 import { rungToAsk } from './qualityAsk.js';
 import { QUALITY, liftCeiling, seedPreferredQuality } from './qualitySeed.js';
 
-// Tells each playback which rung it prefers: as soon as its ladder is known, and again if the
-// ladder grows. Checked after each player response and on a heartbeat.
+// Every playback starts on Auto and must be told its rung.
 
 const CHECK_INTERVAL = 3000;
 
@@ -12,12 +11,10 @@ const SETTLING_EVERY = 250;
 const SETTLING_FOR = 8000;
 
 function watchPreferredQuality() {
-    // Keyed on the cpn, because the player keeps a choice on the data of the playback it was made
-    // for, and a Next passes through a copy of that data which is then thrown away.
+    // Keyed on the cpn: a Next passes through a copy of the playback data that is then discarded.
     const held = { player: null, playback: null, asked: null };
 
-    // Shorts are vertical and short; forcing 2160p on one spends the link on a video that was
-    // never going to show it.
+    // Forcing 2160p on a Short spends the link on a video that was never going to show it.
     const isShorts = (player) => {
         try {
             return Object.values(player.getVideoStats()).some((value) => value === 'shortspage');
@@ -26,8 +23,7 @@ function watchPreferredQuality() {
         }
     };
 
-    // A preview on a shelf plays in this same player, which YouTube caps at 480p for a box a
-    // fraction of the screen.
+    // A preview on a shelf plays in this same player, which YouTube caps at 480p.
     const onWatchPage = () => String(location.hash).indexOf('#/watch') === 0;
 
     const applyPreference = (player) => {
@@ -54,9 +50,8 @@ function watchPreferredQuality() {
         held.asked = wanted;
     };
 
-    // The one point early enough to be sure the first segment fetched is the right one. A rung the
-    // video turns out not to offer is corrected down once the ladder arrives, before formats are
-    // chosen, so guessing wrong here costs nothing.
+    // Early enough that the first segment fetched is the right one, and a rung the video does not
+    // offer is corrected down once the ladder arrives.
     const pinNamed = (player) => {
         const named = NAMED[parseInt(configRead(QUALITY), 10)];
         if (!named) return;
@@ -103,9 +98,8 @@ function watchPreferredQuality() {
         tick();
     });
 
-    // The three second heartbeat is far too coarse to land inside the window between the response
-    // arriving and the player having read it, so the response opens a burst of its own. It runs its
-    // whole length: the first playback it sees after a Next may be the copy that is thrown away.
+    // The heartbeat is too coarse to land between the response arriving and the player reading it,
+    // and the burst runs its full length because the first playback after a Next may be discarded.
     const settleQuickly = () => until('quality settling', SETTLING_EVERY, tick, SETTLING_FOR);
 
     onResponse('preferred quality', ['streamingData'], settleQuickly);
@@ -114,8 +108,6 @@ function watchPreferredQuality() {
     attachToPlayer();
 }
 
-// Seeded before the watcher starts, and renewed on navigation for the same reason it is written
-// unconditionally: the player overwrites the estimate with its own as each video ends.
 if (typeof window !== 'undefined') {
     seedPreferredQuality();
     window.addEventListener('hashchange', seedPreferredQuality);

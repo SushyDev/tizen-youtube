@@ -2,9 +2,7 @@ import { GRID, PIVOT, SHELF, TILES, configRead, onTile } from '../../framework/i
 import { brandingFor, thumbnailUrl } from './brandingApi.js';
 import { brandingOf, remember } from './brandingStore.js';
 
-// DeArrow titles and thumbnails, dressed only from the store; a miss asks the API for next time.
-
-// In flight right now, so a video carried by six shelves is asked about once.
+// In flight now, so a video carried by several shelves is asked about once.
 const asking = Object.create(null);
 
 const ask = (videoID) => {
@@ -13,7 +11,7 @@ const ask = (videoID) => {
 
     brandingFor(videoID)
         .then((best) => remember(videoID, best))
-        // A failure is not remembered, since the store keeps what it is given across launches.
+        // A failure is not remembered, so the next response asks again.
         .catch(() => undefined)
         .then(() => {
             delete asking[videoID];
@@ -46,8 +44,8 @@ const deArrowify = (item) => {
 
     const known = brandingOf(videoID);
 
-    // Never asked about. Nothing can be dressed now; the answer lands in the store and the next
-    // response carrying this video uses it.
+    // Never asked about, so the answer lands in the store and the next response carrying this
+    // video uses it.
     if (known === undefined) return ask(videoID);
 
     // Asked about, and DeArrow had nothing to say.

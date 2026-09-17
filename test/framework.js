@@ -1,10 +1,3 @@
-// The registries the features now depend on.
-//
-// Each of these replaced something that had been written several times and leaked differently, so
-// the properties worth holding are the ones the old copies got wrong: one timer per name rather
-// than a new one per call, one document listener per event type rather than one per feature, and
-// a handler asked only about responses that carry a key it wanted.
-
 import assert from 'assert';
 import { readFileSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
@@ -55,8 +48,6 @@ const asyncCheck = async (name, run) => {
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// -- schedule ----------------------------------------------------------------------------------
 
 await asyncCheck('every replaces a timer of the same name rather than stacking a second', async () => {
     const counts = { first: 0, second: 0 };
@@ -111,8 +102,6 @@ await asyncCheck('after runs once and forgets itself', async () => {
     assert.strictEqual(counts.ran, 1);
     assert.strictEqual(running('once'), false);
 });
-
-// -- keys --------------------------------------------------------------------------------------
 
 check('the key router takes three document listeners however many features register', () => {
     const before = listeners.length;
@@ -183,8 +172,6 @@ check('an unwanted key code is neither handled nor swallowed', () => {
     assert.strictEqual(swallowed.yes, false, 'a key nobody asked for was swallowed');
 });
 
-// -- register ----------------------------------------------------------------------------------
-
 check('features run in phase order, not registration order', () => {
     const order = [];
 
@@ -218,14 +205,10 @@ await asyncCheck('a feature that throws does not stop the others', async () => {
     assert.deepStrictEqual(order, ['after'], 'the feature after the one that threw never ran');
 });
 
-// -- the public surface --------------------------------------------------------------------------
-
 // Private on purpose: the phase list and the boot flag are register's own, the journal's insides
 // are reached through report and warn, and a mod opens a modal with showModal.
 const PRIVATE = ['PHASES', 'booted', 'send', 'line', 'describe', 'Modal', 'watchPage'];
 
-// index.js is hand-written and nothing checked it, which is how onShelf came to be documented in
-// two places, named in a lint message, and impossible to import.
 check('framework/index.js fronts every module under it', () => {
     const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'framework');
     const surface = readFileSync(join(dir, 'index.js'), 'utf8');

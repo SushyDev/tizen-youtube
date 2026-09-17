@@ -1,7 +1,5 @@
 'use strict';
 
-// What the boot screen is told: the log since a line, the facts, and what is still in the way.
-
 const http = require('http');
 const os = require('os');
 const path = require('path');

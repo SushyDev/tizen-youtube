@@ -1,7 +1,5 @@
 'use strict';
 
-// Checks a refused Tizen call is survived: kill throws a SecurityError on a container not ours.
-
 const os = require('os');
 const path = require('path');
 const { readFileSync } = require('fs');
@@ -43,10 +41,10 @@ require.cache[require.resolve('../lib/evergreen.js')] = {
     }
 };
 
-// The host's own uptime must not decide the result. wake() leaves the container alone below
-// BOOT_QUIET, and a CI runner is minutes old where a desk machine is days: held well above it, and
-// atBoot() lowers it deliberately for the one check that wants a set fresh from power-on.
-os.uptime = () => 3600;
+// A wake is the platform's own only when the service and the set are both fresh, so these are
+// raised to keep every check below off that path.
+process.uptime = () => 3600;
+os.uptime = () => 86400;
 
 const launched = [];
 const running = { contexts: [{ appId: CONTAINER, id: 'stock' }] };
@@ -79,7 +77,6 @@ const check = (label, ok) => {
     results.push(!!ok);
 };
 
-// Two installed widgets fight over the port, and the loser must not aim the container at the winner.
 // A wake while the server is still opening is the ordinary cold start, so it waits for the port.
 cobalt.wake();
 check('a wake before the port is ours launches nothing yet', launched.length === 0
@@ -122,7 +119,6 @@ check('a widget without --content never intercepts, even with a certificate on d
 manifest.content = '/home/owner/share/tube/cobalt-content';
 check('one with --content intercepts with that certificate', !!cobalt.material() && !!cobalt.material().cert);
 
-// A launch whose container died: relaunched only when Evergreen's merge landed meanwhile.
 // The real timer, since setTimeout is stubbed above.
 const afterPromises = () => new Promise((resolve) => require('timers').setImmediate(resolve));
 
@@ -136,23 +132,54 @@ const diedOnLaunch = async (mergedMeanwhile) => {
     return launched.length;
 };
 
-// The platform starts the service at power-on, which must not open YouTube by itself.
 const atBoot = () => {
-    const os = require('os');
-    const uptime = os.uptime;
+    running.contexts = [];
+    launched.length = 0;
+    process.uptime = () => 0.4;
+    os.uptime = () => 40;
+    cobalt.wake();
+    process.uptime = () => 3600;
+    os.uptime = () => 86400;
+
+    check('a wake arriving with our start, on a set just powered on, leaves the container alone',
+        launched.length === 0 && readFileSync(LOG, 'utf8').indexOf('came with the service\'s own start') !== -1);
+};
+
+// Our own youth must not be read as a power-on when an install restarts the service under a
+// television that has been on for hours.
+const afterRestart = async () => {
+    await new Promise((resolve) => cobalt.relaunch(resolve));
 
     running.contexts = [];
     launched.length = 0;
-    os.uptime = () => 5;
+    process.uptime = () => 0.4;
     cobalt.wake();
-    os.uptime = uptime;
+    process.uptime = () => 3600;
 
-    check('a wake seconds after power-on leaves the container alone', launched.length === 0
-        && readFileSync(LOG, 'utf8').indexOf('booted 5s ago') !== -1);
+    check('but a service restarting under a set that has been on for hours still launches',
+        launched.indexOf(ME) !== -1);
+};
+
+// Relaunched first, because wake() drops anything arriving inside the quiet period the checks
+// above have already opened.
+const afterBoot = async () => {
+    await new Promise((resolve) => cobalt.relaunch(resolve));
+
+    running.contexts = [];
+    launched.length = 0;
+    process.uptime = () => 30;
+    os.uptime = () => 57;
+    cobalt.wake();
+    process.uptime = () => 3600;
+    os.uptime = () => 86400;
+
+    check('but one a viewer sends soon after power-on still launches', launched.indexOf(ME) !== -1);
 };
 
 const deaths = async () => {
     atBoot();
+    await afterBoot();
+    await afterRestart();
     check('a container that died with nothing merged is left alone', await diedOnLaunch(false) === 1);
     check('one that died before Evergreen\'s merge landed is launched again, once', await diedOnLaunch(true) === 2
         && readFileSync(LOG, 'utf8').indexOf('Evergreen content arrived') !== -1);

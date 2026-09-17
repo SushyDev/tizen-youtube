@@ -2,17 +2,9 @@ import { configRead, showToast } from '../../framework/index.js';
 import { nameOf } from './segments.js';
 import { repeatGuard } from './repeatGuard.js';
 
-// Jumping the stretches the viewer asked not to see.
-//
-// One timer, set for the start of the next segment ahead of the playhead and reset on every play,
-// pause and time update. A timer rather than a check per frame: seeking, pausing and looping all
-// move the playhead without warning, and re-deciding on each of those is cheaper and more exact
-// than watching the clock.
-
 const LEAD = 0.3;
 
-// A segment ending flush with the video ends the video, so it stops just short of it: the last
-// second is where the end screen and the next-video card live.
+// Seeking flush with the video end triggers the end screen, so stop short of it.
 const TAIL = 1;
 
 const announce = (text) => {
@@ -49,9 +41,7 @@ const autoSkipper = (segments, skippable, manualOnly) => {
         schedule();
     };
 
-    // Segments still ahead of the playhead, nearest first. The lead lets a segment the playhead has
-    // only just entered still count as ahead, which is what makes a seek into the middle of one
-    // still skip.
+    // The lead counts a segment the playhead has just entered as ahead, so a seek into the middle of one still skips.
     function schedule() {
         clearTimeout(held.timeout);
         held.timeout = null;

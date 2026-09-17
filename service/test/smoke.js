@@ -89,7 +89,7 @@ const post = (pathname, payload, done) => {
     request.end(payload);
 };
 
-// The container's whole route, and a path no plain GET touches. Answered locally, so no network.
+// Answered locally, so the intercepted CONNECT needs no network.
 const checkItInterceptsTls = () => {
     const socket = net.connect(PORT, '127.0.0.1', () => {
         socket.write('CONNECT www.youtube.com:443 HTTP/1.1\r\nHost: www.youtube.com:443\r\n\r\n');
@@ -229,7 +229,6 @@ const checkItCanFetchUpstream = () => {
     });
 };
 
-// A page line must come back from /__tube/log beside the service's own.
 const checkThePageReachesTheJournal = () => {
     const line = `smoke: a page line on ${process.version}`;
 

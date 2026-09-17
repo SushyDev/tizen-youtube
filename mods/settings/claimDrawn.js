@@ -1,8 +1,6 @@
 import { ROWS, claimActionRows, claimBooleanRows } from './settingComponents.js';
 import { claimVersionPanel } from './aboutPatch.js';
 
-// Claims drawn rows every 250ms for 5s, then every 500ms while the settings page is open.
-
 const SETTLING_ATTEMPTS = 20;
 const SETTLING_EVERY = 250;
 const PATIENT_EVERY = 500;

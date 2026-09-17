@@ -21,7 +21,7 @@ const MOST_REMEMBERED = 200;
 const absoluteTarget = (url) => (ABSOLUTE.test(url) ? url : null);
 
 // Cobalt drops the port when it rebuilds a URL out of INNERTUBE_HOST_OVERRIDE, so requests arrive
-// naming us on port 80; forwarding those reaches nothing.
+// naming us on port 80.
 const ourHosts = (host, port) => [
     `${host}:${port}`, host, 'localhost', `localhost:${port}`, '127.0.0.1', `127.0.0.1:${port}`
 ];
@@ -54,7 +54,7 @@ const tunnel = (server) => {
 
     const interceptor = mitm.interceptor(server, record);
 
-    // Cobalt names its version and engine on every CONNECT; logged once per distinct agent.
+    // Cobalt names its version and engine on every CONNECT.
     const agents = new Set();
 
     // The first hosts tunnelled after a start, which is what the page loaded before anything failed.

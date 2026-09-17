@@ -3,12 +3,10 @@
 
 const KEY = 'tube.dearrow';
 
-// Enough for a deep scroll of the home feed and several videos' suggestions, and about 40KB of
-// localStorage at that size.
+// About 40KB of localStorage at this size.
 const REMEMBERED = 512;
 
-// DeArrow submissions change as people vote. A month is long enough that the store is warm and
-// short enough that a title corrected upstream is not kept for ever.
+// Submissions change as people vote, so an entry corrected upstream is not kept for ever.
 const KEPT_FOR = 30 * 86400000;
 
 const read = () => {
@@ -33,10 +31,8 @@ const load = () => {
         .map((videoID) => ({ [videoID]: stored[videoID] })));
 };
 
-// Written on a short timer rather than per answer: one feed response yields dozens of answers
-// within a few milliseconds of each other, and a localStorage write is synchronous on the main
-// thread. Long enough to batch a whole response, short enough that a set pulled from the wall
-// loses at most the last quarter second.
+// A localStorage write is synchronous on the main thread, so a whole response's answers batch into
+// one write.
 const WRITE_AFTER = 250;
 
 const flush = () => {
@@ -56,7 +52,6 @@ const scheduleFlush = () => {
     held.writing = setTimeout(flush, WRITE_AFTER);
 };
 
-// Oldest out first: dropping the lot on overflow would throw away a warm store for one entry.
 const evict = () => {
     const videoIDs = Object.keys(held.entries);
     if (videoIDs.length <= REMEMBERED) return;

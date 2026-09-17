@@ -18,6 +18,7 @@ const { capability } = require('./lib/platform.js');
 const claimants = require('./lib/claimants.js');
 const bootRoutes = require('./lib/bootRoutes.js');
 const journalRoutes = require('./lib/journalRoutes.js');
+const diagRoutes = require('./lib/diagRoutes.js');
 const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
 const forward = require('./lib/forward.js');
@@ -92,6 +93,7 @@ const retraceOnBoot = (line) => {
 
 journalRoutes.attach(app, { heard: retraceOnBoot });
 bootRoutes.attach(app, { cobalt, script: userScript });
+diagRoutes.attach(app);
 
 // `relaunch` is passed in rather than reached for, because dev/ may not know about the container
 // route — and on a set without one it is simply absent.

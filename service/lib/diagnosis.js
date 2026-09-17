@@ -135,10 +135,14 @@ const all = () => {
 
 const worded = (found) => `${found.ok ? 'ok' : 'FAILED'}: ${found.name} — ${found.detail}`;
 
-// Noted rather than answered, so the screen shows it through the log it already streams and
-// /__tube/log keeps it for whoever is asked to report it.
+// Run without a trace, for a page that may be reloaded: writing to the journal on every read would
+// push out the history the reader is being asked to report.
+const checks = () => all();
+
+// Noted as well as answered, so the boot screen shows them through the log it already streams and
+// /__tube/log keeps them for whoever is asked to report it.
 const diagnose = () => {
-    const found = all();
+    const found = checks();
     const failed = found.filter((one) => !one.ok);
 
     postmortem.note('check', `${found.length} checks run, ${failed.length} failed`);
@@ -147,4 +151,4 @@ const diagnose = () => {
     return found;
 };
 
-module.exports = { diagnose };
+module.exports = { checks, diagnose };

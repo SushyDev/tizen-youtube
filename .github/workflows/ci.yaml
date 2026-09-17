@@ -163,6 +163,7 @@ jobs:
       # A dev build, because the suite asks the page through the dev bridge.
       - name: Build
         run: npm run build
+        env:
           TUBE_DEV: '1'
           TUBE_DEV_TOKEN: cobalt-ci
 

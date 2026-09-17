@@ -64,8 +64,8 @@ const stopEverything = () => {
     children.forEach((child) => child.kill());
 };
 
-const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'rollup.config.js', '-w'], {
-    cwd: join(ROOT, 'mods')
+const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'tools/rollup.config.mjs', '-w'], {
+    cwd: ROOT
 });
 
 // TUBE_DEV_INJECT puts the remote in the page: the TV's coloured buttons have no key on a

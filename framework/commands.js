@@ -1,14 +1,18 @@
 // Offers every command YouTube resolves to the registered interpreters in registration order.
 
 import { findResolver } from './internals.js';
-import { report } from './journal.js';
+import { report, warn } from './journal.js';
+import { booted } from './register.js';
 
 // An interpreter saying the command was not its business. Anything else is the answer YouTube gets.
 const PASS = { pass: true };
 
 const state = { patched: false, interpreters: [] };
 
+// Precedence is registration order, so one arriving late is not only late: it is last.
 const onCommand = (name, interpret) => {
+    if (booted()) warn('command', `${name} registered after boot; it answers last, behind every interpreter`);
+
     state.interpreters = state.interpreters.concat([{ name, interpret }]);
 };
 

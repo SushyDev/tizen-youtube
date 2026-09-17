@@ -1,5 +1,6 @@
 import { DEV_TOOLS } from './flags.js';
-import { report } from './journal.js';
+import { report, warn } from './journal.js';
+import { booted } from './register.js';
 
 // One walk of the feed that every tile and shelf visitor registers against.
 
@@ -30,6 +31,10 @@ const reportUnknownItems = (items, surface) => {
 const memo = { held: Object.create(null) };
 
 const add = (bucket, name, surfaces, run) => {
+    // Late registration half-works — every response already parsed went out undressed — which is
+    // worse than not working, because the feed looks fine until it does not.
+    if (booted()) warn('feed', `${name} registered after boot; responses already parsed went out undressed`);
+
     registry[bucket] = registry[bucket].concat([{ name, surfaces, run }]);
     memo.held = Object.create(null);
 };

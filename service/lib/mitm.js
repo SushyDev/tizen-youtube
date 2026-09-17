@@ -7,18 +7,9 @@ const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 
 // A cobalt.js that fails to load disables interception, never the tunnel.
-function cobaltIfItLoads() {
-    try {
-        return require('./cobalt.js');
-    } catch (e) {
-        postmortem.note('cobalt', `module would not load: ${postmortem.describe(e)}`);
-        return null;
-    }
-}
+const cobalt = require('./cobaltIfItLoads.js')();
 
-const cobalt = cobaltIfItLoads();
-
-const INTERCEPTED = ['youtube.com', 'googleapis.com', 'google.com', 'gstatic.com', 'ggpht.com'];
+const { DOMAINS: INTERCEPTED } = require('./interceptedHosts.js');
 
 const RETRY_MATERIAL_EVERY = 3000;
 

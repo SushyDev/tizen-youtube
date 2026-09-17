@@ -12,15 +12,7 @@ const postmortem = require('./postmortem.js');
 const SHARE = process.env.TUBE_SHARE || '/home/owner/share/tube';
 const MITM_DIR = process.env.TUBE_MITM_DIR || path.join(SHARE, 'mitm');
 
-// googlevideo is deliberately absent: media is a blind tunnel, and standing in front of it buys
-// nothing but latency.
-const HOSTS = [
-    'youtube.com', '*.youtube.com',
-    'google.com', '*.google.com',
-    'googleapis.com', '*.googleapis.com',
-    'gstatic.com', '*.gstatic.com',
-    'ggpht.com', '*.ggpht.com'
-];
+const { HOSTS } = require('./interceptedHosts.js');
 
 const REISSUE_WITHIN = 30 * 86400000;
 

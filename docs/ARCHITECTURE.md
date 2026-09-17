@@ -82,8 +82,8 @@ Two build-time gates, one per side.
 - `tools/check-output.js` rejects any built-in newer than Cobalt 3.2.1 / node 12. Babel lowers
   syntax; it does not polyfill a library call.
 - The container is launched directly, so it can come up before the service listens. `--base_url`
-  is therefore `file:///tube/boot.html`, a dmesg-style boot screen ported from the old
-  `ui/src/boot.js`. The page is the ES modules in `service/boot/`, which rollup bundles beside the
+  is therefore `file:///tube/boot.html`, a dmesg-style boot screen.
+  The page is the ES modules in `service/boot/`, which rollup bundles beside the
   userscript. `service/lib/bootScreen.js` writes it into the `web/` folder of our `--content` copy
   after staging, and Cobalt serves it from there.
   - Before the service answers, it logs the Cobalt, Evergreen and Starboard versions and the wait.

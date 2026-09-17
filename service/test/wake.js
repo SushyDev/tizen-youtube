@@ -30,11 +30,25 @@ require.cache[require.resolve('../lib/cobaltConfig.js')] = {
     }
 };
 
+// Evergreen stood in for: whether a merge landed after a moment.
+const merged = { at: 0 };
+
+require.cache[require.resolve('../lib/evergreen.js')] = {
+    exports: {
+        bootstrap: () => {},
+        heardAgent: () => {},
+        heardOffer: () => {},
+        settled: () => Promise.resolve(),
+        mergedSince: (since) => merged.at >= since
+    }
+};
+
 const launched = [];
+const running = { contexts: [{ appId: CONTAINER, id: 'stock' }] };
 
 global.tizen = {
     application: {
-        getAppsContext: (answer) => answer([{ appId: CONTAINER, id: 'stock' }]),
+        getAppsContext: (answer) => answer(running.contexts),
         kill: () => {
             throw Object.assign(new Error('Permission denied'), { name: 'SecurityError' });
         },
@@ -77,6 +91,7 @@ check('waking beside a container we may not kill does not throw', survives(() =>
 check('and launches ours anyway', launched.indexOf(ME) !== -1);
 check('and says why in the log', readFileSync(LOG, 'utf8').indexOf('could not close it: Permission denied') !== -1);
 check('and says so when the container never reaches us', readFileSync(LOG, 'utf8').indexOf('it is not running our switches') !== -1);
+check('and replaces a silent container once, so it cannot loop', readFileSync(LOG, 'utf8').split('; replacing it').length === 2);
 
 const answered = { error: undefined };
 launched.length = 0;
@@ -94,6 +109,44 @@ check('a widget without --content never intercepts, even with a certificate on d
 manifest.content = '/home/owner/share/tube/cobalt-content';
 check('one with --content intercepts with that certificate', !!cobalt.material() && !!cobalt.material().cert);
 
-const failed = results.filter((r) => !r).length;
-console.log(`\n${results.length - failed}/${results.length} checks passed.`);
-process.exit(failed ? 1 : 0);
+// A launch whose container died: relaunched only when Evergreen's merge landed meanwhile.
+// The real timer, since setTimeout is stubbed above.
+const afterPromises = () => new Promise((resolve) => require('timers').setImmediate(resolve));
+
+const diedOnLaunch = async (mergedMeanwhile) => {
+    await new Promise((resolve) => cobalt.relaunch(resolve));
+    running.contexts = [];
+    merged.at = mergedMeanwhile ? Infinity : 0;
+    launched.length = 0;
+    cobalt.wake();
+    await afterPromises();
+    return launched.length;
+};
+
+// The platform starts the service at power-on, which must not open YouTube by itself.
+const atBoot = () => {
+    const os = require('os');
+    const uptime = os.uptime;
+
+    running.contexts = [];
+    launched.length = 0;
+    os.uptime = () => 5;
+    cobalt.wake();
+    os.uptime = uptime;
+
+    check('a wake seconds after power-on leaves the container alone', launched.length === 0
+        && readFileSync(LOG, 'utf8').indexOf('booted 5s ago') !== -1);
+};
+
+const deaths = async () => {
+    atBoot();
+    check('a container that died with nothing merged is left alone', await diedOnLaunch(false) === 1);
+    check('one that died before Evergreen\'s merge landed is launched again, once', await diedOnLaunch(true) === 2
+        && readFileSync(LOG, 'utf8').indexOf('Evergreen content arrived') !== -1);
+};
+
+deaths().catch((error) => check('the relaunch checks run', false, error.stack)).then(() => {
+    const failed = results.filter((r) => !r).length;
+    console.log(`\n${results.length - failed}/${results.length} checks passed.`);
+    process.exit(failed ? 1 : 0);
+});

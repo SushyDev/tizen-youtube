@@ -77,11 +77,14 @@ ${script}
 
 const html = (script) => page(script, configFor());
 
+// Renamed into place, so a container starting meanwhile never reads half a page.
 const writeBootScreen = (content, script) => {
     const file = path.join(content, RELATIVE);
+    const staged = `${file}.${process.pid}`;
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, html(script || read(BOOT_PAGE)));
+    fs.writeFileSync(staged, html(script || read(BOOT_PAGE)));
+    fs.renameSync(staged, file);
 
     return file;
 };

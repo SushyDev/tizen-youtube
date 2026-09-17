@@ -67,15 +67,23 @@ global.setTimeout = (run) => {
 
 const cobalt = require('../lib/cobalt.js');
 
-// The claim window counts from the port opening, so the service says it is listening.
-cobalt.listened();
-
 const results = [];
 
 const check = (label, ok) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}`);
     results.push(!!ok);
 };
+
+// Two installed widgets fight over the port, and the loser must not aim the container at the winner.
+// A wake while the server is still opening is the ordinary cold start, so it waits for the port.
+cobalt.wake();
+check('a wake before the port is ours launches nothing yet', launched.length === 0
+    && readFileSync(LOG, 'utf8').indexOf('the proxy port is not ours yet') !== -1);
+
+// The claim window counts from the port opening, so the service says it is listening.
+cobalt.listened();
+
+check('and is made as soon as the port is ours', launched.indexOf(ME) !== -1);
 
 const survives = (run) => {
     try {

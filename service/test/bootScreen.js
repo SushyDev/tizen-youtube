@@ -163,6 +163,9 @@ const checks = (script) => {
     }], 12);
 
     check('a broken start stays on the log', stuck.replaced.length === 0);
+    check('a service that is wrong rather than slow has everything checked', stuck.asked.some((url) => url.indexOf('stuck=1') !== -1));
+    check('and the viewer is told where to report it without waiting for a give-up',
+        has(stuck.lines, '/__tube/log') && has(stuck.lines, 'https://discord.gg/'));
     check('and says what it waits on, in red', toneOf(stuck.lines, 'waiting: www.youtube.com is not reachable') === 'bad');
     check('a proxy error is shown in red', toneOf(stuck.lines, 'upstream failed on') === 'bad');
 
@@ -215,6 +218,21 @@ const checks = (script) => {
     check('it never hands over while YouTube does not answer through the service', blocked.replaced.length === 0);
     check('it asks the service to restart the app, once', blocked.asked.filter((url) => url.indexOf('restart=1') !== -1).length === 1);
     check('and in the end says in red what to do', toneOf(blocked.lines, 'youtube still does not answer through the service') === 'bad');
+
+    check('a screen getting nowhere has the service check everything, once',
+        blocked.asked.filter((url) => url.indexOf('stuck=1') !== -1).length === 1,
+        blocked.asked.filter((url) => url.indexOf('stuck=1') !== -1).join(' '));
+    check('and says where to read the whole log', has(blocked.lines, `${CONFIG.journal}`), CONFIG.journal);
+    check('and where to report it', has(blocked.lines, 'https://discord.gg/') && has(blocked.lines, 'github.com/SushyDev/tizen-youtube'));
+    // The happy path pays nothing: only a start that met resistance asks for it.
+    const quick = run(script, [ready], 6);
+    check('a start that answers at once never asks for the deep check',
+        quick.asked.every((url) => url.indexOf('stuck=1') === -1), quick.asked.join(' '));
+
+    check('a service that never answers is reported the same way', has(silent.lines, `${CONFIG.journal}`)
+        && has(silent.lines, 'https://discord.gg/'));
+    check('and the checks it could not run are not claimed to have passed',
+        silent.lines.every((line) => line.text.indexOf('ok: ') === -1));
 
     const page = html(script);
     const config = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'config.xml'), 'utf8');

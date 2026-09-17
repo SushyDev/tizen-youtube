@@ -1,6 +1,6 @@
 const BAD_FACILITY = /^(uncaught|exit|upstream|listen|unhandled rejection|route|error|previous)$/;
 const BAD_TEXT = /fail|refused|denied|error|ENOTFOUND|ETIMEDOUT|ECONNRESET|EADDRINUSE|not reachable|absent/i;
-const OK_TEXT = /^(trusted|issued|staged)| is reachable/;
+const OK_TEXT = /^(trusted|issued|staged|ok:)| is reachable/;
 
 // The colour a service line is shown in.
 export const toneOf = (entry) => {

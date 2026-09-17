@@ -24,7 +24,12 @@ const attach = (app, { cobalt, script }) => {
         fromScreen(req.query.said);
         if (req.query.restart && cobalt) cobalt.restart();
 
-        res.json(report({ since: req.query.since, status: cobalt ? cobalt.status() : NO_COBALT, script: script() }));
+        res.json(report({
+            since: req.query.since,
+            status: cobalt ? cobalt.status() : NO_COBALT,
+            script: script(),
+            stuck: !!req.query.stuck
+        }));
     });
 };
 

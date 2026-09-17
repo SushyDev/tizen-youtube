@@ -31,12 +31,19 @@ const lanAddresses = () => {
 // Tried when the switch's address does not answer, to tell a blocked address from a dead service.
 const alternates = () => ['127.0.0.1'].concat(lanAddresses()).map((address) => `http://${address}:${ports.PROXY}`);
 
+const HELP = { discord: 'https://discord.gg/WjxVnrsV4A', repo: 'https://github.com/SushyDev/tizen-youtube' };
+
+// A LAN address, because the viewer reads this one on a phone and loopback is useless off the set.
+const journal = () => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}/__tube/log`;
+
 const configFor = () => ({
     service: SERVICE,
     alternates: alternates(),
     target: `${YOUTUBE}/tv`,
     probeUrl: `${YOUTUBE}/__tube/ping`,
     screen: SCREEN,
+    journal: journal(),
+    help: HELP,
     written: { at: Date.now(), patch: STAMP, pid: process.pid }
 });
 

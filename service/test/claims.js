@@ -1,7 +1,5 @@
 'use strict';
 
-// A second app on the container slot takes our switches, so the log names every claimant.
-
 const os = require('os');
 const path = require('path');
 const { readFileSync } = require('fs');

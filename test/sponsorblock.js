@@ -1,5 +1,3 @@
-// SponsorBlock: the repeat guard, the hash parse, and the overlay's geometry.
-
 import assert from 'assert';
 
 global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };
@@ -154,7 +152,6 @@ check('a segment crossing a boundary is clamped to each chapter it crosses', () 
     const before = gradientOver(crossing, spanOf(0, 110));
     const after = gradientOver(crossing, spanOf(110, 170));
 
-    // It runs to the end of the one and starts at the beginning of the next, so it meets itself.
     assert.ok(before.indexOf('transparent 100%') !== -1, before);
     assert.ok(after.indexOf('transparent 0%') !== -1, after);
     assert.ok(after.indexOf('16.6') !== -1, `expected 10s of a 60s chapter, got: ${after}`);
@@ -183,8 +180,7 @@ check('carried times are preferred, and the pieces own places are the fallback',
     assert.deepStrictEqual(spansFor(carried, track, 681),
         [{ from: 0, to: 110 }, { from: 110, to: 170 }]);
 
-    // One piece missing its chapter and the whole lot is derived, so the spans stay contiguous
-    // rather than being half YouTube's numbers and half ours.
+    // One piece missing its chapter derives the whole lot, so the spans stay contiguous.
     const partial = [carried[0], { element: {}, box: { left: 500 } }];
     assert.deepStrictEqual(spansFor(partial, track, 1000), [{ from: 0, to: 500 }, { from: 500, to: 1000 }]);
 });
@@ -253,7 +249,6 @@ check('an ancestor carries what it would ease, not what it is easing', () => {
         transitionTimingFunction: 'cubic-bezier(0.25,0.1,0.25,1)', transitionDelay: '0s'
     }), 'none');
 
-    // The renderer between them, which declares `all` and eases nothing.
     assert.strictEqual(transitionOf({
         transitionProperty: 'all', transitionDuration: '0s',
         transitionTimingFunction: 'cubic-bezier(0.25,0.1,0.25,1)', transitionDelay: '0s'
@@ -306,7 +301,6 @@ check('a box is told how to move before it is told where to', () => {
     assert.deepStrictEqual(writes, ['transition: none', 'opacity: 0']);
     writes.length = 0;
 
-    // And closing, where the fade comes back in the same change as the value it fades to.
     carry(hidden, layerOf('opacity 200ms linear 0s', '1'));
     assert.deepStrictEqual(writes, ['transition: opacity 200ms linear 0s', 'opacity: 1']);
 });
@@ -334,7 +328,6 @@ check('the mirrored translation is subtracted', () => {
     assert.deepStrictEqual(translateOf('translate(-4px, 6px)'), { x: -4, y: 6 });
     assert.deepStrictEqual(translateOf('translateX(2px) translateY(-3px)'), { x: 2, y: -3 });
 
-    // Anything that is not a translation costs the slide and nothing else.
     assert.deepStrictEqual(translateOf('scaleX(0.5)'), { x: 0, y: 0 });
 
     assert.deepStrictEqual(

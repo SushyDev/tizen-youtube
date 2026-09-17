@@ -1,5 +1,3 @@
-// Builders for YouTube's own renderer shapes; none touch the app.
-
 const overlayPanelItemListRenderer = (items, selectedIndex) => ({
     overlayPanelItemListRenderer: {
         items,
@@ -7,9 +5,8 @@ const overlayPanelItemListRenderer = (items, selectedIndex) => ({
     }
 });
 
-// The row style the settings and speed panels are built from. Title, icons and subtitle are all
-// optional, and each is left off entirely rather than sent empty — an empty `title` draws as a
-// blank line where no line was wanted.
+// Title, icons and subtitle are left off entirely rather than sent empty: an empty `title` draws
+// as a blank line.
 const buttonItem = (title, icon, commands) => ({
     compactLinkRenderer: Object.assign(
         { serviceEndpoint: { commandExecutorCommand: { commands } } },
@@ -20,8 +17,6 @@ const buttonItem = (title, icon, commands) => ({
     )
 });
 
-// A card that appears over the video at triggerTimeMs and leaves timeoutMs later, in the shape
-// YouTube's own "Up next" and shopping prompts arrive in.
 const timelyAction = (text, icon, command, triggerTimeMs, timeoutMs) => ({
     timelyActionRenderer: {
         actionButtons: [{
@@ -39,7 +34,6 @@ const timelyAction = (text, icon, command, triggerTimeMs, timeoutMs) => ({
     }
 });
 
-// The two kinds of row a long-press menu holds: one that posts to the API, one that navigates.
 const MenuServiceItemRenderer = (text, serviceEndpoint) => ({
     menuServiceItemRenderer: {
         text: { runs: [{ text }] },
@@ -85,8 +79,7 @@ const TileRenderer = (simpleText, onSelectCommand) => ({
     }
 });
 
-// The bare renderer rather than an envelope: the transport controls hold these under `button`,
-// and a caller that needs the envelope wraps it.
+// The bare renderer rather than an envelope: the transport controls hold these under `button`.
 const ButtonRenderer = (disabled, text, iconType, command) => ({
     isDisabled: disabled,
     text: { runs: [{ text }] },

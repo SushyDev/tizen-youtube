@@ -23,8 +23,8 @@ const isLink = (file) => {
     }
 };
 
-// Folders stay real, so our certificate, the boot screen and Evergreen's files can be written beside
-// the links; a folder linked whole is replaced, and a real copy an older build made becomes a link.
+// Folders stay real, so our certificate, the boot screen and Evergreen's files can be written
+// beside the links.
 const linkInto = (from, to) => {
     if (isLink(to)) fs.unlinkSync(to);
     fs.mkdirSync(to, { recursive: true });
@@ -64,7 +64,6 @@ const findContent = (dir, depth) => (depth > DEEPEST ? [] : listing(dir).reduce(
     return found.concat(findContent(full, depth + 1));
 }, []));
 
-// Evergreen's layout, else a content directory found under the package, preferring one with ICU.
 const locate = () => {
     if (isDirectory(STOCK)) return STOCK;
 
@@ -72,7 +71,6 @@ const locate = () => {
     return found.find((dir) => isDirectory(path.join(dir, 'icu'))) || found[0] || null;
 };
 
-// For a set whose Cobalt is laid out otherwise, so its log says where the content is.
 const discover = () => {
     if (!isDirectory(PACKAGE)) return `nothing at ${PACKAGE} either`;
 
@@ -82,8 +80,8 @@ const discover = () => {
         + `${found.length ? found.join(', ') : 'none readable'}`;
 };
 
-// Answered rather than thrown, so a staging failure is reported through the same path everything
-// else in prepare() is.
+// Answered rather than thrown, so a staging failure goes the same way as everything else in
+// prepare().
 const stageOrFail = (content, from = STOCK) => {
     try {
         const linked = linkInto(from, content);

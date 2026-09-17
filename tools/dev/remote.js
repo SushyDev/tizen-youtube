@@ -29,7 +29,7 @@ function tubeRemoteInstall() {
         }
     };
 
-    // keyCode is read-only on a constructed event, so it is defined onto it rather than passed in.
+    // keyCode is read-only on a constructed event, so it is defined onto it.
     const press = (code) => ['keydown', 'keypress', 'keyup'].forEach((type) => {
         const event = eventFor(type);
         Object.defineProperty(event, 'keyCode', { get: () => code });

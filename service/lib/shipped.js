@@ -1,7 +1,5 @@
 'use strict';
 
-// The files that ship beside the service: the userscript and the boot page.
-
 const { existsSync, readFileSync, statSync } = require('fs');
 const { join } = require('path');
 
@@ -27,7 +25,6 @@ const read = (name) => {
     return readFileSync(found, 'utf8');
 };
 
-// What /__tube/state and the boot screen say about one.
 const sized = (name) => {
     const found = locate(name);
 

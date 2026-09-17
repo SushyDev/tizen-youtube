@@ -28,8 +28,7 @@ const targetOf = (req) => {
     if (!host) return null;
 
     const [name, port] = host.split(':');
-    // Encrypted on the way in means encrypted on the way out: the page believes it is talking to
-    // youtube.com over TLS, and so must we.
+    // The page believes it is talking to youtube.com over TLS, so the hop out must be too.
     const secure = !!(req.socket && req.socket.encrypted);
 
     return {
@@ -74,9 +73,8 @@ const attach = (server, options) => {
             path: target.path,
             method: req.method,
             headers: headersFor(req, target),
-            // Never pooled: this socket stops being an HTTP connection the moment it upgrades, and
-            // handing it back to an agent afterwards is how it gets reused underneath a live
-            // session.
+            // This socket stops being an HTTP connection the moment it upgrades, and an agent
+            // would reuse it underneath a live session.
             agent: false
         });
 

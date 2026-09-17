@@ -13,7 +13,6 @@ const showOnce = (facts) => {
     say('userscript', facts.script.error || `${Math.round(facts.script.bytes / 1024)}kB`, facts.script.error ? 'bad' : '');
 };
 
-// The build and the set once, and any restart behind the screen.
 export const showFacts = (facts) => {
     if (!facts) return;
 

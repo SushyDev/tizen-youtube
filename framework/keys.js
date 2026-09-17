@@ -1,5 +1,3 @@
-// Routes remote key codes to registered handlers through three capturing listeners.
-
 import { report } from './journal.js';
 
 const TYPES = ['keydown', 'keypress', 'keyup'];
@@ -11,8 +9,7 @@ const dispatch = (event) => {
     const bucket = byCode[event.keyCode];
     if (!bucket || !bucket.length) return;
 
-    // reduce rather than some(): every handler that asked for this code is told, and any one of
-    // them may ask for the key to stop here. some() would skip the rest after the first true.
+    // reduce, not some(): every handler is told even after one has asked to swallow the key.
     const swallow = bucket.reduce((stop, entry) => {
         try {
             return entry.handle(event) === true || stop;

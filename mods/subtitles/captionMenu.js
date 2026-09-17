@@ -1,5 +1,3 @@
-// The captions menu's shape, shared by the features that add rows to it.
-
 // The container sends CAPTIONS_LANGUAGE; AUTO_TRANSLATE is kept for older builds.
 const CAPTION_MENUS = [
     'CLIENT_OVERLAY_TYPE_CAPTIONS_LANGUAGE',
@@ -8,8 +6,8 @@ const CAPTION_MENUS = [
 
 const opensCaptionMenu = (cmd) => CAPTION_MENUS.indexOf(cmd?.openPopupAction?.uniqueId) !== -1;
 
-// Null rather than an empty array when the shape is not what is expected: a caller that pushes
-// into nothing should stop, not silently succeed.
+// Null rather than an empty array, so a caller that pushes into nothing stops instead of silently
+// succeeding.
 const itemsOf = (cmd) => cmd?.openPopupAction?.popup?.overlaySectionRenderer?.overlay
     ?.overlayTwoPanelRenderer?.actionPanel?.overlayPanelRenderer?.content
     ?.overlayPanelItemListRenderer?.items || null;
@@ -19,8 +17,8 @@ const trackOf = (item) => {
     return commands?.[0]?.selectSubtitlesTrackCommand?.translationLanguage || null;
 };
 
-// A track is identified by its code in one place and by its name in another, so both count as
-// already offered — matching on only one of them lists half the menu twice.
+// A track is identified by its code in one place and by its name in another, so matching on only
+// one of them lists half the menu twice.
 const languagesIn = (items) => new Set(items
     .map(trackOf)
     .filter(Boolean)
@@ -30,8 +28,7 @@ const sectionTitleOf = (item) => item?.overlayMessageRenderer?.subtitle?.simpleT
 
 const indexOfSection = (items, title) => items.findIndex((item) => sectionTitleOf(item) === title);
 
-// The three commands YouTube's own rows carry, in the order it sends them: pick the track, redraw
-// the menu against the new selection, then close it.
+// The three commands YouTube's own rows carry, in the order it sends them.
 const languageRow = (languageCode, languageName) => ({
     compactLinkRenderer: {
         title: { simpleText: languageName },

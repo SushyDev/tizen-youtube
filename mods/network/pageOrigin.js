@@ -1,6 +1,4 @@
-// Served from the service, the page's location reads http://127.0.0.2:8099. BotGuard, the attestation
-// client and the player all read it, and googlevideo refuses the token they mint for a foreign page,
-// so the page is told it is www.youtube.com. The engine still loads everything from the real address.
+// googlevideo refuses the attestation token minted for a foreign page, so the page is told it is www.youtube.com while the engine still loads from the real address.
 
 const PRESENTED = 'https://www.youtube.com';
 const PRESENTED_HOST = 'www.youtube.com';

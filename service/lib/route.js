@@ -1,7 +1,5 @@
 'use strict';
 
-// Where a request is really going, and what it should carry when it gets there.
-
 const URL = require('url');
 
 const forward = require('./forward.js');
@@ -34,7 +32,7 @@ const routeFor = (req) => {
         try { return URL.parse(target).host || YOUTUBE_HOST; } catch (e) { return YOUTUBE_HOST; }
     };
 
-    // The page is plain HTTP, so Google URLs it builds may carry http: and are upgraded here.
+    // The page is plain HTTP, so Google URLs it builds may carry http:.
     const upgradeScheme = (target, forGoogle) => (
         forGoogle && target.indexOf('http://') === 0 ? `https://${target.slice(7)}` : target
     );
@@ -73,7 +71,7 @@ const headersFor = (req, route) => {
             : req.headers[key]]);
 
     return dev.upstreamHeaders(Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
-        // Brotli is not decoded here, so ask for encodings that can be read.
+        // Brotli is not decoded here.
         { 'accept-encoding': 'gzip, deflate' }));
 };
 

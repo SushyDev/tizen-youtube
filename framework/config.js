@@ -66,7 +66,7 @@ const defaultConfig = {
   enableShowUserLanguage: true,
   enableShowOtherLanguages: false,
 
-  // The browseId the app opens on, empty for wherever YouTube would have gone — which is home.
+  // The browseId the app opens on, empty for YouTube's own choice.
   startupPage: '',
 
   // A rung such as '2', empty for YouTube's own pacing.

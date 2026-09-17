@@ -15,8 +15,7 @@ const STEPS = [
         label: 'userscript bundle',
         target: 'modern',
         command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
-        // Both widgets carry this same bundle, so it is held to the older engine of the two. The
-        // boot screen is checked too: it is the first thing Cobalt runs, and it has no fallback.
+        // Both widgets carry this same bundle, so it is held to the older engine of the two.
         after: [
             ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt20']],
             ['node', ['tools/check-output.js', paths.BOOT_BUNDLE, 'cobalt20']]
@@ -40,9 +39,8 @@ const STEPS = [
     }
 ];
 
-// npm's own chatter and stack frames from inside node_modules say nothing about why a build
-// failed. Predicates rather than patterns because only the first is judged on a trimmed line —
-// the second is looking for the leading whitespace of a stack frame.
+// Predicates rather than patterns: the first is judged on a trimmed line, the second on the
+// leading whitespace of a stack frame.
 const NOISE = [
     (line) => /^npm (error|notice|warn)\b/.test(line.trim()),
     (line) => /^\s+at .*[\\/]node_modules[\\/]/.test(line)

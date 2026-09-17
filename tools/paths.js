@@ -1,7 +1,5 @@
 'use strict';
 
-// Where everything lands; config.js owns what the build is.
-
 const DIST = 'dist';
 const BUNDLE = 'dist/userScript.js';
 const BOOT_BUNDLE = 'dist/bootScreen.js';
@@ -16,9 +14,8 @@ const RELEASE = 'release';
 const WGT = 'release/tube-tizen-5.5.wgt';
 const WGT_LEGACY = 'release/tube-tizen-5.0.wgt';
 
-// app/ is a source directory, not an archive path. Tizen resolves <content src> and <icon src>
-// relative to the archive root, and service/lib/cobalt.js reads ../../config.xml at runtime from
-// service/dist/, so config.xml has to arrive at the top of the widget however it is filed here.
+// Tizen resolves <content src> and <icon src> against the archive root, and service/lib/cobalt.js
+// reads ../../config.xml from service/dist/, so config.xml must land at the top of the widget.
 const WIDGET = [
     { from: 'app/config.xml', to: 'config.xml' },
     { from: 'app/icon.png', to: 'icon.png' },

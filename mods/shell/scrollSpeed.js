@@ -1,7 +1,6 @@
 import { answerSwitch, configRead } from '../../framework/index.js';
 
-// Answers YouTube's list-duration switches with the chosen rung, each solved from
-// speed = (stock + 81) / (duration + 81).
+// Each rung is solved from speed = (stock + 81) / (duration + 81).
 
 const SPEEDS = {
     '1.25': { vertical: 224, horizontal: 144 },

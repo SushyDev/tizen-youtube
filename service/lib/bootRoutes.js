@@ -1,7 +1,5 @@
 'use strict';
 
-// The routes the boot screen asks.
-
 const postmortem = require('./postmortem.js');
 const { report } = require('./bootReport.js');
 const { fromScreen } = require('./pageLines.js');

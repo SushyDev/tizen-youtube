@@ -1,7 +1,5 @@
 'use strict';
 
-// The page a viewer is sent to when the app will not start.
-
 const { page } = require('./diagPage.js');
 
 const attach = (app) => {

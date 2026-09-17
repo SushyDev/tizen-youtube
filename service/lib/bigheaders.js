@@ -1,6 +1,6 @@
 'use strict';
 
-// Refetches over HTTP/2 a response whose header block overflows Node's HTTP/1 parser.
+// A response whose header block overflows Node's HTTP/1 parser is refetched over HTTP/2.
 
 const http2 = require('http2');
 const zlib = require('zlib');
@@ -13,7 +13,7 @@ const MAX_HEADER_LIST = 262144;
 
 const ILLEGAL_IN_H2 = ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'host'];
 
-// One session per origin, closed when idle: a session per request would cost a handshake apiece.
+// A session per request would cost a handshake apiece.
 const sessions = new Map();
 
 const sessionFor = (origin) => {

@@ -1,10 +1,3 @@
-// Key routing in the JSON bus.
-//
-// Every handler's keys used to be merged into one set, and a root carrying any key in that union
-// ran every handler. adblock.js alone declared thirteen keys including `contents`, `items` and
-// `entries`, so the gate stood open for most objects and the quality settler restarted its burst
-// on every browse response. These checks are what "the keys are a dispatch index" has to mean.
-//
 // In its own file because it takes over the process's JSON.parse and JSON.stringify.
 
 import assert from 'assert';

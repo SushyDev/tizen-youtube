@@ -1,7 +1,5 @@
 'use strict';
 
-// A read-only survey of the set the service runs on, for when a bug needs the platform's facts.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -65,7 +63,6 @@ const scan = (reader, needles, found, at) => {
     return scan(reader, needles, found.concat(seen), at + CHUNK);
 };
 
-// Which of the given names the file contains.
 const contains = (file, names) => safe(() => {
     const fd = fs.openSync(file, 'r');
     const reader = {

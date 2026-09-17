@@ -1,13 +1,10 @@
 'use strict';
 
-// What the boot screen is told on each ask.
-
 const postmortem = require('./postmortem.js');
 const reach = require('./reach.js');
 const { diagnose } = require('./diagnosis.js');
 const { facts } = require('./platform.js');
 
-// What still stands before the handover, or null.
 const waitingFor = (status) => {
     const network = reach.current();
 

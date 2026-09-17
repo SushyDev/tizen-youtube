@@ -1,5 +1,3 @@
-// The page's side of /__tube/log: what the framework catches goes to the console and the service.
-
 // Relative: every route serves the page through the service.
 const ROUTE = '/__tube/journal';
 const MOST_SENT = 100;

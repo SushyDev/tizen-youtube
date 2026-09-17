@@ -1,7 +1,5 @@
 'use strict';
 
-// Asks Google's update server which Evergreen package a set of this kind is given.
-
 const http = require('http');
 const https = require('https');
 
@@ -9,7 +7,8 @@ const APP_ID = '{6D4E53F3-CC64-4CB8-B6BD-AB0B8F300E1C}';
 const ADDRESS = process.env.TUBE_OMAHA_URL || 'https://tools.google.com/service/update2/json';
 const TIMEOUT = 20000;
 
-// The six fields Omaha needs before it offers anything; the SABI must match the library byte for byte.
+// Omaha offers nothing unless every field is there, and the SABI must match the library byte for
+// byte.
 const requestFor = (query) => ({
     request: {
         protocol: '3.1',
@@ -26,7 +25,7 @@ const requestFor = (query) => ({
 const httpsFirst = (addresses) => addresses.filter((address) => address.indexOf('https:') === 0)
     .concat(addresses.filter((address) => address.indexOf('https:') !== 0));
 
-// The package offered, or null; the reply opens with )]}' against JSON hijacking.
+// The reply opens with )]}' against JSON hijacking.
 const offerOf = (text) => {
     const reply = JSON.parse(String(text).replace(/^\)\]\}'\s*/, ''));
     const app = ((reply.response && reply.response.app) || []).find((entry) => entry.appid === APP_ID);

@@ -1,7 +1,5 @@
 'use strict';
 
-// The widget's own files are all the service serves the page; nothing comes from anywhere else.
-
 const { mkdtempSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { join } = require('path');

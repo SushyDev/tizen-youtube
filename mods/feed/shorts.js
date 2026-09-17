@@ -1,7 +1,5 @@
 import { GRID, PIVOT, SHELF, TILES, configRead, keepShelf, keepTile } from '../../framework/index.js';
 
-// Shorts shelves, tiles and lockups, dropped unless enableShorts.
-
 const SHORTS_SHELF = 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS';
 const SHORTS_TILE = 'TVHTML5_TILE_RENDERER_TYPE_SHORTS';
 
@@ -19,7 +17,6 @@ keepTile('shorts tiles', [SHELF, PIVOT, TILES, GRID], (item) => {
     return !item.tileRenderer?.onSelectCommand?.reelWatchEndpoint;
 });
 
-// Optional, because a section list holds entries that are not shelves — an advert slot has no
-// shelfRenderer to read a type off.
+// A section list holds entries that are not shelves, such as an advert slot with no shelfRenderer.
 keepShelf('shorts shelves', [SHELF, PIVOT], (shelf) =>
     wanted() || shelf.shelfRenderer?.tvhtml5ShelfRendererType !== SHORTS_SHELF);

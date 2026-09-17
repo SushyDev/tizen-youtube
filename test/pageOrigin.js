@@ -1,5 +1,3 @@
-// The served page presents www.youtube.com while everything still resolves to the real address.
-
 const REAL = 'http://127.0.0.2:8099';
 
 const page = { href: `${REAL}/tv?launch=menu#/watch?v=x`, assigned: [], urlGets: 0 };

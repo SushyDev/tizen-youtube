@@ -1,7 +1,5 @@
 'use strict';
 
-// How the last run ended, shown again when it ended badly.
-
 const postmortem = require('./postmortem.js');
 
 const ENDING = /^\S+ {2}((?:uncaught|exit|unhandled rejection|route): .*)$/;

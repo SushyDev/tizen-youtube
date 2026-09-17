@@ -1,7 +1,5 @@
 'use strict';
 
-// Pure text rewrites of proxied bodies and headers.
-
 const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
@@ -9,15 +7,13 @@ const { reporter, bootBeacon } = require('./pageReporter.js');
 
 const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
 
-// Routes SABR's single media URL through the service so no page patch is needed to reach
-// googlevideo.
+// SABR's one media URL goes through the service so no page patch is needed to reach googlevideo.
 const rerouteAbr = (text) => text.replace(
     /"serverAbrStreamingUrl":"(https:\\?\/\\?\/[^"]+)"/g,
     (whole, url) => `"serverAbrStreamingUrl":"${proxyPrefix()}${url}"`
 );
 
-// kabuki and the player both prefix every innertube call with INNERTUBE_HOST_OVERRIDE, which
-// brings that traffic here with nothing in the page patched.
+// kabuki and the player both prefix every innertube call with INNERTUBE_HOST_OVERRIDE.
 const overrideInnertubeHost = (text) => text.replace(
     '"INNERTUBE_CONTEXT_CLIENT_NAME"',
     `"INNERTUBE_HOST_OVERRIDE":${JSON.stringify(localOrigin())},"INNERTUBE_CONTEXT_CLIENT_NAME"`
@@ -40,7 +36,7 @@ const retuneFlag = (blob, [name, value]) => {
         return blob.replace(flag, (whole, separator, equals) => `${separator}${name}${equals}${value}`);
     }
 
-    // An absent flag reads as off, so turning one on means adding it to the front of the blob.
+    // An absent flag reads as off.
     return `${name}\\u003d${value}\\u0026${blob}`;
 };
 
@@ -48,29 +44,27 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
-// Cobalt refuses whatever the policy does not name, so connect-src and img-src are widened for
-// our fetches and DeArrow's images.
+// Cobalt refuses whatever the policy does not name.
 const GRANTS = [
     { named: /(^|;)(\s*)connect-src[^;]*/i, widened: 'connect-src * data: blob: ws: wss:' },
     { named: /(^|;)(\s*)img-src[^;]*/i, widened: 'img-src * data: blob:' }
 ];
 
-// Replaced where the directive is named, appended where it is not: a policy that never mentioned
-// it is still governed by default-src, so leaving it out is the same denial.
+// A directive the policy never names is still governed by default-src, so leaving it out is the
+// same denial.
 const granted = (policy, grant) => (grant.named.test(policy)
     ? policy.replace(grant.named, `$1$2${grant.widened}`)
     : `${policy}; ${grant.widened}`);
 
-// YouTube sends two policies and both are enforced, so each needs the grants.
+// YouTube sends two policies and both are enforced.
 const withOurGrants = (policy) => {
     if (!policy) return policy;
 
     return String(policy).split(',').map((one) => GRANTS.reduce(granted, one)).join(',');
 };
 
-// Served as ourselves over http, the engine loads fonts and CSS images directly (the page's fetch
-// hook never sees them), and a protocol-relative //gstatic URL inherits our http: — which Cobalt
-// refuses to a public host. Route those through the bypass so they come from our own origin.
+// The engine loads fonts and CSS images itself, and Cobalt refuses the http: origin such a URL
+// inherits from us when the host is public.
 const STATIC_HOSTS = ['www.gstatic.com', 'fonts.gstatic.com'];
 
 const rewriteStaticHosts = (text) => {
@@ -109,8 +103,7 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
     return reported.indexOf('</body>') !== -1 ? reported.replace('</body>', `${tag}</body>`) : reported + tag;
 };
 
-// __Secure- / __Host- prefixed cookies are rejected over plain HTTP, so they are renamed in both
-// directions and the HTTPS-only attributes dropped.
+// __Secure- and __Host- prefixed cookies are rejected over plain HTTP.
 const rewriteSetCookie = (values) => values.map((cookie) => cookie
     .replace(/^__Secure-/i, '__LocalSecure-')
     .replace(/^__Host-/i, '__LocalHost-')
@@ -124,8 +117,8 @@ const restoreCookiePrefixes = (header) => header
     .replace(/__LocalSecure-/g, '__Secure-')
     .replace(/__LocalHost-/g, '__Host-');
 
-// kabuki reads env_ switches from its own URL, and draws a debug watermark on any origin but
-// YouTube's unless env_hideWatermark says otherwise.
+// kabuki reads env_ switches from its own URL and watermarks any origin but YouTube's without
+// this one.
 const HIDE_WATERMARK = 'env_hideWatermark=true';
 
 const hidesWatermark = (url) => String(url).indexOf('env_hideWatermark=') !== -1;

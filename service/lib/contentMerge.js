@@ -1,6 +1,6 @@
 'use strict';
 
-// Adds the files our content copy lacks, never replacing one: the Cobalt running now keeps its own.
+// A file is never replaced, because the Cobalt running now keeps its own.
 
 const fs = require('fs');
 const path = require('path');
@@ -26,7 +26,6 @@ const place = (file, data) => {
     fs.renameSync(staged, file);
 };
 
-// The names it added.
 const merge = (content, files) => files
     .filter((file) => inside(file.name) && !exists(path.join(content, file.name)))
     .map((file) => {

@@ -38,8 +38,7 @@ const after = (name, ms, run) => {
     return () => stop(name);
 };
 
-// Repeats, then gives itself up. Calling it again while it is running extends the deadline rather
-// than starting a second timer — which is what the adoption window needs on every navigation.
+// Calling it again while it is running extends the deadline rather than starting a second timer.
 const until = (name, ms, tick, forMs) => {
     const deadline = Date.now() + forMs;
     const held = timers[name];

@@ -1,7 +1,5 @@
 'use strict';
 
-// Starts a chii server and prints the TUBE_CHII address to build against.
-//
 //   npm run chii                     start it, and print what to build against
 //   TUBE_CHII_PORT=9000 npm run chii
 
@@ -11,7 +9,7 @@ const { networkInterfaces } = require('os');
 const ui = require('./report.js');
 const { load } = require('./config.js');
 
-// Pinned, so an install a year from now starts the inspector this was written against.
+// Pinned so a later install starts the inspector this was written against.
 const CHII = 'chii@1.15.5';
 
 const PORT = Number(process.env.TUBE_CHII_PORT) || load().ports.chii;

@@ -94,9 +94,8 @@ function addCobaltProfile(staging) {
     const expression = new RegExp(`(<tizen:metadata\\s+key="${metadata}"\\s+value=")([^"]*)("\\s*/>)`);
     if (!expression.test(xml)) throw friendly('config.xml has no Cobalt native.userdata metadata.');
 
-    // Only --base_url, --proxy and --content are this profile's business. Replacing the whole
-    // switch list drops --use_eden and --dial_name, and without those the container reports a
-    // successful launch and then never appears in getAppsContext at all.
+    // Replacing the whole switch list drops --use_eden and --dial_name, without which the
+    // container reports a successful launch and never appears in getAppsContext.
     const existing = expression.exec(xml)[2].split(/\s+/).filter(Boolean)
         .filter((argument) => !/^--(base_url|proxy|content)=/.test(argument));
 
@@ -110,9 +109,8 @@ function addCobaltProfile(staging) {
     writeFileSync(path, xml.replace(expression, `$1${xmlAttribute(args)}$3`));
 }
 
-// A proxy port changed here but not there is a television that shows nothing and says nothing:
-// the container is launched pointing at a port the service is not on. Cheap to check, and the
-// failure it prevents costs an install and a reboot to diagnose.
+// A proxy port changed here but not there launches the container at a port the service is not on,
+// and the television shows nothing.
 function checkThePortsAgree(staging, ports) {
     const expected = ports.proxy;
 
@@ -124,7 +122,7 @@ function checkThePortsAgree(staging, ports) {
     }
 
     // Nothing launches against the dev port, so a mismatch here costs a debugging session rather
-    // than a television — but it is the same class of mistake and just as cheap to catch.
+    // than a television.
     if (DEV !== Number(ports.dev)) {
         throw friendly(
             `service/lib/ports.js binds the dev bridge on ${DEV}, but tizen.config.json says it is\n` +
@@ -155,7 +153,6 @@ function setRequiredVersion(staging, version) {
     writeFileSync(path, xml.replace(expression, `$1${version}$2`));
 }
 
-// Renames the package everywhere config.xml names it: the package, the app and the service.
 function setPackageId(staging, id) {
     const path = join(staging, 'config.xml');
     const xml = readFileSync(path, 'utf8');
@@ -167,7 +164,7 @@ function setPackageId(staging, id) {
     writeFileSync(path, xml.split(found[1]).join(id));
 }
 
-// Points --base_url at the service and drops --content, which Cobalt 20 does not have.
+// Cobalt 20 has no --content, so --base_url points at the service instead.
 function servePage(staging, baseUrl) {
     const path = join(staging, 'config.xml');
     const xml = readFileSync(path, 'utf8');
@@ -190,8 +187,7 @@ function addGameMode(staging) {
     writeFileSync(path, xml.replace('</widget>', `    ${GAME_MODE}\n</widget>`));
 }
 
-// Zip entry names are the staged path, always with forward slashes: a widget built on Windows
-// has to unpack the same as one built here.
+// Zip entry names always use forward slashes, so a widget built on Windows unpacks the same.
 function addTree(zip, staging, directory) {
     readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
         const path = join(directory, entry.name);

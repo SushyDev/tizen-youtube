@@ -1,11 +1,7 @@
 'use strict';
 
-// Everything the service does only when someone is watching it.
-//
-// This is the one module the shipped code names. A ship build resolves it to none.js instead, so
-// none of what is below ever enters the bundle — including cors, which nothing else requires, and
-// the /eval endpoint, which runs arbitrary source in the page behind a single header check on a
-// server bound to 0.0.0.0.
+// A ship build resolves this module to none.js, so the /eval endpoint — arbitrary source behind one
+// header check on a server bound to 0.0.0.0 — never enters the bundle.
 
 const bridge = require('./bridge.js');
 const chii = require('./chii.js');
@@ -32,7 +28,7 @@ const upstreamHeaders = (headers) => (DEV_USER_AGENT
     ? Object.assign({}, headers, { 'user-agent': DEV_USER_AGENT })
     : headers);
 
-// The extra tag the dev page carries: the remote, so a keyboard can press a TV button.
+// The remote, so a keyboard can press a TV button.
 const pageScripts = (origin, stamp) => (DEV_INJECT_PATH
     ? `<script${stamp} src="${origin}/__tube/dev.js?v=${Date.now()}"></script>`
     : '');
@@ -71,8 +67,7 @@ const routes = (app, { policies, state, knobs, relaunch }) => {
         res.json({ policy: state.policy, sends: policies[state.policy] });
     });
 
-    // Which experiment flags the page is served with, changeable while the set is running:
-    //   ?html5_onesie=false   set one (repeatable), then reload    ?clear=1   back to what YouTube sent
+    // ?html5_onesie=false sets one flag (repeatable, then reload); ?clear=1 restores YouTube's own.
     app.get('/__tube/dev/flags', (req, res) => {
         if (req.query.clear) knobs.flagOverrides.clear();
 

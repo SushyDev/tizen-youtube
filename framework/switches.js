@@ -1,13 +1,10 @@
-// Answers YouTube's feature switches with getters on tectonicConfig.featureSwitches, re-applied
-// whenever the app replaces that object.
-
 import { report } from './journal.js';
 
 const held = {
     answers: new Map(),
 
-    // YouTube's own values, re-read only while nothing is answered, because a replacement object
-    // copies our answers rather than YouTube's values.
+    // YouTube's own values, re-read only while nothing is answered: a replacement object copies
+    // our answers rather than YouTube's values.
     theirs: new Map()
 };
 
@@ -16,8 +13,8 @@ const switchesNow = () => {
     return config && typeof config === 'object' ? config.featureSwitches : null;
 };
 
-// The answer runs inside kabuki's own lookup, on YouTube's stack, where our journal would never
-// see it: a mod that throws here would be a page bug rather than a feature that went quiet.
+// The answer runs on YouTube's stack, so an unguarded throw here is a page bug rather than a
+// feature that went quiet.
 const answerOf = (name) => {
     try {
         return held.answers.get(name)();
@@ -78,8 +75,7 @@ const arm = () => {
     });
 };
 
-// `answer` is called every time YouTube asks, so it may read a setting directly: what it returns is
-// what the app sees on its next lookup, with no restart and nothing to notify.
+// `answer` runs on every lookup, so it may read a setting directly and takes effect with no restart.
 const answerSwitch = (name, answer) => {
     held.answers.set(name, answer);
 

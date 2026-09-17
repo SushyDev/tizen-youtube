@@ -2,7 +2,6 @@ const BAD_FACILITY = /^(uncaught|exit|upstream|listen|unhandled rejection|route|
 const BAD_TEXT = /fail|refused|denied|error|ENOTFOUND|ETIMEDOUT|ECONNRESET|EADDRINUSE|not reachable|absent/i;
 const OK_TEXT = /^(trusted|issued|staged|ok:)| is reachable/;
 
-// The colour a service line is shown in.
 export const toneOf = (entry) => {
     if (BAD_FACILITY.test(entry.what) || BAD_TEXT.test(entry.text)) return 'bad';
     if (entry.what === 'warning') return 'warn';

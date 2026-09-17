@@ -1,6 +1,4 @@
-// Every userscript suite, in one process each.
-//
-// json-routing takes over the process's JSON.parse, so it cannot share with the rest.
+// json-routing takes over the process's JSON.parse, so it cannot share a process with the rest.
 
 import { execFileSync } from 'child_process';
 import { dirname, join } from 'path';

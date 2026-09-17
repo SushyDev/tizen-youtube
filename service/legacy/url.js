@@ -1,7 +1,7 @@
 'use strict';
 
 // Below node 7 there is no url.URL, so node-fetch falls back to whatwg-url, whose tr46 refuses the
-// rr2---sn- hosts googlevideo serves media from. The legacy parser takes them.
+// rr2---sn- hosts googlevideo serves media from.
 
 const url = require('url');
 

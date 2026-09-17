@@ -9,12 +9,10 @@ const require = createRequire(import.meta.url);
 
 const NODE_BUILTINS = builtinModules.flatMap((name) => [name, `node:${name}`]);
 
-// TUBE_DEV=1 keeps the bridge, the journal, the dev routes and the page hooks. Without it they
-// are swapped for an inert stub and never enter the bundle at all — which is also what takes
-// `cors` out, since nothing else requires it.
+// Without it the dev modules resolve to an inert stub and never enter the bundle, taking `cors`
+// with them.
 const DEV = process.env.TUBE_DEV === '1';
 
-// TUBE_TARGET=legacy builds the legacy widget's service, for node 4.4.3.
 const LEGACY = process.env.TUBE_TARGET === 'legacy';
 
 const LEGACY_ENTRY = join(HERE, 'legacy', 'index.js');
@@ -32,8 +30,7 @@ const polyfilled = (code) => babel.transformSync(code, {
     }]]
 }).code;
 
-// Narrows core-js to node 4.4.3's gaps, makes http2 optional and parses URLs the way node 4 can;
-// build-service.js lowers to ES5.
+// Narrows core-js to node 4.4.3's gaps, makes http2 optional and parses URLs the way node 4 can.
 const legacy = {
     name: 'tube-legacy',
     enforce: 'pre',
@@ -45,8 +42,8 @@ const legacy = {
     transform: (code, id) => (id === LEGACY_ENTRY ? { code: polyfilled(code), map: null } : null)
 };
 
-// Below node 14 node-fetch ties a close listener to the socket per request; kept-alive sockets
-// pile them up and fire "Premature close" on finished bodies.
+// Below node 14 node-fetch's per-socket close listeners pile up on kept-alive sockets and fire
+// "Premature close" on finished bodies.
 const PER_SOCKET_CLOSE = 'parseInt(process.version.substring(1)) < 14';
 const NODE_FETCH = /node-fetch[\\/]lib[\\/]index\.js$/;
 
@@ -64,12 +61,11 @@ export default defineConfig({
     plugins: LEGACY ? [legacy, staleCloseListeners] : [staleCloseListeners],
 
     resolve: {
-        // The CommonJS entry, because the bundled ESM copy becomes a `{ default }` namespace and
-        // every fetch() call throws.
+        // The CommonJS entry: the bundled ESM copy becomes a `{ default }` namespace and every
+        // fetch() call throws.
         alias: Object.assign(
             { 'node-fetch': 'node-fetch/lib/index.js' },
-            // Absolute, so both spellings — ./dev/index.js from index.js and ../dev/index.js
-            // from lib/ — resolve to the one stub rather than to two copies of it.
+            // Absolute, so both spellings resolve to the one stub rather than two copies of it.
             DEV ? {} : {
                 './dev/index.js': join(HERE, 'dev', 'none.js'),
                 '../dev/index.js': join(HERE, 'dev', 'none.js')

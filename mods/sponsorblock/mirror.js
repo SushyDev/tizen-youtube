@@ -1,8 +1,6 @@
-// Empty boxes standing in for the bar's ancestors, nested as they nest, so their opacities compose
-// into a product the way YouTube's do.
+// Empty boxes nested as the bar's ancestors nest, so their opacities compose into the same product.
 
-// Transition first, so the change written after it is eased or cut by the new declaration, as
-// YouTube's own is.
+// Transition first, so the change written after it is eased or cut by the new declaration.
 const CARRIED = ['transition', 'opacity', 'transform', 'visibility'];
 
 const carry = (wrapper, layer) => {
@@ -33,8 +31,7 @@ const nest = (parent, wrappers) => {
     return nest(wrappers[0].element, wrappers.slice(1));
 };
 
-// Rebuilt only when the ancestors change: a new box starts at the value it is heading for, so a
-// fade beginning in the same frame would arrive as a jump.
+// Rebuilt only when the ancestors change, since a new box starts at its end value and a fade begun in the same frame arrives as a jump.
 const structureOf = (layers) => layers.map((layer) => layer.name).join(' < ');
 
 export { carry, wrapperFor, nest, structureOf };

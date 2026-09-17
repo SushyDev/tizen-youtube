@@ -38,15 +38,13 @@ const showWaiting = (waiting) => {
 };
 
 export const heard = (body, again) => {
-    // Whether this reply is the answer to an ask that carried the request for a deep check.
     const checked = held.stuck && !held.diagnosed;
 
     answering();
     showFacts(body.facts);
     showLog(body);
 
-    // The service says something is wrong rather than slow, and the checks it just ran are on
-    // screen, so this is the moment the viewer can be asked to report it.
+    // The checks the service just ran are on screen, so this is the moment to ask for a report.
     if (checked) {
         held.diagnosed = true;
         if (body.waiting && body.waiting.tone === 'bad') sayHelp();

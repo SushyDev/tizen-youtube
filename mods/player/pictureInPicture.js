@@ -189,9 +189,6 @@ const observerPipEnter = new MutationObserver(() => {
     }
 });
 
-// Armed only while the mini player is up. It used to observe document.body with subtree for the
-// life of the page, and its first line was `if (!window.isPipPlaying) return` — so every DOM
-// change in the app woke it to do nothing.
 const watchForSearchBar = () => observerPipEnter.observe(document.body, { childList: true, subtree: true });
 const stopWatchingForSearchBar = () => observerPipEnter.disconnect();
 

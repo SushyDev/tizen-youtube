@@ -1,7 +1,5 @@
 'use strict';
 
-// What Omaha needs to know about the Cobalt this set shipped with, read from its own files.
-
 const fs = require('fs');
 const path = require('path');
 

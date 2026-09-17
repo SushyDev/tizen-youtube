@@ -1,5 +1,3 @@
-// The boot screen: a dmesg-style log shown until YouTube can load.
-
 import { service, written } from './config.js';
 import { engine } from './engine.js';
 import { evergreen } from './evergreen.js';

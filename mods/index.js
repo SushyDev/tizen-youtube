@@ -38,9 +38,8 @@ register('rapid press', 'ui', startRapidPress);
 register('smooth navigation', 'ui', startSmoothNavigation);
 register('playback speed', 'ui', startSpeed);
 
-// Taking over JSON.parse seals registration, so it is a phase rather than a last line.
+// Taking over JSON.parse seals registration.
 register('json', 'intercept', interceptJson);
 
-// Synchronous, and it has to stay that way: the start page writes what kabuki's own script reads
-// as it starts, which works only because ours is parser-inserted.
+// Must stay synchronous: the start page writes what kabuki's own script reads as it starts, which works only because ours is parser-inserted.
 boot();

@@ -1,7 +1,5 @@
 'use strict';
 
-// The proxy end to end against a local upstream.
-
 process.env.TUBE_PROXY_HOST = 'tv.example';
 
 delete global.AbortController;
@@ -24,7 +22,6 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  <- ${detail}`}`);
 };
 
-// Truncates the first response and answers the second in full.
 const truncation = { asked: 0 };
 
 const upstream = http.createServer((req, res) => {

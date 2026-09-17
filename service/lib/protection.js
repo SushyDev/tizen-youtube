@@ -1,7 +1,7 @@
 'use strict';
 
-// googlevideo opens each UMP media answer with STREAM_PROTECTION_STATUS. The player reports a
-// refusal only as a timeout, so this is the one place attestation shows in the log.
+// The player reports an attestation refusal only as a timeout, so the STREAM_PROTECTION_STATUS
+// googlevideo opens each UMP answer with is the one place it shows.
 
 const postmortem = require('./postmortem.js');
 

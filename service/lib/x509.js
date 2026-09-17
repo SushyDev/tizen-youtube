@@ -1,10 +1,8 @@
 'use strict';
 
-// Issues a CA and leaf certificates by writing the DER directly, since Node's crypto cannot.
+// The DER is written by hand because Node's crypto cannot issue certificates.
 
 const crypto = require('crypto');
-
-// -- DER -----------------------------------------------------------------------------------------
 
 const length = (n) => {
     if (n < 0x80) return Buffer.from([n]);
@@ -89,8 +87,6 @@ const utcTime = (date) => {
     ));
 };
 
-// -- names ---------------------------------------------------------------------------------------
-
 const name = (commonName) => sequence(set(sequence(oid(OID.commonName), utf8(commonName))));
 
 // OpenSSL hashes the canonical name: UTF8String values, ASCII lower-cased, whitespace collapsed,
@@ -113,11 +109,9 @@ const subjectHashes = (commonName) => ({
     hashOld: hashName('md5', name(commonName))
 });
 
-// -- certificates --------------------------------------------------------------------------------
-
 const algorithm = sequence(oid(OID.sha256WithRSA), nul);
 
-// Built rather than exported, so the BIT STRING contents are in hand for the key identifier.
+// The BIT STRING contents are needed in hand for the key identifier.
 const publicKeyInfo = (key) => {
     const pkcs1 = crypto.createPublicKey(key).export({ type: 'pkcs1', format: 'der' });
 

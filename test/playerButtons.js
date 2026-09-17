@@ -1,5 +1,3 @@
-// Player buttons, dressed in the transport-controls response.
-
 import assert from 'assert';
 
 global.window = { localStorage: { 'tube.settings': '{}' }, addEventListener: () => undefined };

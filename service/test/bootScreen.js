@@ -1,8 +1,5 @@
 'use strict';
 
-// The boot screen a container shows while the service starts, bundled from service/boot/ and run
-// against a stand-in page.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -192,8 +189,7 @@ const checks = (script) => {
     check('it says which build wrote the page, and when', has(handed.lines, `tube: page written 0s ago by service pid ${process.pid}, patch `));
     check('a refused ask is named at once', has(slow.lines, 'service: 127.0.0.2:8099: refused at once'));
 
-    // A viewer watching a screen count seconds cannot tell it is waiting on them, and the page is
-    // reached from a phone over the network rather than the path that just failed.
+    // The page is reached from a phone over the network rather than the path that just failed.
     check('the first resistance already points at the page that explains it',
         has(slow.lines, CONFIG.diag) && CONFIG.diag.indexOf('/diag') !== -1,
         slow.lines.map((line) => line.text).join(' | '));
@@ -202,8 +198,8 @@ const checks = (script) => {
 
     check('and once rather than on every retry', advised(slow.lines) === 1, `said ${advised(slow.lines)} times`);
 
-    // The screen keeps only the last 34 lines, so a line said at the first refusal scrolls away
-    // during a long wait. The give-up names the page again, which is why that one is kept for last.
+    // The screen keeps only the last 34 lines, so the line said at the first refusal has scrolled
+    // away by the time of the give-up.
     check('a silence long enough to scroll it away still ends by naming the page',
         has(silent.lines, CONFIG.diag), CONFIG.diag);
     check('and the other addresses are asked too, without a verdict at first', has(slow.lines, 'service: nor at 127.0.0.1:8099 yet'));
@@ -239,7 +235,6 @@ const checks = (script) => {
         blocked.asked.filter((url) => url.indexOf('stuck=1') !== -1).join(' '));
     check('and says where to read the whole log', has(blocked.lines, `${CONFIG.journal}`), CONFIG.journal);
     check('and where to report it', has(blocked.lines, 'https://discord.gg/') && has(blocked.lines, 'github.com/SushyDev/tizen-youtube'));
-    // The happy path pays nothing: only a start that met resistance asks for it.
     const quick = run(script, [ready], 6);
     check('a start that answers at once never asks for the deep check',
         quick.asked.every((url) => url.indexOf('stuck=1') === -1), quick.asked.join(' '));

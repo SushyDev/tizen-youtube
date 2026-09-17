@@ -1,11 +1,8 @@
 'use strict';
 
-// Runs one expression in a page carrying the dev bridge and returns what it evaluated to.
-
 const http = require('http');
 
-// The service's own override, so the Cobalt suite can run a bridge beside a set's without either
-// answering for the other.
+// The service's own override, so a Cobalt-suite bridge can run beside a set's.
 const PORT = Number(process.env.TUBE_DEV_PORT) || 8097;
 const ANSWER_SECONDS = 20;
 

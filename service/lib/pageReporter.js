@@ -1,7 +1,5 @@
 'use strict';
 
-// What the served page reports before the userscript runs: its errors, and whether the userscript did.
-
 // Each runs in the page from its own source, so it reaches nothing outside itself.
 const report = (page, to) => {
     const send = (message) => {
@@ -14,7 +12,7 @@ const report = (page, to) => {
     page.addEventListener('unhandledrejection', (event) => send(`rejection: ${reasonOf(event && event.reason)}`));
 };
 
-// A changed fetch is proof the userscript ran; timestamped, as each distinct line is logged once.
+// A changed fetch is proof the userscript ran, and the timestamp keeps each line distinct.
 const booted = (page, to) => {
     const ran = page.fetch !== page.__tubeFetch ? 'fetch patched by the userscript' : 'fetch untouched';
     const at = new Date().toISOString().slice(11, 19);

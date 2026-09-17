@@ -1,16 +1,13 @@
 import { categoryOf, findCategory, textOf } from './settingsResponse.js';
 
-// YouTube's own rows moved into our categories, so no setting is shipped twice.
-
 const SUBSCRIPTION = 'tube_subscription';
 const PARENTAL = 'tube_parental';
 const HISTORY = 'SETTING_CAT_TVHTML5_HISTORY';
 const PLAYBACK = 'tube_playback';
 const FEED = 'tube_feed';
 
-// Matched on whichever of the three the build actually carries: the item id, the client setting
-// it writes, or the title. A row identified only by title survives a renamed id and not a
-// translated page, which is why it is the last of the three rather than the only one.
+// Matched on the item id, the client setting it writes, or the title, title last because it
+// survives a renamed id but not a translated page.
 const MOVES = [
     { to: SUBSCRIPTION, id: 'PREMIUM_LANDING_PAGE', title: 'Get YouTube Premium' },
     { to: SUBSCRIPTION, id: 'MANAGE_PURCHASES_AND_MEMBERSHIPS', title: 'Purchases and memberships' },
@@ -21,8 +18,6 @@ const MOVES = [
     { to: FEED, setting: 'ENABLE_PREVIEWS_WITH_SOUND', title: 'Previews' }
 ];
 
-// Categories that exist only to hold what was moved, so they are added only when something
-// actually landed in them.
 const ADDED = [
     { id: SUBSCRIPTION, title: 'Subscription' },
     { id: PARENTAL, title: 'Parental controls' }
@@ -43,8 +38,7 @@ const clientSettingOf = (renderer) => {
     return chosen ? chosen.item : '';
 };
 
-// Only a move with somewhere to land counts: taking a row out and then failing to find its
-// destination would lose it from the page entirely.
+// A row taken out without a reachable destination would be lost from the page entirely.
 const moveFor = (row, reachable) => {
     const renderer = rendererOf(row);
     if (!renderer) return null;
@@ -85,8 +79,8 @@ const takeMoved = (items) => {
         found.items = rows.filter((entry) => !entry.move).map((entry) => entry.row);
     });
 
-    // Emptied categories are removed after the walk, not during it: splicing mid-iteration skips
-    // whatever followed each removal.
+    // Emptied categories are removed after the walk: splicing mid-iteration skips whatever
+    // followed each removal.
     categories
         .filter(({ found }) => found.items.length === 0)
         .forEach(({ item }) => items.splice(items.indexOf(item), 1));
@@ -94,8 +88,6 @@ const takeMoved = (items) => {
     return taken;
 };
 
-// `first` rows go above whatever the category already holds — a device recommendation belongs at
-// the top of History, not appended under it.
 const putMoved = (items, taken) => {
     Object.keys(taken).forEach((categoryId) => {
         const found = findCategory(items, categoryId);

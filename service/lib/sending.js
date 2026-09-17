@@ -1,8 +1,5 @@
 'use strict';
 
-// Sends a request upstream and repeats it once when the connection, the header size or a truncated
-// body was the problem, never for a streamed body.
-
 const fetch = require('node-fetch');
 const http = require('http');
 const https = require('https');
@@ -10,8 +7,7 @@ const https = require('https');
 const postmortem = require('./postmortem.js');
 const bigheaders = require('./bigheaders.js');
 
-// A booting page opens about thirty requests at once, so the pool must be wide enough that a few
-// stalled sockets cannot queue the rest.
+// A booting page opens about thirty requests at once.
 const MOST_SOCKETS = 64;
 
 // No socket timeout: a paused SABR stream is an idle socket, and a timeout would cut playback.
@@ -20,8 +16,7 @@ const httpsAgent = new https.Agent(AGENT_OPTIONS);
 const httpAgent = new http.Agent(AGENT_OPTIONS);
 const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
 
-// Only the wait for headers is bounded, so a stalled request frees its socket and a streaming body
-// is never cut.
+// Only the wait for headers is bounded, so a streaming body is never cut.
 const HEADERS_DEADLINE = 20000;
 
 const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
@@ -91,8 +86,6 @@ const send = (url, req, headers, fresh) => {
 
 const textOf = (response) => response.text().then((text) => ({ response, text }));
 
-// A body cut off by a dead socket is fetched once more, on a fresh connection, instead of answering
-// the page with a 500.
 const readText = (response, url, req, headers) => textOf(response).catch((error) => {
     if (!isRetriable(error) || !isRepeatable(req)) throw error;
 

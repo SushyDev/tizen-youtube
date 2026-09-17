@@ -3,12 +3,10 @@ import { chosenLabel, chosenSummary } from './settingsModel.js';
 import { optionsCommand, storeCommand } from './settingsOptions.js';
 import { category, runs } from './settingsResponse.js';
 
-// Our own settings, drawn as YouTube's own rows.
-
 const picture = (url) => ({ thumbnails: [{ url }] });
 
-// Prefixed, because the id is what the DOM claim matches on and the page holds YouTube's own rows
-// under ids of the same shape.
+// Prefixed because the id is what the DOM claim matches on, and YouTube's own rows use ids of
+// the same shape.
 const idFor = (item) => `TUBE_${item.key || item.id}`;
 
 const switchRow = (item) => ({
@@ -24,8 +22,7 @@ const switchRow = (item) => ({
     }
 });
 
-// A getter rather than a value: the label says what is currently chosen, and the row object
-// outlives the choice. Read at draw time, it is right every time the panel reopens.
+// A getter rather than a value: the row object outlives the choice, so the label is read at draw time.
 const openerRow = (item, path, label) => {
     const row = {
         title: runs(item.title),
@@ -47,8 +44,7 @@ const rowFor = (item, path) =>
             ? openerRow(item, path, () => `${item.prefix}: ${chosenLabel(item)}`)
             : openerRow(item, path, () => chosenSummary(item));
 
-// The path is where the option panel finds this item again when the row is opened: which group,
-// then which item within it.
+// The path is how the option panel finds this item again: which group, then which item within it.
 const categoryFor = (group, groupIndex) => category(
     group.id,
     group.title,

@@ -45,8 +45,7 @@ jobs:
           docker system prune -af >/dev/null
           df -h /
 
-      # Bound to a cached host path, since compose otherwise keeps ccache in a Docker volume
-      # nothing saves.
+      # Bound to a cached host path: compose otherwise keeps ccache in a Docker volume nothing saves.
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -54,8 +53,8 @@ jobs:
           key: cobalt-ccache-${{ env.COBALT_REF }}-${{ github.run_id }}
           restore-keys: cobalt-ccache-${{ env.COBALT_REF }}-
 
-      # The plain cobalt target, because the compose command builds the Evergreen library whose
-      # loader is unpublished.
+      # The plain cobalt target: the compose command builds the Evergreen library whose loader is
+      # unpublished.
       - name: Build cobalt
         working-directory: cobalt
         env:

@@ -1,7 +1,5 @@
 'use strict';
 
-// The userscript in Cobalt, against real YouTube.
-//
 //   node test/cobalt/run.js [--image ghcr.io/…/cobalt:latest]
 
 const { spawn } = require('child_process');

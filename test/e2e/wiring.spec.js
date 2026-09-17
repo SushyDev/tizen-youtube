@@ -1,5 +1,3 @@
-// That every feature is registered, reached, and survived contact with a real page.
-
 import { test, expect, APP } from './tube.js';
 
 // What register.js says when a feature does not start, and when one registers too late to run.

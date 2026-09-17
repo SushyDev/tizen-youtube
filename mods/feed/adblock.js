@@ -1,7 +1,5 @@
 import { GRID, PIVOT, SHELF, TILES, configRead, keepShelf, keepTile, onRequest, onResponse } from '../../framework/index.js';
 
-// Advert suppression, gated by enableAdBlock.
-
 const blocking = () => configRead('enableAdBlock');
 
 onResponse('adverts', ['adPlacements', 'adSlots', 'playerAds', 'entries'], (r) => {

@@ -1,11 +1,7 @@
 'use strict';
 
-// The page at /diag, read on a phone rather than on the television.
-//
-// Server-rendered, with no stylesheet, no script and nothing fetched: it is opened from a LAN that
-// may have no route to the internet, and a page that needs a CDN to render fails exactly when it
-// is wanted. The elements carry it — <details> opens itself when something failed, <meter> draws
-// the tally, <strong> marks a failure in the browser's own bold.
+// Opened from a LAN that may have no route to the internet, so nothing is fetched and the plain
+// elements carry the page.
 
 const os = require('os');
 
@@ -21,7 +17,7 @@ const escaped = (value) => String(value === null || value === undefined ? '' : v
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-// Said plainly, because "null" on a diagnostics page reads as a fault rather than a blank.
+// "null" on a diagnostics page reads as a fault rather than a blank.
 const shown = (value) => (value === null || value === undefined || value === '' ? 'not readable here' : value);
 
 const seconds = () => Math.round(process.uptime());
@@ -41,8 +37,7 @@ const item = (found) => `<li class="${found.ok ? 'ok' : 'bad'}">`
 // The address the phone already reached us on, so the log link works from the same network.
 const at = (host) => `http://${(host || 'localhost').replace(/:\d+$/, '')}:${ports.PROXY}`;
 
-// Where else this set answers. The loopbacks are not worth printing — they are the same on every
-// television — but which LAN address it took is the thing a viewer is asked for and cannot find.
+// The LAN address is the thing a viewer is asked for and cannot find.
 const onTheNetwork = () => {
     const interfaces = os.networkInterfaces();
 

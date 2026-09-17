@@ -1,7 +1,5 @@
 'use strict';
 
-// Starting our app over Samsung's container.
-
 const postmortem = require('./postmortem.js');
 const { CONTAINER, appId } = require('./cobaltConfig.js');
 

@@ -1,7 +1,6 @@
 'use strict';
 
-// Everything the container route needs, checked one by one. Run only when the boot screen says it
-// is stuck: the happy path must stay fast.
+// Run only when the boot screen says it is stuck, because the happy path must stay fast.
 
 const fs = require('fs');
 const path = require('path');
@@ -44,8 +43,6 @@ const claim = () => result('container', !!container(), container()
     ? `${appId()} runs ${container()} with ${switches()}`
     : 'this widget claims no container slot, so nothing of ours can run');
 
-// Stock YouTube claims this slot too. Whoever launches the container decides its switches, and a
-// container already up is one we may not close — so ours opens into theirs and never reaches us.
 const named = (others) => others
     .map((one) => `${one.name} (${one.id})${one.baseUrl ? ` → ${one.baseUrl}` : ''}`)
     .join(', ');
@@ -53,8 +50,7 @@ const named = (others) => others
 const slot = () => {
     const others = claimants.rivals();
 
-    // container() is null on a widget whose config.xml would not read, which the container check
-    // already says; a rival always carries the slot it claims.
+    // container() is null on a widget whose config.xml would not read.
     const ours = container() || 'the container slot';
 
     if (others === null) return result('container slot', true, 'the installed apps have not been surveyed yet');
@@ -72,8 +68,8 @@ const slot = () => {
         + 'at the plug for 30 seconds (standby is not enough) and open this app first.');
 };
 
-// The CA's key, the boot screen and Evergreen's record all live here. A partition that is full or
-// read-only otherwise surfaces as whichever write throws first, half way through a start.
+// A full or read-only partition otherwise surfaces as whichever write throws first, half way
+// through a start.
 const writable = () => {
     const probe = path.join(SHARE, '.writable');
 
@@ -89,8 +85,7 @@ const writable = () => {
     }
 };
 
-// Three files must agree on this port and only the packager compares them, so a set can still come
-// up with TUBE_PROXY_PORT having moved one of them.
+// Three files must agree on this port and only the packager compares them.
 const proxyPort = () => {
     const named = /--proxy=http:\/\/[^:\s]+:(\d+)/.exec(switches() || '');
     if (!named) return result('proxy port', true, 'no --proxy switch names a port');
@@ -102,7 +97,6 @@ const proxyPort = () => {
         : `the container is aimed at ${aimed} but we listen on ${ports.PROXY}, so nothing it asks for reaches us`);
 };
 
-// Worked out at startup and otherwise only written to the log.
 const addressed = () => {
     const cobalt = cobaltIfItLoads();
     const found = cobalt && cobalt.addressing();
@@ -114,9 +108,8 @@ const addressed = () => {
 
 const day = (at) => new Date(at).toISOString().slice(0, 10);
 
-// A certificate this set issued cannot have been signed in the future: read that way, the clock is
-// wrong, and every TLS handshake fails with nothing on screen to say why. Left out rather than
-// failed where the runtime cannot read a certificate at all.
+// A certificate dated in the future means the clock is wrong, and every TLS handshake then fails
+// with nothing on screen to say why.
 const clock = () => {
     const material = existingMaterial();
     if (!material || !crypto.X509Certificate) return null;
@@ -147,8 +140,7 @@ const ours = (content) => {
         : `${content} is empty or unreadable, so Cobalt has nothing to run`);
 };
 
-// Cobalt exits before any page when its ICU data does not match the library, which is what an
-// Evergreen update against an older copy looks like.
+// Cobalt exits before any page when its ICU data does not match the library.
 const icu = (content) => {
     const entries = listing(path.join(content, 'icu'));
 
@@ -207,7 +199,7 @@ const network = () => {
     return result('youtube', found.ok !== false, `${found.host}: ${found.why}`);
 };
 
-// Answered rather than thrown: a check that cannot run must not stop the rest.
+// A check that cannot run must not stop the rest.
 const guarded = (name, run) => {
     try {
         return run();
@@ -222,8 +214,7 @@ const all = () => {
     return [
         guarded('cobalt', builtIn),
         guarded('container', claim),
-        // Only where served() is reliable: the 5.0 widget has no boot screen and no CONNECT, so
-        // silence there would mean nothing.
+        // The 5.0 widget has no boot screen and no CONNECT, so silence there would mean nothing.
         content ? guarded('container slot', slot) : null,
         guarded('share', writable),
         guarded('proxy port', proxyPort),
@@ -241,12 +232,10 @@ const all = () => {
 
 const worded = (found) => `${found.ok ? 'ok' : 'FAILED'}: ${found.name} — ${found.detail}`;
 
-// Run without a trace, for a page that may be reloaded: writing to the journal on every read would
-// push out the history the reader is being asked to report.
+// Writing to the journal on every read would push out the history the reader is being asked to
+// report.
 const checks = () => all();
 
-// Noted as well as answered, so the boot screen shows them through the log it already streams and
-// /__tube/log keeps them for whoever is asked to report it.
 const diagnose = () => {
     const found = checks();
     const failed = found.filter((one) => !one.ok);

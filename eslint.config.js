@@ -78,21 +78,16 @@ const CORRECTNESS_RULES = {
 };
 
 
-// Style rules: const only, no loops, no classes, no IIFEs.
-//
-// These files are exempt because live sibling branches own them and a reshape here would conflict
-// on every restack. They are the follow-up, not an exception in principle.
+// Exempt because live sibling branches own them and a reshape here would conflict on every restack.
 const SIBLING_OWNED = [
     'mods/player/pictureInPicture.js'
 ];
 
-// Every layer, not only the ones that ship: the build scripts are read as often as the mods are.
 const STYLED = [
     'service/**/*.js', 'framework/**/*.js', 'mods/**/*.js',
     'tools/**/*.js', 'tools/**/*.mjs'
 ];
 
-// Tests are exempt.
 const UNSTYLED = SIBLING_OWNED.concat([
     'service/test/**/*.js',
     'test/**/*.js'
@@ -123,8 +118,7 @@ const STYLE_SELECTORS = [
     { selector: 'CallExpression > FunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' }
 ];
 
-// Not style: the same userscript ships to Cobalt 20, where both of these are absolute. Documented
-// in ARCHITECTURE.md, and until now enforced by nothing.
+// The same userscript ships to Cobalt 20, where both of these are absolute.
 const ENGINE_FLOOR_SELECTORS = [
     {
         selector: "NewExpression[callee.name='URL']",
@@ -136,7 +130,6 @@ const ENGINE_FLOOR_SELECTORS = [
     }
 ];
 
-// What framework/ and mods/ are held to: the house style, plus the engine floor.
 const BROWSER_SYNTAX = STYLE_SELECTORS.concat(ENGINE_FLOOR_SELECTORS);
 
 const STYLE_RULES = {
@@ -200,8 +193,8 @@ module.exports = [
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
-            // A test that stands in for the page stubs what the page would have provided, so the
-            // shipped code it exercises can be copied verbatim rather than adapted to run here.
+            // A test standing in for the page stubs what the page provides, so shipped code can be
+            // exercised verbatim.
             globals: Object.assign({}, NODE_GLOBALS, {
                 window: 'readonly',
                 document: 'readonly',
@@ -217,7 +210,6 @@ module.exports = [
         rules: STYLE_RULES
     },
 
-    // var is banned everywhere, tests included; let too, outside the sibling-owned files.
     {
         files: STYLED.concat(['test/**/*.js', '*.js']),
         ignores: SIBLING_OWNED,
@@ -256,7 +248,6 @@ module.exports = [
             }]
         }
     },
-    // The browser layers carry the engine floor as well as the style rules.
     {
         files: ['framework/**/*.js', 'mods/**/*.js'],
         ignores: UNSTYLED,
@@ -279,8 +270,7 @@ module.exports = [
         }
     },
 
-    // Not shipped and not Node either: a classic script injected into the page by the dev service.
-    // Held to the same engine floor as the userscript, because it runs in the same engine.
+    // Not shipped and not Node: a classic script the dev service injects into the page.
     {
         files: ['tools/dev/remote.js'],
         languageOptions: {

@@ -1,10 +1,6 @@
 'use strict';
 
-// Everything the container route offers is a convenience laid on a proxy that has to start
-// regardless, so a cobalt.js that will not load costs the container and nothing else.
-//
-// Four files carried their own copy of this, two noting the failure and two swallowing it. Asked
-// once and remembered, so the note is written once however many callers there are.
+// A cobalt.js that will not load costs the container route and nothing else.
 
 const postmortem = require('./postmortem.js');
 

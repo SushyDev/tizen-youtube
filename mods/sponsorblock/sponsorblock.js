@@ -3,8 +3,6 @@ import { segmentsFor } from './segmentApi.js';
 import { segmentOverlay } from './segmentOverlay.js';
 import { autoSkipper } from './autoSkip.js';
 
-// One video's SponsorBlock session, torn down on navigation.
-
 const WAIT_EVERY = 100;
 
 const SKIPPABLE = [
@@ -34,8 +32,7 @@ const sponsorBlockFor = (videoID) => {
         onDurationChange: null
     };
 
-    // The video element is replaced across navigations, so this is re-entrant: it cancels its own
-    // outstanding wait before starting another.
+    // The video element is replaced across navigations, so this cancels its own outstanding wait before starting another.
     function attachVideo() {
         if (held.stopWaitingForVideo) held.stopWaitingForVideo();
         held.stopWaitingForVideo = null;
@@ -68,8 +65,7 @@ const sponsorBlockFor = (videoID) => {
 
         held.onTick = () => held.skipper.schedule();
 
-        // The duration is what every bar's width is a fraction of, so it is also the moment the
-        // overlay becomes drawable — including when the video element arrived after this did.
+        // Duration is what every bar's width is a fraction of, so it is the moment the overlay becomes drawable.
         held.onDurationChange = () => held.overlay.show();
 
         attachVideo();
@@ -95,8 +91,7 @@ const sponsorBlockFor = (videoID) => {
         held.video = null;
     };
 
-    // A getter, because the segments arrive after the session does and the parts of SponsorBlock
-    // that dress the player ask for them whenever the player asks them for a button.
+    // A getter, because the segments arrive after the session does.
     return {
         videoID,
         get segments() { return held.segments; },

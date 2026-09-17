@@ -1,8 +1,5 @@
 'use strict';
 
-// /__tube/log as one continuous journal: the page's lines land in it, a rotation does not cut it,
-// and what the service prints or how its last run ended are in it too.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

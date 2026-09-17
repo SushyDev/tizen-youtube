@@ -31,9 +31,7 @@ const userScript = {
         json(),
         string({ include: '**/*.css' }),
         nodeResolve({ browser: true, preferBuiltins: false }),
-        // Narrowed to node_modules: nothing under framework/ or mods/ is CommonJS, and running
-        // the interop transform over first-party ESM makes it less statically analysable than
-        // leaving it alone.
+        // Narrowed to node_modules: nothing under framework/ or mods/ is CommonJS.
         commonjs({ include: [/node_modules/] }),
         replace({
             preventAssignment: true,

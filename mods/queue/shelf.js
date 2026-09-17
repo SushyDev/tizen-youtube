@@ -1,7 +1,5 @@
 import { PIVOT, ShelfRenderer, TileRenderer, onSurface } from '../../framework/index.js';
 
-// The queue, as a shelf at the top of the watch-next pivot.
-
 const queued = () => (window.queuedVideos && window.queuedVideos.videos) || [];
 
 const openAt = (rows) =>

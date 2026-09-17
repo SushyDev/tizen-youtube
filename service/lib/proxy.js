@@ -1,8 +1,5 @@
 'use strict';
 
-// The proxy the app is served through. youtube.com comes back from here so the userscript can be
-// injected into it and the page can reach anything it needs to.
-
 const express = require('express');
 
 const { USER_SCRIPT, read } = require('./shipped.js');
@@ -30,17 +27,16 @@ const TEXTUAL = ['text/html', 'application/json', 'javascript', 'text/css'];
 const STRIPPED_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'alt-svc'];
 const CSP_HEADER = 'content-security-policy';
 
-// How many intercepted requests to write to the log on disk before falling quiet: inside the
-// container this is the only record of what was asked for, and it must not fill the partition.
+// Inside the container this log is the only record of what was asked for, and it must not fill
+// the partition.
 const TRACE_LIMIT = 40;
 
 const state = { traced: 0 };
 
-// Readable.destroy arrived in node 8; before it the stream is unhooked and drained instead.
+// Readable.destroy arrived in node 8.
 const release = (stream) => (typeof stream.destroy === 'function' ? stream.destroy() : stream.unpipe().resume());
 
-// A wildcard is refused for a request that carries cookies, so when the page names itself the
-// answer names it back.
+// A wildcard is refused for a request that carries cookies.
 const allowOrigin = (req, res) => {
     const asked = req.get('origin');
     res.setHeader('Access-Control-Allow-Origin', asked || '*');
@@ -68,7 +64,6 @@ const create = () => {
         // Our own /__tube/ requests would drown the page's in the journal.
         if (watching && !ours) dev.journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
 
-        // Noted when answered, so the status shows what the page actually got back.
         if (tracing && !ours) {
             state.traced += 1;
             res.on('finish', () => postmortem.note('req',
@@ -78,8 +73,7 @@ const create = () => {
         return next();
     });
 
-    // A credentialed preflight reads `*` as a refusal, so the origin of our own pages and the
-    // headers asked for are named back.
+    // A credentialed preflight reads `*` as a refusal.
     app.use((req, res, next) => {
         const asked = req.get('origin');
         const ours = asked === YOUTUBE_ORIGIN || asked === localOrigin();
@@ -139,8 +133,7 @@ const copyHeaders = (req, res, response, route) => {
 
     allowOrigin(req, res);
 
-    // SABR redirects between googlevideo hosts, so Location is pointed back through /cors-bypass/
-    // or the hop fails CORS.
+    // SABR redirects between googlevideo hosts, and a hop that leaves the bypass fails CORS.
     const movedTo = response.status >= 300 && response.status < 400 && response.headers.get('location');
     if (route.isBypass && movedTo && /^https?:\/\//.test(movedTo)) {
         res.setHeader('Location', proxyPrefix() + movedTo);
@@ -169,8 +162,7 @@ const attachFallback = (app) => {
         // handler answers those by exiting.
         res.on('error', () => res.destroy());
 
-        // Never leave the client waiting on a request we have given up on: the container answers a
-        // hung page by retrying for ever behind a network error.
+        // The container answers a hung page by retrying for ever behind a network error.
         const fail = (what, error) => {
             postmortem.note('upstream', `${what} on ${route.url.slice(0, 90)}: ${postmortem.describe(error)}`);
             dev.journal.service('failed', `${what} ${route.url.slice(0, 110)}`);
@@ -192,9 +184,6 @@ const attachFallback = (app) => {
 
                     if (!response.body) return res.end();
 
-                    // A viewer who closes the page leaves a media stream being pulled into a socket
-                    // nothing reads; and a source that breaks mid-pipe would otherwise hang the
-                    // client for ever.
                     // A break after the viewer dropped the stream is our own release, not upstream's.
                     const dropped = { yes: false };
                     res.on('close', () => {
@@ -240,7 +229,6 @@ const attachFallback = (app) => {
 
     return app;
 };
-// Each page load gets its own trace, so a launch that failed before a working one is still on record.
 const retrace = () => {
     state.traced = 0;
 };

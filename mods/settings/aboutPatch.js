@@ -1,6 +1,3 @@
-// Names the running build on Settings → About: nothing else on the set tells a page that looks
-// unchanged apart from a build that never installed.
-
 import { redrawSettingRows } from './settingComponents.js';
 import { COMMIT, TREE, VERSION, sourceOf } from '../../framework/index.js';
 
@@ -34,7 +31,7 @@ const withPatch = (original) => function withTubePatch(props, values) {
     return original.call(this, props, grown);
 };
 
-// Remembered per class: this runs for every component the app builds.
+// Runs for every component the app builds, so the answer is remembered per class.
 const isVersionPanel = (component) => {
     if (!state.panels.has(component)) {
         state.panels.set(component, Object.getOwnPropertyNames(component)
@@ -74,8 +71,7 @@ const liveComponent = () => {
     return drawn && drawn.__instance;
 };
 
-// Hooks the shared base class because the panel's own class is not loaded until its row is
-// focused.
+// Hooks the shared base class because the panel's own class is not loaded until its row is focused.
 function claimVersionPanel() {
     if (state.claimed) return true;
 

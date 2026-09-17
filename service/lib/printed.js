@@ -1,6 +1,6 @@
 'use strict';
 
-// What node and libraries print goes nowhere on a TV, so it is noted too.
+// What node and libraries print goes nowhere on a TV.
 
 const util = require('util');
 

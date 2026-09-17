@@ -1,7 +1,5 @@
 'use strict';
 
-// The deep check the boot screen asks for when it is stuck.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -24,7 +22,6 @@ require.cache[require.resolve('../lib/claimants.js')] = {
     exports: { survey: () => {}, rivals: () => claimed.rivals }
 };
 
-// The switches a set is launched with, and what startup made of the --proxy host.
 const manifest = { switches: '--proxy=http://127.0.0.2:8099' };
 const addressing = { value: null };
 
@@ -172,7 +169,6 @@ const right = fromChild({ TUBE_MITM_DIR: fixtures }, 'clock');
 
 check('and a clock inside the window passes', right.ok === true, right.detail);
 
-// Nothing to read a certificate with is not a fault; the check is left out instead.
 check('with no certificate at all the clock is not asked about', asked('clock') === undefined);
 
 fs.rmSync(root, { recursive: true, force: true });

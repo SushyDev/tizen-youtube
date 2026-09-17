@@ -9,8 +9,7 @@ const PLAYER = '#movie_player, .html5-video-player';
 
 const held = { report: null, listen: null, lastEval: null };
 
-// The proxy writes __TUBE_NATIVE_PROXY_PATCHES__ into every page it serves, whatever origin the
-// page keeps.
+// The proxy writes __TUBE_NATIVE_PROXY_PATCHES__ into every page it serves, whatever origin.
 export const servedByService = () => typeof window.__TUBE_NATIVE_PROXY_PATCHES__ !== 'undefined';
 
 const safely = (read, fallback) => {
@@ -147,8 +146,6 @@ const apply = (enabled) => {
     held.listen = enabled ? setInterval(collect, LISTEN_EVERY) : null;
 };
 
-// The DEV_TOOLS guard moved to dev/index.js, which is what registers this; a release build never
-// reaches it and terser drops the module whole.
 const start = () => {
     apply(configRead('enableDevBridge'));
 

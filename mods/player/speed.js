@@ -52,8 +52,7 @@ const rememberSpeed = (video) => {
     });
 };
 
-// Swallowed on all three types but only acted on for keydown, so the menu opens once rather than
-// three times. Returning true is what keeps the key from reaching the page.
+// Returning true swallows all three event types, but only keydown opens the menu.
 const claimSpeedKeys = () => onKey('playback speed', SPEED_KEYS, (event) => {
     if (event.type === 'keydown') openSpeedOptions();
     return true;

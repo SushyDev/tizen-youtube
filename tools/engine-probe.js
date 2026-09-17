@@ -10,8 +10,8 @@ const http = require('http');
 const ui = require('./report.js');
 const { DEV } = require('../service/lib/ports.js');
 
-// The reply is JSON twice over: the bridge's envelope, and the probe's own answer inside it.
-// Either layer can be an error page instead, so neither is parsed without a guard.
+// The reply is JSON twice over — the bridge's envelope and the probe's answer inside it — and
+// either layer can be an error page instead.
 function asJson(text) {
     try {
         return JSON.parse(text);
@@ -20,7 +20,6 @@ function asJson(text) {
     }
 }
 
-// Named so the reply reads as a table rather than a list of booleans.
 const PROBE = `(function () {
     const has = {
         'flat (Chrome 69)': typeof [].flat === 'function',

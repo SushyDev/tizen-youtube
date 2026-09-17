@@ -2,8 +2,6 @@ import { DEV_TOOLS } from './flags.js';
 import { report, warn } from './journal.js';
 import { booted } from './register.js';
 
-// One walk of the feed that every tile and shelf visitor registers against.
-
 // A visitor names the surfaces it wants because they differ: a horizontal continuation keeps its
 // shorts tiles.
 const SHELF = 'shelf';
@@ -13,7 +11,6 @@ const GRID = 'grid';
 
 const registry = { tile: [], keepTile: [], shelf: [], keepShelf: [], surface: [] };
 
-// Families some visitor handles; any other is reported in dev builds.
 const UNDERSTOOD = ['tileRenderer', 'lockupViewModel', 'adSlotRenderer'];
 
 const reportUnknownItems = (items, surface) => {
@@ -31,8 +28,6 @@ const reportUnknownItems = (items, surface) => {
 const memo = { held: Object.create(null) };
 
 const add = (bucket, name, surfaces, run) => {
-    // Late registration half-works — every response already parsed went out undressed — which is
-    // worse than not working, because the feed looks fine until it does not.
     if (booted()) warn('feed', `${name} registered after boot; responses already parsed went out undressed`);
 
     registry[bucket] = registry[bucket].concat([{ name, surfaces, run }]);
@@ -103,12 +98,11 @@ const walkShelves = (shelves, surface) => {
     const doomed = shelves.filter((shelf) =>
         !keepers.every((entry) => guarded(entry, () => entry.run(shelf, { surface, shelf }), true)));
 
-    // Splicing during the walk skips whatever followed each removal, so two adjacent shorts shelves
-    // left the second one on screen. Collect them and take them out afterwards.
+    // Splicing during the walk skips whatever followed each removal, so removals are collected and
+    // taken out afterwards.
     doomed.forEach((shelf) => shelves.splice(shelves.indexOf(shelf), 1));
 
-    // After the removals, so a mod adding a row is not asked about its own addition and does not
-    // have to reason about indices that are about to move.
+    // After the removals, so a mod adding a row is not asked about its own addition.
     forSurface('surface', surface).forEach((entry) =>
         guarded(entry, () => entry.run(shelves, { surface })));
 };

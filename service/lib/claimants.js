@@ -1,15 +1,13 @@
 'use strict';
 
-// Every installed app claiming a container slot, since another claimant can take our switches.
-
 const postmortem = require('./postmortem.js');
 const { CONTAINER, appId } = require('./cobaltConfig.js');
 
 const NATIVE_ID = 'http://samsung.com/tv/metadata/nativeID';
 const USERDATA = 'http://samsung.com/tv/metadata/native.userdata';
 
-// Kept rather than only logged: a container already running keeps the switches of whichever app
-// launched it, and one we did not start is one we may not close.
+// A container already running keeps the switches of whichever app launched it, and one we did not
+// start is one we may not close.
 const state = { surveyed: false, claims: [] };
 
 const note = (detail) => postmortem.note('claims', detail);
@@ -55,8 +53,7 @@ const report = (apps) => {
     if (refused.length) note(`${refused.length} apps' metadata unreadable: ${refused[0].error}`);
 };
 
-// Apps other than ours on our own slot, or null while the survey has not answered — which is not
-// the same as none, and must not be reported as none.
+// null while the survey has not answered, which is not the same as none.
 const rivals = () => (state.surveyed
     ? state.claims.filter((claim) => claim.slot === CONTAINER && claim.id !== appId())
     : null);

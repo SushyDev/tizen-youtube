@@ -4,8 +4,7 @@ import { sha256 } from '../../framework/index.js';
 
 const API = 'https://sponsor.ajay.app/api';
 
-// poi_highlight is asked for but never skipped: it marks a point, it does not cover a stretch.
-// It is what the "Skip to highlight" button is drawn from.
+// poi_highlight marks a point rather than a stretch, so it is never skipped and only feeds the highlight button.
 const ASKED_FOR = [
     'sponsor', 'intro', 'outro', 'interaction',
     'selfpromo', 'preview', 'filler', 'music_offtopic', 'poi_highlight'

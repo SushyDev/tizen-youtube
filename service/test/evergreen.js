@@ -1,7 +1,5 @@
 'use strict';
 
-// The Evergreen content path against a local Omaha and a local package server.
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -109,7 +107,6 @@ const main = async () => {
         Buffer.concat([crypto.randomBytes(5000), Buffer.from(`${SABI}.': Modifying`), crypto.randomBytes(5000)]));
     fs.writeFileSync(path.join(STOCK, '..', 'manifest.json'), '{ "manifest_version": 2, "name": "Cobalt", "version": "1.6.1" }');
 
-    // Our copy of the built-in content: 21's ICU folder and its fonts.
     fs.mkdirSync(path.join(CONTENT, 'icu', 'icudt56l'), { recursive: true });
     fs.writeFileSync(path.join(CONTENT, 'icu', 'icudt56l', 'root.res'), 'icu 56');
     fs.mkdirSync(path.join(CONTENT, 'fonts'), { recursive: true });

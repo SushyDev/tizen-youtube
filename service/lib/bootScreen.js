@@ -9,6 +9,7 @@ const path = require('path');
 const ports = require('./ports.js');
 const { SCREEN } = require('./pageLines.js');
 const { STAMP } = require('./stamp.js');
+const { DISCORD, REPO } = require('./links.js');
 const { BOOT_PAGE, read } = require('./shipped.js');
 
 const BOOT_URL = 'file:///tube/boot.html';
@@ -31,7 +32,7 @@ const lanAddresses = () => {
 // Tried when the switch's address does not answer, to tell a blocked address from a dead service.
 const alternates = () => ['127.0.0.1'].concat(lanAddresses()).map((address) => `http://${address}:${ports.PROXY}`);
 
-const HELP = { discord: 'https://discord.gg/WjxVnrsV4A', repo: 'https://github.com/SushyDev/tizen-youtube' };
+const HELP = { discord: DISCORD, repo: REPO };
 
 // A LAN address, because the viewer reads this one on a phone and loopback is useless off the set.
 const journal = () => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}/__tube/log`;

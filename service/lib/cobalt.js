@@ -26,7 +26,10 @@ const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.
 
 const state = {
     prepared: null, preparing: false, settled: false, failed: null,
-    lastWake: 0, waiting: [], listeningAt: 0, onListening: []
+    lastWake: 0, waiting: [], listeningAt: 0, onListening: [],
+
+    // What checkAddress() made of the --proxy host, kept so the diagnostics can say it too.
+    addressed: null
 };
 const proxied = { context: null, at: 0, lookedAt: 0 };
 
@@ -47,13 +50,19 @@ const isLoopback = (address) => address === '::1' || String(address).indexOf('12
 // it does not, the alternative is a silent network error with nothing anywhere to explain it.
 const checkAddress = () => {
     const named = /--proxy=http:\/\/([^:\s]+)/.exec(switches() || '');
-    if (!named) return;
+    if (!named) {
+        state.addressed = { ok: true, why: 'no --proxy switch names a host to check' };
+        return;
+    }
 
     const mine = addresses();
     const here = `This set is ${os.hostname()} at ${mine.join(', ')}.`;
 
+    const verdict = (ok, why) => { state.addressed = { ok, why }; };
+
     dns.lookup(named[1], { all: true }, (error, found) => {
         if (error) {
+            verdict(false, `--proxy names ${named[1]}, which does not resolve on this set (${error.code})`);
             return note('unreachable', `--proxy names ${named[1]}, which does not resolve here `
                 + `(${error.code}). ${here}`);
         }
@@ -61,12 +70,19 @@ const checkAddress = () => {
         const resolved = found.map((entry) => entry.address);
         const ours = (address) => isLoopback(address) || mine.indexOf(address) !== -1;
 
-        if (resolved.some(ours)) return undefined;
+        if (resolved.some(ours)) {
+            verdict(true, `--proxy names ${named[1]}, which is this set`);
+            return undefined;
+        }
 
+        verdict(false, `--proxy names ${named[1]}, which resolves to ${resolved.join(', ')} — not this set`);
         return note('misdirected', `--proxy names ${named[1]}, which resolves to `
             + `${resolved.join(', ')} — not this set. ${here}`);
     });
 };
+
+// What checkAddress() concluded, or null before it has run.
+const addressing = () => state.addressed;
 
 const served = () => {
     const now = Date.now();
@@ -84,6 +100,10 @@ const served = () => {
         note('served', e);
     }
 };
+
+// Whether anything from the container has reached us at all, and the context it came from. A slot
+// another app also claims is only a fault when nothing of ours has arrived.
+const contact = () => ({ at: proxied.at, context: proxied.context });
 
 // The claim window counts from the port opening, or the wake if later.
 const whenListening = (then) => {
@@ -333,5 +353,6 @@ const status = () => {
 
 module.exports = {
     prepare, wake, served, listened, status, restart, relaunch, material, container, appId, MITM_DIR,
+    contact, addressing,
     heardOffer: evergreen.heardOffer
 };

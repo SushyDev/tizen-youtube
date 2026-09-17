@@ -41,6 +41,16 @@ const item = (found) => `<li class="${found.ok ? 'ok' : 'bad'}">`
 // The address the phone already reached us on, so the log link works from the same network.
 const at = (host) => `http://${(host || 'localhost').replace(/:\d+$/, '')}:${ports.PROXY}`;
 
+// Where else this set answers. The loopbacks are not worth printing — they are the same on every
+// television — but which LAN address it took is the thing a viewer is asked for and cannot find.
+const onTheNetwork = () => {
+    const interfaces = os.networkInterfaces();
+
+    return Object.keys(interfaces).reduce((all, device) => all.concat(interfaces[device]
+        .filter((entry) => !entry.internal && entry.family === 'IPv4')
+        .map((entry) => entry.address)), []).join(', ');
+};
+
 const page = (host) => {
     const found = checks();
     const failed = found.filter((one) => !one.ok);
@@ -91,6 +101,7 @@ ${pair('Node', known.node)}
 <dt>Service</dt><dd>pid ${escaped(known.pid)}, up <time datetime="PT${seconds()}S">${worded(seconds())}</time></dd>
 ${pair('Host', os.hostname())}
 ${pair('Address', here)}
+${pair('On the network', onTheNetwork())}
 </dl>
 </section>
 </main>

@@ -191,6 +191,21 @@ const checks = (script) => {
 
     check('it says which build wrote the page, and when', has(handed.lines, `tube: page written 0s ago by service pid ${process.pid}, patch `));
     check('a refused ask is named at once', has(slow.lines, 'service: 127.0.0.2:8099: refused at once'));
+
+    // A viewer watching a screen count seconds cannot tell it is waiting on them, and the page is
+    // reached from a phone over the network rather than the path that just failed.
+    check('the first resistance already points at the page that explains it',
+        has(slow.lines, CONFIG.diag) && CONFIG.diag.indexOf('/diag') !== -1,
+        slow.lines.map((line) => line.text).join(' | '));
+
+    const advised = (lines) => lines.filter((line) => line.text.indexOf('to see what, and what to do') !== -1).length;
+
+    check('and once rather than on every retry', advised(slow.lines) === 1, `said ${advised(slow.lines)} times`);
+
+    // The screen keeps only the last 34 lines, so a line said at the first refusal scrolls away
+    // during a long wait. The give-up names the page again, which is why that one is kept for last.
+    check('a silence long enough to scroll it away still ends by naming the page',
+        has(silent.lines, CONFIG.diag), CONFIG.diag);
     check('and the other addresses are asked too, without a verdict at first', has(slow.lines, 'service: nor at 127.0.0.1:8099 yet'));
     check('which comes once the silence lasts', has(slow.lines, 'nor at 127.0.0.1:8099: the service is not running, or is stuck'));
 

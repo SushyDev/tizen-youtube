@@ -34,8 +34,9 @@ const alternates = () => ['127.0.0.1'].concat(lanAddresses()).map((address) => `
 
 const HELP = { discord: DISCORD, repo: REPO };
 
-// A LAN address, because the viewer reads this one on a phone and loopback is useless off the set.
-const journal = () => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}/__tube/log`;
+// A LAN address, because the viewer reads these on a phone and loopback is useless off the set —
+// and a phone reaches the set over the network, which is not the path the container failed on.
+const onTheLan = (route) => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}${route}`;
 
 const configFor = () => ({
     service: SERVICE,
@@ -43,7 +44,8 @@ const configFor = () => ({
     target: `${YOUTUBE}/tv`,
     probeUrl: `${YOUTUBE}/__tube/ping`,
     screen: SCREEN,
-    journal: journal(),
+    journal: onTheLan('/__tube/log'),
+    diag: onTheLan('/diag'),
     help: HELP,
     written: { at: Date.now(), patch: STAMP, pid: process.pid }
 });

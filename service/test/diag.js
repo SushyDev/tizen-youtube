@@ -58,6 +58,10 @@ check('a failing one stands out without a stylesheet',
 check('the checks open themselves when something failed', html.indexOf('<details open>') !== -1);
 check('and the failure is called out at the top', /<strong>\d+ of \d+ checks failed\./.test(html));
 
+// The loopbacks are the same on every set; the address it took from the router is the one a
+// viewer is asked for and cannot find.
+check('it names the addresses this TV answers on', html.indexOf('<dt>On the network</dt>') !== -1);
+
 check('it carries no stylesheet at all', html.indexOf('<style') === -1 && html.indexOf('style=') === -1);
 check('and the count is said at the top', /checks (failed|passed)/.test(html));
 

@@ -107,4 +107,4 @@ const heardOffer = (text) => {
 const settled = () => held.queue;
 const mergedSince = (since) => held.mergedAt >= since;
 
-module.exports = { bootstrap, heardOffer, settled, mergedSince };
+module.exports = { bootstrap, heardOffer, settled, mergedSince, FIRST_YEAR };

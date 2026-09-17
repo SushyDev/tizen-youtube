@@ -27,7 +27,7 @@
     "dev:service": "node service/index.js",
     "deploy": "./install-dev.sh",
     "clean": "node tools/clean.js",
-    "version": "node tools/version.js",
+    "version:show": "node tools/version.js",
     "version:check": "node tools/version.js --check",
     "version:set": "node tools/version.js --set",
     "typecheck": "tsc --noEmit",

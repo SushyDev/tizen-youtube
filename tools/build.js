@@ -15,7 +15,12 @@ const STEPS = [
         label: 'userscript bundle',
         target: 'modern',
         command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
-        after: ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt3']],
+        // Both widgets carry this same bundle, so it is held to the older engine of the two. The
+        // boot screen is checked too: it is the first thing Cobalt runs, and it has no fallback.
+        after: [
+            ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt20']],
+            ['node', ['tools/check-output.js', paths.BOOT_BUNDLE, 'cobalt20']]
+        ],
         outputs: [paths.BUNDLE, paths.BOOT_BUNDLE],
         summarise: (sizes) => ui.bytes(sizes[0])
     },
@@ -53,7 +58,7 @@ function cleanOutput(raw) {
 
 function runStep(step) {
     const started = Date.now();
-    const commands = [step.command].concat(step.after ? [step.after] : []);
+    const commands = [step.command].concat(step.after || []);
 
     try {
         commands.forEach(([command, args]) => execFileSync(command, args, {

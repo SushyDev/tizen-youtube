@@ -21,15 +21,7 @@ const {
 } = require('./rewrites.js');
 
 // A cobalt.js that fails to load costs Evergreen's offers, never the proxy.
-function cobaltIfItLoads() {
-    try {
-        return require('./cobalt.js');
-    } catch (e) {
-        return null;
-    }
-}
-
-const cobalt = cobaltIfItLoads();
+const cobalt = require('./cobaltIfItLoads.js')();
 
 // Cobalt's own update check, read for the package it is offered.
 const UPDATE_CHECK = 'https://tools.google.com/service/update2/json';

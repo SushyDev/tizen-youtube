@@ -10,16 +10,8 @@ const postmortem = require('./postmortem.js');
 const mitm = require('./mitm.js');
 const carrier = require('./carrier.js');
 
-// A cobalt.js that fails to load, which mitm.js notes, costs the served stamp, never the tunnel.
-function cobaltIfItLoads() {
-    try {
-        return require('./cobalt.js');
-    } catch (e) {
-        return null;
-    }
-}
-
-const cobalt = cobaltIfItLoads();
+// A cobalt.js that fails to load costs the served stamp, never the tunnel.
+const cobalt = require('./cobaltIfItLoads.js')();
 
 const ABSOLUTE = /^https?:\/\//i;
 

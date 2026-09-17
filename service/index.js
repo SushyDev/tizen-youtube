@@ -27,16 +27,7 @@ const knobs = require('./lib/knobs.js');
 
 // Guarded, and the guard is the point. Everything the container route needs is a convenience laid
 // on a proxy that has to start regardless.
-function cobaltIfItLoads() {
-    try {
-        return require('./lib/cobalt.js');
-    } catch (e) {
-        postmortem.note('cobalt', `module would not load: ${postmortem.describe(e)}`);
-        return null;
-    }
-}
-
-const cobalt = cobaltIfItLoads();
+const cobalt = require('./lib/cobaltIfItLoads.js')();
 
 const isTV = typeof tizen !== 'undefined';
 

@@ -131,7 +131,7 @@ function main() {
     }
 
     if (check) {
-        ui.note(`${drifted.length} file${drifted.length === 1 ? '' : 's'} out of sync. Run 'npm run version' to bring ${drifted.length === 1 ? 'it' : 'them'} to ${state.source}.`);
+        ui.note(`${drifted.length} file${drifted.length === 1 ? '' : 's'} out of sync. Run 'npm run version:show' to bring ${drifted.length === 1 ? 'it' : 'them'} to ${state.source}.`);
         ui.blank();
         process.exit(1);
     }

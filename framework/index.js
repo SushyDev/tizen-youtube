@@ -6,18 +6,18 @@
 
 export { register, boot } from './register.js';
 export { report, warn } from './journal.js';
-export { every, after, until, stop } from './schedule.js';
+export { every, after, until, stop, running } from './schedule.js';
 export { onKey } from './keys.js';
-export { whenPlayer, whenVideo, PLAYER } from './player.js';
+export { whenPlayer, whenVideo, player, video, PLAYER } from './player.js';
 export { PASS, onCommand, claimCommands } from './commands.js';
 export {
     SHELF, PIVOT, TILES, GRID,
-    onTile, keepTile, keepShelf, onSurface, walkTiles, walkShelves
+    onTile, keepTile, onShelf, keepShelf, onSurface, walkTiles, walkShelves
 } from './feed.js';
 
 export { onResponse, onRequest, interceptJson, clone, nativeJson } from './json.js';
 export {
-    findBySource, findByPrototype, findComponent,
+    findBySource, findByPrototype, findComponent, findResolver,
     resolve, reloadGuide, sourceOf, whenFound, virtualListPrototype, isListMoving
 } from './internals.js';
 

@@ -1,6 +1,8 @@
 // Answers YouTube's feature switches with getters on tectonicConfig.featureSwitches, re-applied
 // whenever the app replaces that object.
 
+import { report } from './journal.js';
+
 const held = {
     answers: new Map(),
 
@@ -14,8 +16,19 @@ const switchesNow = () => {
     return config && typeof config === 'object' ? config.featureSwitches : null;
 };
 
+// The answer runs inside kabuki's own lookup, on YouTube's stack, where our journal would never
+// see it: a mod that throws here would be a page bug rather than a feature that went quiet.
+const answerOf = (name) => {
+    try {
+        return held.answers.get(name)();
+    } catch (failure) {
+        report(`switch:${name}`, 'failed', failure);
+        return undefined;
+    }
+};
+
 const define = (switches, name) => {
-    if (!held.theirs.has(name) || held.answers.get(name)() === undefined) {
+    if (!held.theirs.has(name) || answerOf(name) === undefined) {
         held.theirs.set(name, switches[name]);
     }
 
@@ -23,7 +36,7 @@ const define = (switches, name) => {
         configurable: true,
         enumerable: true,
         get: () => {
-            const mine = held.answers.get(name)();
+            const mine = answerOf(name);
             return mine === undefined ? held.theirs.get(name) : mine;
         }
     });

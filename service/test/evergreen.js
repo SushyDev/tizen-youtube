@@ -145,9 +145,11 @@ const main = async () => {
     await evergreen.bootstrap(CONTENT, STOCK);
     check('and it says when a merge landed', evergreen.mergedSince(beforeBootstrap));
 
-    const years = new Date().getFullYear() - 2016 + 1;
-    check('it asks for every model year', served.asks.length === years && served.asks[0].year === '2016',
-        served.asks.map((ask) => ask.year).join());
+    // Taken from the source rather than spelled again: the first year is evergreen.js's to know.
+    const years = new Date().getFullYear() - evergreen.FIRST_YEAR + 1;
+    check('it asks for every model year', served.asks.length === years
+        && served.asks[0].year === String(evergreen.FIRST_YEAR),
+    served.asks.map((ask) => ask.year).join());
     check('and takes each distinct package offered, once', served.gets.join() === 'a.crx,b.crx', served.gets.join());
     check('adding its ICU beside the ICU and fonts we already had',
         fs.existsSync(path.join(CONTENT, 'icu', 'icudt99l.dat')) && fs.existsSync(path.join(CONTENT, 'icu', 'icudt98l.dat'))

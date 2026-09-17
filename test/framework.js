@@ -6,6 +6,9 @@
 // a handler asked only about responses that carry a key it wanted.
 
 import assert from 'assert';
+import { readFileSync, readdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const listeners = [];
 
@@ -213,6 +216,40 @@ await asyncCheck('a feature that throws does not stop the others', async () => {
     fresh.boot();
 
     assert.deepStrictEqual(order, ['after'], 'the feature after the one that threw never ran');
+});
+
+// -- the public surface --------------------------------------------------------------------------
+
+// Private on purpose: the phase list and the boot flag are register's own, the journal's insides
+// are reached through report and warn, and a mod opens a modal with showModal.
+const PRIVATE = ['PHASES', 'booted', 'send', 'line', 'describe', 'Modal', 'watchPage'];
+
+// index.js is hand-written and nothing checked it, which is how onShelf came to be documented in
+// two places, named in a lint message, and impossible to import.
+check('framework/index.js fronts every module under it', () => {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'framework');
+    const surface = readFileSync(join(dir, 'index.js'), 'utf8');
+
+    const exportedBy = (source) => {
+        const declared = (source.match(/export (?:const|function) (\w+)/g) || [])
+            .map((found) => found.split(' ')[2]);
+
+        const listed = (source.match(/export \{([^}]*)\}/g) || [])
+            .flatMap((found) => found.replace(/export \{|\}/g, '').split(','))
+            .map((name) => name.trim().split(/\s+as\s+/).pop())
+            .filter(Boolean);
+
+        return declared.concat(listed);
+    };
+
+    const missing = readdirSync(dir)
+        .filter((file) => file.endsWith('.js') && file !== 'index.js' && file !== 'tiny-sha256.js')
+        .flatMap((file) => exportedBy(readFileSync(join(dir, file), 'utf8'))
+            .filter((name) => PRIVATE.indexOf(name) === -1)
+            .filter((name) => !new RegExp(`\\b${name}\\b`).test(surface))
+            .map((name) => `${file} exports ${name}`));
+
+    assert.deepStrictEqual(missing, [], 'unreachable from mods/ — add it to index.js, or to PRIVATE');
 });
 
 const failed = results.filter((ok) => !ok).length;

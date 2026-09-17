@@ -8,7 +8,7 @@ const JSZip = require('jszip');
 const ui = require('./report.js');
 const { load, parseUrl, ROOT } = require('./config.js');
 const paths = require('./paths.js');
-const { PROXY } = require('../service/lib/ports.js');
+const { PROXY, DEV } = require('../service/lib/ports.js');
 
 // Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the page from the service instead.
 const APPS = [
@@ -113,11 +113,22 @@ function addCobaltProfile(staging) {
 // A proxy port changed here but not there is a television that shows nothing and says nothing:
 // the container is launched pointing at a port the service is not on. Cheap to check, and the
 // failure it prevents costs an install and a reboot to diagnose.
-function checkThePortsAgree(staging, expected) {
+function checkThePortsAgree(staging, ports) {
+    const expected = ports.proxy;
+
     if (PROXY !== Number(expected)) {
         throw friendly(
             `service/lib/ports.js binds the proxy on ${PROXY}, but tizen.config.json says it is on\n` +
             `  ${expected}. One of the two is wrong, and the set would show nothing.`
+        );
+    }
+
+    // Nothing launches against the dev port, so a mismatch here costs a debugging session rather
+    // than a television — but it is the same class of mistake and just as cheap to catch.
+    if (DEV !== Number(ports.dev)) {
+        throw friendly(
+            `service/lib/ports.js binds the dev bridge on ${DEV}, but tizen.config.json says it is\n` +
+            `  on ${ports.dev}. One of the two is wrong.`
         );
     }
 
@@ -212,7 +223,7 @@ async function packageApp(config, app) {
         if (app.packageId) setPackageId(staging, app.packageId);
         if (app.servedFrom) servePage(staging, app.servedFrom);
         addCobaltProfile(staging);
-        checkThePortsAgree(staging, config.ports.proxy);
+        checkThePortsAgree(staging, config.ports);
         if (wantsGameMode()) addGameMode(staging);
         await writeWidget(staging, outPath);
     } finally {

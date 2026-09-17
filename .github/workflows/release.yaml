@@ -92,7 +92,7 @@ jobs:
             legacy_only: true
           - node: '12.16.3'
           - node: '14.21.3'
-          - node: '16.20.2'
+          - node: '16.5.0'    # the version a set actually runs; keep in step with ci.yaml
           - node: '18.18.2'
           - node: '20.18.1'
           - node: '22.12.0'

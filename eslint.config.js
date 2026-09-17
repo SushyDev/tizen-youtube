@@ -83,8 +83,7 @@ const CORRECTNESS_RULES = {
 // These files are exempt because live sibling branches own them and a reshape here would conflict
 // on every restack. They are the follow-up, not an exception in principle.
 const SIBLING_OWNED = [
-    'mods/player/pictureInPicture.js',
-    'mods/commands/interpreters.js'
+    'mods/player/pictureInPicture.js'
 ];
 
 // Every layer, not only the ones that ship: the build scripts are read as often as the mods are.
@@ -123,6 +122,22 @@ const STYLE_SELECTORS = [
     { selector: 'CallExpression > ArrowFunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' },
     { selector: 'CallExpression > FunctionExpression.callee', message: 'name it — a function-scoped helper, not an IIFE' }
 ];
+
+// Not style: the same userscript ships to Cobalt 20, where both of these are absolute. Documented
+// in ARCHITECTURE.md, and until now enforced by nothing.
+const ENGINE_FLOOR_SELECTORS = [
+    {
+        selector: "NewExpression[callee.name='URL']",
+        message: 'Cobalt 20 throws "URL is not constructible" — read the host with a regex instead'
+    },
+    {
+        selector: "NewExpression[callee.name='Worker']",
+        message: 'Cobalt 20 has no Worker'
+    }
+];
+
+// What framework/ and mods/ are held to: the house style, plus the engine floor.
+const BROWSER_SYNTAX = STYLE_SELECTORS.concat(ENGINE_FLOOR_SELECTORS);
 
 const STYLE_RULES = {
     'no-var': 'error',
@@ -241,11 +256,26 @@ module.exports = [
             }]
         }
     },
+    // The browser layers carry the engine floor as well as the style rules.
+    {
+        files: ['framework/**/*.js', 'mods/**/*.js'],
+        ignores: UNSTYLED,
+        rules: {
+            'no-restricted-syntax': ['error'].concat(BROWSER_SYNTAX)
+        }
+    },
     {
         files: ['mods/**/*.js'],
         ignores: UNSTYLED.concat(['mods/feed/surfaces.js']),
         rules: {
-            'no-restricted-syntax': ['error'].concat(STYLE_SELECTORS, [NOT_THE_FEEDS_KEEPER])
+            'no-restricted-syntax': ['error'].concat(BROWSER_SYNTAX, [NOT_THE_FEEDS_KEEPER])
+        }
+    },
+    // A style exemption is not an engine exemption.
+    {
+        files: SIBLING_OWNED,
+        rules: {
+            'no-restricted-syntax': ['error'].concat(ENGINE_FLOOR_SELECTORS)
         }
     },
 

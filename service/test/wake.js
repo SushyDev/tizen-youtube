@@ -43,6 +43,11 @@ require.cache[require.resolve('../lib/evergreen.js')] = {
     }
 };
 
+// The host's own uptime must not decide the result. wake() leaves the container alone below
+// BOOT_QUIET, and a CI runner is minutes old where a desk machine is days: held well above it, and
+// atBoot() lowers it deliberately for the one check that wants a set fresh from power-on.
+os.uptime = () => 3600;
+
 const launched = [];
 const running = { contexts: [{ appId: CONTAINER, id: 'stock' }] };
 

@@ -69,9 +69,14 @@ const runSuite = (suite) => {
     }
 
     ui.fail(suite.name, detail);
-    echo(run.output.split('\n')
-        .filter((line) => /^(FAIL|PASS)|Error|error:/.test(line.trim()) && !/^npm error/.test(line.trim()))
-        .slice(0, 30));
+
+    // What failed, before what passed. Taking the first thirty spoken lines showed thirty PASSes
+    // and not one failure, which is what a suite is read for — and on CI the output is all there is.
+    const spoken = run.output.split('\n').map((line) => line.trim())
+        .filter((line) => /^(FAIL|PASS)|Error|error:/.test(line) && !/^npm error/.test(line));
+    const broke = spoken.filter((line) => /^FAIL|Error|error:/.test(line));
+
+    echo((broke.length ? broke : spoken).slice(0, 30));
     return false;
 };
 

@@ -12,6 +12,11 @@ const rgba = (hex, opacity) => {
     return `rgba(${channels.join(', ')}, ${opacity})`;
 };
 
+// A point segment (marked by the API's own actionType, or — defensively — by being our one
+// point category) has no second timestamp; poi_highlight is checked by name too in case an
+// older result omits actionType.
+const isPoint = (segment) => segment.actionType === 'poi' || segment.category === 'poi_highlight';
+
 const stretches = (segments, duration) => segments
     .map((segment) => {
         const bar = barFor(segment);
@@ -19,7 +24,7 @@ const stretches = (segments, duration) => segments
         return {
             colour: rgba(bar.color, bar.opacity),
             from: segment.segment[0],
-            to: segment.category === 'poi_highlight'
+            to: isPoint(segment)
                 ? segment.segment[0] + (duration * POINT_WIDTH) / 100
                 : segment.segment[1]
         };

@@ -13,7 +13,8 @@ const SKIPPABLE = [
     ['enableSponsorBlockSelfPromo', 'selfpromo'],
     ['enableSponsorBlockPreview', 'preview'],
     ['enableSponsorBlockFiller', 'filler'],
-    ['enableSponsorBlockMusicOfftopic', 'music_offtopic']
+    ['enableSponsorBlockMusicOfftopic', 'music_offtopic'],
+    ['enableSponsorBlockExclusiveAccess', 'exclusive_access']
 ];
 
 const skippableCategories = () => SKIPPABLE

@@ -29,8 +29,6 @@ const worded = (count) => {
     return count < 7200 ? `${Math.round(count / 60)}m` : `${Math.round(count / 3600)}h`;
 };
 
-const pair = (key, value) => `<dt>${escaped(key)}</dt><dd>${escaped(shown(value))}</dd>`;
-
 const item = (found) => `<li class="${found.ok ? 'ok' : 'bad'}">`
     + (found.ok ? '' : '<strong>FAILED</strong> ')
     + `<b>${escaped(found.name)}</b> — <code>${escaped(found.detail)}</code></li>`;
@@ -47,12 +45,39 @@ const onTheNetwork = () => {
         .map((entry) => entry.address)), []).join(', ');
 };
 
+// Shared with the app info panel on the TV itself, not just this phone-facing page.
+const thisTvRows = (host) => {
+    const known = facts(null);
+
+    return [
+        { key: 'Tizen', value: shown(known.tizen) },
+        { key: 'Firmware', value: shown(known.firmware) },
+        { key: 'Built', value: shown(known.built) },
+        { key: 'Model', value: shown(known.model) },
+        { key: 'App', value: shown(known.app) },
+        { key: 'Container', value: shown(containerAgent.engine()) },
+        { key: 'Platform build', value: shown(containerAgent.build()) },
+        { key: 'Node', value: shown(known.node) },
+        { key: 'Service', value: `pid ${known.pid}, up ${worded(seconds())}`, pid: known.pid, upFor: seconds() },
+        { key: 'Host', value: shown(os.hostname()) },
+        { key: 'Address', value: shown(at(host)) },
+        { key: 'On the network', value: shown(onTheNetwork()) },
+        { key: 'User agent', value: shown(containerAgent.agent()) }
+    ];
+};
+
+// The service row alone carries a machine-readable duration, so it is the one row not just escaped whole.
+const pair = (row) => `<dt>${escaped(row.key)}</dt><dd>${
+    typeof row.upFor === 'number'
+        ? `pid ${escaped(row.pid)}, up <time datetime="PT${row.upFor}S">${escaped(worded(row.upFor))}</time>`
+        : escaped(row.value)
+}</dd>`;
+
 const page = (host) => {
     const found = checks();
     const failed = found.filter((one) => !one.ok);
     const passed = found.length - failed.length;
     const here = at(host);
-    const known = facts(null);
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -91,19 +116,7 @@ ${found.map(item).join('\n')}
 <section>
 <h2>This TV</h2>
 <dl>
-${pair('Tizen', known.tizen)}
-${pair('Firmware', known.firmware)}
-${pair('Built', known.built)}
-${pair('Model', known.model)}
-${pair('App', known.app)}
-${pair('Container', containerAgent.engine())}
-${pair('Platform build', containerAgent.build())}
-${pair('Node', known.node)}
-<dt>Service</dt><dd>pid ${escaped(known.pid)}, up <time datetime="PT${seconds()}S">${worded(seconds())}</time></dd>
-${pair('Host', os.hostname())}
-${pair('Address', here)}
-${pair('On the network', onTheNetwork())}
-${pair('User agent', containerAgent.agent())}
+${thisTvRows(host).map(pair).join('\n')}
 </dl>
 </section>
 </main>
@@ -112,4 +125,4 @@ ${pair('User agent', containerAgent.agent())}
 `;
 };
 
-module.exports = { page };
+module.exports = { page, thisTvRows };

@@ -4,7 +4,7 @@ const postmortem = require('./postmortem.js');
 const { report } = require('./bootReport.js');
 const { fromScreen } = require('./pageLines.js');
 
-const NO_COBALT = { needsCertificate: false, prepared: false, failed: null };
+const NO_COBALT = { prepared: false, failed: null };
 
 const noteWait = (waited) => {
     if (waited) postmortem.note('boot', `the boot screen reached the service after ${(waited / 1000).toFixed(1)}s`);

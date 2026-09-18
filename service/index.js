@@ -21,7 +21,6 @@ const journalRoutes = require('./lib/journalRoutes.js');
 const diagRoutes = require('./lib/diagRoutes.js');
 const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
-const forward = require('./lib/forward.js');
 const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
 
@@ -96,7 +95,7 @@ dev.attach(app);
 proxy.attachFallback(app);
 routeErrors.attach(app);
 
-// Every interface, because the container is another package and cannot reach our 127.0.0.1.
+// Every interface: the container reaches us on this set's own address, never loopback.
 const BIND = '0.0.0.0';
 const RETRY_LISTEN_AFTER = 5000;
 const REPEAT_AFTER = 60000;
@@ -134,10 +133,6 @@ const listen = (addresses, index) => {
         console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
     });
-
-    // Cobalt's --proxy sends TLS through CONNECT; without an answer to that the container has no
-    // network at all.
-    forward.tunnel(server);
 
     // An upgrade is not a request express ever sees, and an unanswered one hangs rather than fails.
     upgrade.attach(server, { rewrite: dev.upgradeRewrite });

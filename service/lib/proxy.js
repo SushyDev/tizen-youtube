@@ -3,17 +3,15 @@
 const express = require('express');
 
 const { USER_SCRIPT, read } = require('./shipped.js');
-const forward = require('./forward.js');
 const dev = require('../dev/index.js');
-const ports = require('./ports.js');
 const postmortem = require('./postmortem.js');
 const protection = require('./protection.js');
 const { upstream } = require('./knobs.js');
-const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
-const { YOUTUBE_ORIGIN, overOurTls, routeFor, headersFor } = require('./route.js');
+const { localOrigin, proxyPrefix } = require('./origin.js');
+const { YOUTUBE_ORIGIN, routeFor, headersFor } = require('./route.js');
 const { readText, send } = require('./sending.js');
 const {
-    nonceOf, rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie, withOurGrants,
+    rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie,
     hidesWatermark, withHiddenWatermark, rewriteStaticHosts
 } = require('./rewrites.js');
 
@@ -46,23 +44,17 @@ const allowOrigin = (req, res) => {
 const create = () => {
     const app = express();
 
-    app.use((req, _, next) => {
-        forward.normaliseSelf(req, PROXY_HOST, ports.PROXY);
-        next();
-    });
-
     app.use((req, res, next) => {
         const watching = dev.journal.wanted();
         const tracing = state.traced < TRACE_LIMIT;
         if (!watching && !tracing) return next();
 
-        // req.url, not originalUrl: the forward-proxy form has already been put back to a path.
         const path = String(req.url || req.originalUrl);
         const ours = path.indexOf('/__tube/') === 0;
         const asked = `${req.method} ${path.slice(0, 150)}`;
 
         // Our own /__tube/ requests would drown the page's in the journal.
-        if (watching && !ours) dev.journal.service('asked', overOurTls(req) ? `${asked} host=${req.headers.host || '?'}` : asked);
+        if (watching && !ours) dev.journal.service('asked', asked);
 
         if (tracing && !ours) {
             state.traced += 1;
@@ -113,18 +105,14 @@ const copyHeaders = (req, res, response, route) => {
 
         if (STRIPPED_HEADERS.indexOf(lower) !== -1) return;
 
-        // Kept for the real host, because YouTube's policy carries Cobalt's private-address grants.
-        if (lower === CSP_HEADER) {
-            if (!route.asTheRealHost) return;
+        // YouTube's policy names hosts that only work on its own origin; index.js sets ours.
+        if (lower === CSP_HEADER) return;
 
-            res.setHeader(key, raw[key].map(withOurGrants));
-            return;
-        }
         if (route.isBypass && lower === 'access-control-allow-origin') return;
 
-        // A page on the real host would reject a cookie rewritten to Domain=localhost.
+        // Served over plain HTTP as ourselves, where a __Secure- cookie is refused as it stands.
         if (lower === 'set-cookie' && Array.isArray(raw[key])) {
-            res.setHeader('Set-Cookie', route.asTheRealHost ? raw[key] : rewriteSetCookie(raw[key]));
+            res.setHeader('Set-Cookie', rewriteSetCookie(raw[key]));
             return;
         }
 
@@ -152,7 +140,7 @@ const attachFallback = (app) => {
         const route = routeFor(req);
 
         // Served as ourselves, the page has to say so in its own URL before kabuki reads it.
-        if (!route.asTheRealHost && req.path === '/tv' && !hidesWatermark(req.url)) {
+        if (req.path === '/tv' && !hidesWatermark(req.url)) {
             return res.redirect(302, withHiddenWatermark(req.url));
         }
 
@@ -204,20 +192,13 @@ const attachFallback = (app) => {
                     res.status(source.status);
                     copyHeaders(req, res, source, route);
 
-                    const injectionOrigin = route.asTheRealHost && req.headers.host
-                        ? `https://${req.headers.host}`
-                        : null;
-                    const nonce = route.asTheRealHost ? nonceOf(source.headers.get(CSP_HEADER)) : null;
+                    const html = rewriteBody(text, req.url);
 
-                    const html = rewriteBody(text, req.url, injectionOrigin, nonce);
+                    // Attestation is reached through us unless the page's own hooks do it.
+                    const injected = upstream.nativeProxyPatches ? html : rewriteAttestation(html);
 
-                    // The real host reaches attestation itself; otherwise the page hooks do.
-                    const injected = route.asTheRealHost || upstream.nativeProxyPatches
-                        ? html
-                        : rewriteAttestation(html);
-
-                    // Served as ourselves, engine-loaded statics must not inherit our http origin.
-                    const served = route.asTheRealHost ? injected : rewriteStaticHosts(injected);
+                    // Engine-loaded statics must not inherit our http origin.
+                    const served = rewriteStaticHosts(injected);
 
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
 

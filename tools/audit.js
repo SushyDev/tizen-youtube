@@ -37,14 +37,26 @@ const tokenFailures = (code, where) => {
     }
 };
 
+// A double hyphen inside a comment makes config.xml unparseable, and the television answers that
+// with "Load archive info fail" long after every check here has passed.
+const commentFailures = (config) => (config.match(/<!--[\s\S]*?-->/g) || [])
+    .filter((comment) => comment.slice(4, -3).indexOf('--') !== -1)
+    .map((comment) => `a comment in config.xml carries a double hyphen, which no XML parser accepts: `
+        + `${comment.replace(/\s+/g, ' ').slice(0, 60)}…`);
+
 const manifestFailures = (config, ports) => [].concat(
+    commentFailures(config),
     unless(/nativeID/.test(config), 'config.xml no longer claims a container slot'),
     unless(/multitasking\.support"\s+value="true"/.test(config),
         'multitasking.support is not true, so the app is killed on focus loss rather than hidden'),
     unless(!/use\.game\.mode"\s+value="true"/.test(config),
         'use.game.mode is on, which leaves the video element at networkState 0'),
-    unless(config.indexOf(`--proxy=http://127.0.0.2:${ports.proxy}`) !== -1,
-        `config.xml does not launch the container at the proxy port ${ports.proxy}`)
+    // A --proxy names one fixed address, and the container cannot reach any address we can fix.
+    unless(!/--proxy=/.test(config),
+        'config.xml carries a --proxy switch, which no set the boot screen serves can reach'),
+    unless(config.indexOf(`--base_url=file:///tube/boot.html`) !== -1
+        || config.indexOf(`--base_url=http://`) !== -1,
+        'config.xml does not start the container on a page we serve')
 );
 
 const audit = async (widget) => {

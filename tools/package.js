@@ -131,9 +131,10 @@ function checkThePortsAgree(staging, ports) {
     }
 
     const xml = readFileSync(join(staging, 'config.xml'), 'utf8');
-    const named = /--proxy=http:\/\/[^:\s"]+:(\d+)/.exec(xml);
+    const named = /--proxy=http:\/\/(?:\[[^\]]+\]|[^:\s"]+):(\d+)/.exec(xml);
 
-    if (!named) throw friendly('config.xml has no --proxy switch to check.');
+    // The container route carries no --proxy: the boot screen names the address at every start.
+    if (!named) return;
     if (Number(named[1]) === Number(expected)) return;
 
     throw friendly(

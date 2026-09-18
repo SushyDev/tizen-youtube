@@ -19,35 +19,6 @@ const check = (name, run) => {
     }
 };
 
-check('connect-src is widened where it is named', () => {
-    const out = rewrites.withOurGrants("default-src 'none'; connect-src 'self' https://x.example");
-    assert.ok(/connect-src \*/.test(out), out);
-    assert.ok(out.indexOf('https://x.example') === -1, 'the narrow list survived');
-});
-
-check('and added where it is not', () => {
-    const out = rewrites.withOurGrants("default-src 'none'; script-src 'self'");
-    assert.ok(/connect-src \*/.test(out), out);
-    assert.ok(/img-src \*/.test(out), out);
-});
-
-// Two policies are enforced together, so widening one leaves the other refusing.
-check('every policy in a combined header is widened, not just the first', () => {
-    const out = rewrites.withOurGrants("default-src 'none',default-src 'none'");
-    assert.strictEqual(out.split(',').length, 2, out);
-    out.split(',').forEach((one) => assert.ok(/connect-src \*/.test(one), one));
-});
-
-check('an absent policy is left absent', () => {
-    assert.strictEqual(rewrites.withOurGrants(''), '');
-    assert.strictEqual(rewrites.withOurGrants(null), null);
-});
-
-check('the nonce is read back out of the policy the page was served', () => {
-    assert.strictEqual(rewrites.nonceOf("script-src 'nonce-AbC-123_x' 'self'"), 'AbC-123_x');
-    assert.strictEqual(rewrites.nonceOf("script-src 'self'"), null);
-});
-
 check('the innertube host override is added ahead of the client name', () => {
     const out = rewrites.overrideInnertubeHost('{"INNERTUBE_CONTEXT_CLIENT_NAME":7}');
     assert.ok(out.indexOf('INNERTUBE_HOST_OVERRIDE') !== -1, out);

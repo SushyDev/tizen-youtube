@@ -4,17 +4,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
-const x509 = require('./x509.js');
-const ports = require('./ports.js');
 const reach = require('./reach.js');
 const postmortem = require('./postmortem.js');
 const claimants = require('./claimants.js');
 const cobaltIfItLoads = require('./cobaltIfItLoads.js');
 const { appId, configuredContent, container, switches } = require('./cobaltConfig.js');
 const { STOCK, locate } = require('./cobaltContent.js');
-const { existingMaterial, stillGood } = require('./cobaltCa.js');
 
 const SHARE = process.env.TUBE_SHARE || '/home/owner/share/tube';
 const SHOWN = 8;
@@ -81,55 +77,8 @@ const writable = () => {
         return result('share', true, `${SHARE} can be written to`);
     } catch (error) {
         return result('share', false, `${SHARE} cannot be written to (${error.code || error.message}) — `
-            + 'the certificate, the boot screen and Evergreen\'s files are all kept there');
+            + 'the boot screen and Evergreen\'s files are both kept there');
     }
-};
-
-// Three files must agree on this port and only the packager compares them.
-const proxyPort = () => {
-    const named = /--proxy=http:\/\/[^:\s]+:(\d+)/.exec(switches() || '');
-    if (!named) return result('proxy port', true, 'no --proxy switch names a port');
-
-    const aimed = Number(named[1]);
-
-    return result('proxy port', aimed === ports.PROXY, aimed === ports.PROXY
-        ? `the container is aimed at ${aimed}, which is where we listen`
-        : `the container is aimed at ${aimed} but we listen on ${ports.PROXY}, so nothing it asks for reaches us`);
-};
-
-const addressed = () => {
-    const cobalt = cobaltIfItLoads();
-    const found = cobalt && cobalt.addressing();
-
-    if (!found) return result('proxy address', true, 'not checked yet');
-
-    return result('proxy address', found.ok, found.why);
-};
-
-const day = (at) => new Date(at).toISOString().slice(0, 10);
-
-// A certificate dated in the future means the clock is wrong, and every TLS handshake then fails
-// with nothing on screen to say why.
-const clock = () => {
-    const material = existingMaterial();
-    if (!material || !crypto.X509Certificate) return null;
-
-    const cert = new crypto.X509Certificate(material.chain);
-    const from = new Date(cert.validFrom).getTime();
-    const to = new Date(cert.validTo).getTime();
-    const now = Date.now();
-
-    if (now < from) {
-        return result('clock', false, `the TV reads ${day(now)}, before its own certificate was issued `
-            + `(${day(from)}) — the clock is wrong, and no secure connection can succeed until it is set`);
-    }
-
-    if (now > to) {
-        return result('clock', false, `the TV reads ${day(now)}, past the certificate's ${day(to)} — `
-            + 'either the clock is wrong or the certificate was never reissued');
-    }
-
-    return result('clock', true, `${day(now)}, inside the certificate's window to ${day(to)}`);
 };
 
 const ours = (content) => {
@@ -147,33 +96,6 @@ const icu = (content) => {
     return result('icu', entries.length > 0, entries.length
         ? `icu holds ${some(entries)}`
         : 'icu is empty, and Cobalt exits before any page without it');
-};
-
-const certificate = () => {
-    const material = existingMaterial();
-    if (!material) return result('certificate', false, 'none has been made yet');
-
-    const good = stillGood(material);
-
-    return result('certificate', good, good
-        ? `${material.ca.commonName} is current`
-        : `${material.ca.commonName} is expired or made for other names, and is reissued on the next start`);
-};
-
-// The store is hashed, so ours is trusted only under the exact name OpenSSL looks it up by.
-const trusted = (content) => {
-    const material = existingMaterial();
-    if (!material) return null;
-
-    const certs = path.join(content, 'ssl', 'certs');
-    const all = listing(certs);
-    const hashes = x509.subjectHashes(material.ca.commonName);
-    const wanted = [hashes.hash, hashes.hashOld];
-    const found = all.filter((name) => wanted.indexOf(name.split('.')[0]) !== -1);
-
-    return result('trust store', found.length > 0, found.length
-        ? `${found.join(', ')} among ${all.length} certificates`
-        : `none of ${wanted.join(', ')} is among the ${all.length} certificates in ${certs}`);
 };
 
 const bootPage = (content) => {
@@ -217,15 +139,10 @@ const all = () => {
         // The 5.0 widget has no boot screen and no CONNECT, so silence there would mean nothing.
         content ? guarded('container slot', slot) : null,
         guarded('share', writable),
-        guarded('proxy port', proxyPort),
-        guarded('proxy address', addressed),
-        guarded('certificate', certificate),
-        guarded('clock', clock),
         guarded('youtube', network),
         guarded('evergreen', evergreen),
         content ? guarded('content', () => ours(content)) : null,
         content ? guarded('icu', () => icu(content)) : null,
-        content ? guarded('trust store', () => trusted(content)) : null,
         content ? guarded('boot screen', () => bootPage(content)) : null
     ].filter(Boolean);
 };

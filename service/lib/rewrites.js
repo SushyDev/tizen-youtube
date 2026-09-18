@@ -5,8 +5,6 @@ const { flagOverrides, upstream } = require('./knobs.js');
 const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
 const { reporter, bootBeacon } = require('./pageReporter.js');
 
-const nonceOf = (policy) => (/'nonce-([A-Za-z0-9+/_-]+={0,2})'/.exec(policy || '') || [])[1] || null;
-
 // SABR's one media URL goes through the service so no page patch is needed to reach googlevideo.
 const rerouteAbr = (text) => text.replace(
     /"serverAbrStreamingUrl":"(https:\\?\/\\?\/[^"]+)"/g,
@@ -44,25 +42,6 @@ const retuneFlags = (text) => text.replace(BLOB, (whole, lead, blob) => (
     `${lead}${Array.from(flagOverrides).reduce(retuneFlag, blob)}`
 ));
 
-// Cobalt refuses whatever the policy does not name.
-const GRANTS = [
-    { named: /(^|;)(\s*)connect-src[^;]*/i, widened: 'connect-src * data: blob: ws: wss:' },
-    { named: /(^|;)(\s*)img-src[^;]*/i, widened: 'img-src * data: blob:' }
-];
-
-// A directive the policy never names is still governed by default-src, so leaving it out is the
-// same denial.
-const granted = (policy, grant) => (grant.named.test(policy)
-    ? policy.replace(grant.named, `$1$2${grant.widened}`)
-    : `${policy}; ${grant.widened}`);
-
-// YouTube sends two policies and both are enforced.
-const withOurGrants = (policy) => {
-    if (!policy) return policy;
-
-    return String(policy).split(',').map((one) => GRANTS.reduce(granted, one)).join(',');
-};
-
 // The engine loads fonts and CSS images itself, and Cobalt refuses the http: origin such a URL
 // inherits from us when the host is public.
 const STATIC_HOSTS = ['www.gstatic.com', 'fonts.gstatic.com'];
@@ -79,7 +58,7 @@ const rewriteStaticHosts = (text) => {
     }, text);
 };
 
-const rewriteBody = (text, url, injectionOrigin, nonce) => {
+const rewriteBody = (text, url) => {
     if (url.indexOf('/tv') !== 0 || url.indexOf('/tv_config') !== -1) return text;
 
     const tuned = [
@@ -88,16 +67,15 @@ const rewriteBody = (text, url, injectionOrigin, nonce) => {
         upstream.nativeProxyPatches ? null : overrideInnertubeHost
     ].filter(Boolean).reduce((out, step) => step(out), text);
 
-    const stamp = nonce ? ` nonce="${nonce}"` : '';
-    const origin = injectionOrigin || localOrigin();
+    const origin = localOrigin();
 
-    const tag = `<script${stamp}>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
-        + `<script${stamp} src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
-        + `<script${stamp}>${bootBeacon(origin)}</script>`
-        + dev.pageScripts(origin, stamp);
+    const tag = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
+        + `<script src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
+        + `<script>${bootBeacon(origin)}</script>`
+        + dev.pageScripts(origin, '');
 
     // First in the body, so it sees the page's errors; Cobalt ignores what is added to <head>.
-    const reported = tuned.replace(/<body[^>]*>/, (open) => `${open}<script${stamp}>${reporter(origin)}</script>`);
+    const reported = tuned.replace(/<body[^>]*>/, (open) => `${open}<script>${reporter(origin)}</script>`);
 
     // Appended past </html> a browser still runs it; Cobalt's parser drops it.
     return reported.indexOf('</body>') !== -1 ? reported.replace('</body>', `${tag}</body>`) : reported + tag;
@@ -126,7 +104,7 @@ const hidesWatermark = (url) => String(url).indexOf('env_hideWatermark=') !== -1
 const withHiddenWatermark = (url) => `${url}${String(url).indexOf('?') === -1 ? '?' : '&'}${HIDE_WATERMARK}`;
 
 module.exports = {
-    nonceOf, rerouteAbr, overrideInnertubeHost, rewriteAttestation, retuneFlags,
-    withOurGrants, rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
+    rerouteAbr, overrideInnertubeHost, rewriteAttestation, retuneFlags,
+    rewriteBody, rewriteSetCookie, restoreCookiePrefixes,
     hidesWatermark, withHiddenWatermark, rewriteStaticHosts
 };

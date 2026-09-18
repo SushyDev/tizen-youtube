@@ -109,6 +109,7 @@ const run = (script, replies, turns, options) => {
     return { lines, asked, replaced };
 };
 
+const host = (url) => url.replace('http://', '');
 const has = (lines, fragment) => lines.some((line) => line.text.indexOf(fragment) !== -1);
 const toneOf = (lines, fragment) => (lines.find((line) => line.text.indexOf(fragment) !== -1) || {}).tone;
 
@@ -149,10 +150,12 @@ const checks = (script) => {
     const boots = handed.asked.filter((url) => url.indexOf('/__tube/boot?') !== -1);
     check('it tells the service how long it waited, once', boots.filter((url) => url.indexOf('waited=') !== -1).length === 3
         && boots.slice(3).every((url) => url.indexOf('waited=') === -1), boots.join(' '));
-    check('it hands over to YouTube with its own query', handed.replaced[0] === 'https://www.youtube.com/tv?launch=menu&cert_scope=samsung',
+    check('it hands over to the page we serve, with its own query',
+        handed.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`,
         handed.replaced.join(' '));
-    check('before handing over it asks YouTube through Cobalt\'s proxy',
-        handed.asked.some((url) => url.indexOf('https://www.youtube.com/__tube/ping?') === 0));
+    check('before handing over it asks for that page\'s own address',
+        handed.asked.some((url) => url.indexOf(`${CONFIG.service}/__tube/ping?`) === 0),
+        handed.asked.join(' '));
 
     const stuck = run(script, [{
         facts: FACTS, ready: false, next: 0, log: [{ seq: 0, what: 'upstream', text: 'upstream failed on https://www.youtube.com/tv: ENOTFOUND' }],
@@ -171,7 +174,7 @@ const checks = (script) => {
 
     const said = handed.asked.map((url) => decodeURIComponent((/[?&]said=([^&]*)/.exec(url) || [])[1] || '')).join(' ');
     check('its own lines are sent to the service for its log', said.indexOf('tube: boot screen, cobalt 25.lts.30') !== -1
-        && said.indexOf('tube: handing over to https://www.youtube.com/tv') !== -1, said.slice(0, 200));
+        && said.indexOf(`tube: handing over to ${CONFIG.service}/tv`) !== -1, said.slice(0, 200));
 
     const echoed = run(script, [{ facts: FACTS, ready: false, waiting: null, next: 1,
         log: [{ seq: 0, what: 'screen', text: '[    0.000000] tube: boot screen, cobalt 25' }] }], 3);
@@ -187,7 +190,8 @@ const checks = (script) => {
     check('only after a minute is it told what to do, in red', toneOf(silent.lines, 'still not answering after 60s') === 'bad');
 
     check('it says which build wrote the page, and when', has(handed.lines, `tube: page written 0s ago by service pid ${process.pid}, patch `));
-    check('a refused ask is named at once', has(slow.lines, 'service: 127.0.0.2:8099: refused at once'));
+    check('a refused ask is named at once', has(slow.lines, `service: ${host(CONFIG.service)}: refused at once`),
+        slow.lines.map((line) => line.text).join(' | '));
 
     // The page is reached from a phone over the network rather than the path that just failed.
     check('the first resistance already points at the page that explains it',
@@ -206,11 +210,12 @@ const checks = (script) => {
     check('which comes once the silence lasts', has(slow.lines, 'nor at 127.0.0.1:8099: the service is not running, or is stuck'));
 
     const dropped = run(script, [null], 6, { hang: true });
-    check('a dropped ask is told from a refused one', has(dropped.lines, 'service: 127.0.0.2:8099: no answer in 4s'));
+    check('a dropped ask is told from a refused one', has(dropped.lines, `service: ${host(CONFIG.service)}: no answer in 4s`));
 
     const blockedAddress = run(script, [null], 6, { hang: true, elsewhere: 204 });
     check('an address the TV blocks is named at once, in red',
-        toneOf(blockedAddress.lines, 'answers at 127.0.0.1:8099 but not at 127.0.0.2:8099') === 'bad');
+        toneOf(blockedAddress.lines, `answers at 127.0.0.1:8099 but not at ${host(CONFIG.service)}`) === 'bad',
+        blockedAddress.lines.map((line) => line.text).join(' | '));
     check('and the screen\'s lines reach the service through the address that works', blockedAddress.asked
         .some((url) => url.indexOf(`${ELSEWHERE}/__tube/boot?`) === 0 && url.indexOf('said=') !== -1), blockedAddress.asked.join(' '));
 
@@ -248,9 +253,12 @@ const checks = (script) => {
     const config = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'config.xml'), 'utf8');
 
     check('the widget starts the container on the boot screen', config.indexOf(`--base_url=${BOOT_URL}`) !== -1);
-    check('its policy lets it reach the service, its other addresses and YouTube, and go there',
-        /connect-src http:\/\/127\.0\.0\.2:8099 http:\/\/127\.0\.0\.1:8099 [^;]*https:\/\/www\.youtube\.com;/.test(page)
-        && /h5vcc-location-src https:\/\/www\.youtube\.com/.test(page));
+    check('and carries no --proxy',
+        config.indexOf('--proxy=') === -1);
+    check('its policy lets it reach the service and go to the page we serve',
+        page.indexOf(`connect-src ${CONFIG.service} `) !== -1
+        && page.indexOf(`h5vcc-location-src https://www.youtube.com ${CONFIG.service}`) !== -1,
+        (/content="([^"]*)"/.exec(page) || [])[1]);
 
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-boot-'));
     const written = writeBootScreen(scratch, script);

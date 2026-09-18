@@ -8,9 +8,12 @@ import { flush } from './outbox.js';
 
 const host = (url) => url.replace('http://', '');
 
+// The address that answered is used from here, not only reported.
 const answeredAt = (answered) => {
+    held.serving = answered[0];
+
     say('service', `answers at ${answered.map(host).join(', ')} but not at ${host(service)}: `
-        + `this TV blocks ${host(service)}, so YouTube cannot reach the proxy either`, 'bad');
+        + `serving from ${host(answered[0])} instead`, 'bad');
 
     flush('', answered[0]);
 };

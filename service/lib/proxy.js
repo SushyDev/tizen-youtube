@@ -6,6 +6,7 @@ const { USER_SCRIPT, read } = require('./shipped.js');
 const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 const protection = require('./protection.js');
+const containerAgent = require('./containerAgent.js');
 const { upstream } = require('./knobs.js');
 const { localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, routeFor, headersFor } = require('./route.js');
@@ -45,6 +46,10 @@ const create = () => {
     const app = express();
 
     app.use((req, res, next) => {
+        // Ahead of the guard below, which stops once enough has been traced.
+        const agent = req.headers['user-agent'];
+        if (containerAgent.remember(agent)) postmortem.note('cobalt', `agent: ${agent}`);
+
         const watching = dev.journal.wanted();
         const tracing = state.traced < TRACE_LIMIT;
         if (!watching && !tracing) return next();

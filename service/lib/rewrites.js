@@ -2,7 +2,7 @@
 
 const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
-const { PROXY_HOST, localOrigin, proxyPrefix } = require('./origin.js');
+const { proxyHost, localOrigin, proxyPrefix } = require('./origin.js');
 const { reporter, bootBeacon } = require('./pageReporter.js');
 
 // SABR's one media URL goes through the service so no page patch is needed to reach googlevideo.
@@ -20,10 +20,15 @@ const overrideInnertubeHost = (text) => text.replace(
 // Matched by host; the prefix keeps the match's escaping.
 const ATTESTATION = /(?:https?:)?((?:\\?\/){2})(jnn-pa\.googleapis\.com|www\.google\.com(?=\\?\/js\\?\/th\\?\/))/g;
 
-const rewriteAttestation = (text) => text.replace(ATTESTATION, (whole, slashes, host) => {
-    const prefix = slashes.indexOf('\\') === -1 ? proxyPrefix() : proxyPrefix().replace(/\//g, '\\/');
-    return `${prefix}https:${slashes}${host}`;
-});
+// Worked out once: a player script can carry hundreds of matches.
+const rewriteAttestation = (text) => {
+    const plain = proxyPrefix();
+    const escaped = plain.replace(/\//g, '\\/');
+
+    return text.replace(ATTESTATION, (whole, slashes, host) => (
+        `${slashes.indexOf('\\') === -1 ? plain : escaped}https:${slashes}${host}`
+    ));
+};
 
 const BLOB = /(serializedExperimentFlags\\?":\\?")((?:[^"\\]|\\u[0-9a-fA-F]{4})*)/g;
 
@@ -85,7 +90,7 @@ const rewriteBody = (text, url) => {
 const rewriteSetCookie = (values) => values.map((cookie) => cookie
     .replace(/^__Secure-/i, '__LocalSecure-')
     .replace(/^__Host-/i, '__LocalHost-')
-    .replace(/Domain=[^;]+/i, `Domain=${PROXY_HOST}`)
+    .replace(/Domain=[^;]+/i, `Domain=${proxyHost()}`)
     .replace(/;\s*Secure/i, '')
     .replace(/;\s*SameSite=None/i, '')
     .replace(/;\s*;/g, ';')

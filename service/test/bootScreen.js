@@ -219,6 +219,11 @@ const checks = (script) => {
     check('and the screen\'s lines reach the service through the address that works', blockedAddress.asked
         .some((url) => url.indexOf(`${ELSEWHERE}/__tube/boot?`) === 0 && url.indexOf('said=') !== -1), blockedAddress.asked.join(' '));
 
+    const failedOver = run(script, [ready], 16, { hang: true, elsewhere: 204 });
+    check('an address that stopped answering is failed over to one that does',
+        failedOver.replaced[0] === `${ELSEWHERE}/tv?launch=menu&cert_scope=samsung`,
+        failedOver.replaced.join(' ') || failedOver.lines.map((line) => line.text).join(' | '));
+
     const restarting = run(script, [
         { facts: FACTS, ready: false, waiting: { tone: 'warn', what: 'the service is preparing the certificate' }, next: 1, log: [] },
         { facts: Object.assign({}, FACTS, { pid: 5000 }), ready: false, waiting: { tone: 'warn', what: 'the service is preparing the certificate' },

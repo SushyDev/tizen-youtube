@@ -12,6 +12,10 @@ const http = require('http');
 
 const proxy = require('../lib/proxy.js');
 const knobs = require('../lib/knobs.js');
+const containerAgent = require('../lib/containerAgent.js');
+
+const COBALT_UA = 'Mozilla/5.0 (LINUX; Tizen/10.0/2026.10.1040000) Cobalt/25.lts.20.1034877-gold '
+    + '(unlike Gecko) v8/8.8 gles Evergreen/5.20.2 Starboard/16';
 
 const ATTESTED = 'const a="https://jnn-pa.googleapis.com";const b="\\/\\/www.google.com\\/js\\/th\\/p.js";';
 
@@ -205,6 +209,22 @@ upstream.listen(0, '127.0.0.1', () => {
                 check('an unreachable upstream is answered, not left hanging',
                     res.status === 500 && res.body.toString().indexOf('tube:') === 0,
                     `${res.status} ${res.body.toString().slice(0, 60)}`);
+
+                return ask('/__tube/ping', { headers: { 'user-agent': 'curl/8.7.1' } });
+            })
+            .then(() => {
+                check('something that is not the container is not taken for it',
+                    containerAgent.agent() === null, String(containerAgent.agent()));
+
+                return ask('/__tube/ping', { headers: { 'user-agent': COBALT_UA } });
+            })
+            .then(() => {
+                check('the container is identified from an ordinary request',
+                    containerAgent.agent() === COBALT_UA, String(containerAgent.agent()));
+                check('and its engine and platform build are read out of that',
+                    containerAgent.engine() === 'cobalt 25.lts.20.1034877-gold, evergreen 5.20.2, starboard 16'
+                    && containerAgent.build() === '2026.10.1040000',
+                    `${containerAgent.engine()} | ${containerAgent.build()}`);
 
                 const failed = results.filter((ok) => !ok).length;
                 console.log(`\n${results.length - failed}/${results.length} checks passed.`);

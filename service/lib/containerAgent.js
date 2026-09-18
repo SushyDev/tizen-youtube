@@ -1,13 +1,17 @@
 'use strict';
 
-// Cobalt names itself on every CONNECT, and nothing else on the set says what the container is.
+// Cobalt names itself on every request, and nothing else on the set says what the container is.
 const held = { agent: null };
 
 const pick = (pattern) => (pattern.exec(held.agent || '') || [])[1] || null;
 
-// True only the first time an agent is seen, so the caller logs it once rather than per tunnel.
+// Anything can reach this port, and the first request after a start would otherwise be taken for
+// the container.
+const isContainer = (seen) => /\bCobalt\//.test(seen);
+
+// True only the first time an agent is seen, so the caller logs it once rather than per request.
 const remember = (seen) => {
-    if (!seen || held.agent === seen) return false;
+    if (!seen || !isContainer(seen) || held.agent === seen) return false;
 
     held.agent = seen;
     return true;
@@ -15,8 +19,9 @@ const remember = (seen) => {
 
 const agent = () => held.agent;
 
-// Separates a 2025 set from an earlier one on the same Tizen version.
-const build = () => pick(/Tizen\/[\d.]+\/(\S+?)[);\s]/);
+// Tizen 9 writes "Tizen/9.0/<build>" and Tizen 10 "Tizen; /10.0/<build>", so the build is found
+// by the slash before it.
+const build = () => pick(/Tizen[;/\s]*\/?[\d.]+\/(\S+?)[);\s]/);
 
 const engine = () => [
     ['cobalt', pick(/Cobalt\/(\S+)/)],

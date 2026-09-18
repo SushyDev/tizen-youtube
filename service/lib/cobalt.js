@@ -119,6 +119,13 @@ const replaceUnlessOurs = (up, me, since) => {
     });
 };
 
+const refreshBootScreen = () => {
+    const content = configuredContent();
+    if (!content) return;
+
+    guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
+};
+
 // Launched from the service because the container the platform starts on a reopen dies at once.
 const wake = () => {
     if (typeof tizen === 'undefined') return;
@@ -143,6 +150,9 @@ const wake = () => {
     const now = Date.now();
     if (now - state.lastWake < RELAUNCH_QUIET) return;
     state.lastWake = now;
+
+    // Written again at every open, so a set DHCP moved is sent to its new address.
+    refreshBootScreen();
 
     tizen.application.getAppsContext((contexts) => {
         const up = contexts.find((context) => context.appId === CONTAINER);

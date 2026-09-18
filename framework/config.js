@@ -33,6 +33,8 @@ const defaultConfig = {
   enableDeArrow: false,
   enableDeArrowThumbnails: false,
 
+  enableReturnDislike: true,
+
   preferredVideoQuality: 'highest',
   videoPreferredCodec: 'any',
   enableDevBridge: DEV_TOOLS,

@@ -154,6 +154,15 @@ const GROUPS = [
     ]
   },
   {
+    id: 'tube_return_dislike',
+    title: 'Return YouTube Dislike',
+    items: [
+      Switch('enableReturnDislike', 'Enable',
+        'Show the real dislike count on the player’s own dislike button, from returnyoutubedislikeapi.com',
+        LOOKING)
+    ]
+  },
+  {
     id: 'tube_startup',
     title: 'Startup',
     items: [

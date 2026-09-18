@@ -17,6 +17,7 @@ const NODE_GLOBALS = {
     AbortSignal: 'readonly',
     URL: 'readonly',
     URLSearchParams: 'readonly',
+    crypto: 'readonly',
     TextDecoder: 'readonly',
     TextEncoder: 'readonly',
     global: 'readonly'
@@ -54,6 +55,7 @@ const BROWSER_GLOBALS = {
     cancelAnimationFrame: 'readonly',
     HTMLScriptElement: 'readonly',
     Reflect: 'readonly',
+    crypto: 'readonly',
     atob: 'readonly',
     btoa: 'readonly',
     tizen: 'readonly',

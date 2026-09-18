@@ -47,10 +47,12 @@ function claimBooleanRows() {
     return true;
 }
 
-const ACTION_ROW = 'ytlr-setting-action-renderer';
+const NOTE_ROWS = ['ytlr-setting-action-renderer', 'ytlr-setting-boolean-renderer'];
 
-// Nodes carry a private stamp, so the note must be built with YouTube's own hyperscript.
-const findHyperscript = () => findBySource('.type=', '.props=', '.children=');
+// Nodes carry a private stamp, so the note must be built with YouTube's own hyperscript — its
+// minified body returns `{type:a,props:b,children:c,...}` object-literal shorthand, confirmed live,
+// not the `.type = x` assignment form the markers here originally assumed.
+const findHyperscript = () => findBySource('type:', 'props:', 'children:');
 
 const noteFor = (H, note) => H(
     'div',
@@ -67,15 +69,20 @@ const withNote = (original, H) => function withTubeNote(props, rowState) {
     return tree;
 };
 
+// Rows already on screen were built before the accessor existed; reassigning makes it fire.
+const restamp = (row) => {
+    const instance = row.__instance;
+    if (!instance || !Object.prototype.hasOwnProperty.call(instance, 'template')) return;
+
+    const original = instance.template;
+    delete instance.template;
+    instance.template = original;
+};
+
 // `template` is assigned per instance in the constructor, so the wrap has to be an accessor.
-function claimActionRows() {
-    if (state.notes) return true;
-
-    const component = findComponent(ACTION_ROW);
+const claimNotesOn = (tag, H) => {
+    const component = findComponent(tag);
     if (!component) return false;
-
-    const H = findHyperscript();
-    if (!H) return false;
 
     Object.defineProperty(component.prototype, 'template', {
         configurable: true,
@@ -83,17 +90,18 @@ function claimActionRows() {
         set: function (original) { this.tubeTemplate = withNote(original, H); }
     });
 
-    // Rows already on screen were built before the accessor existed; reassigning makes it fire.
-    const restamp = (row) => {
-        const instance = row.__instance;
-        if (!instance || !Object.prototype.hasOwnProperty.call(instance, 'template')) return;
+    Array.from(document.querySelectorAll(tag)).forEach(restamp);
+    return true;
+};
 
-        const original = instance.template;
-        delete instance.template;
-        instance.template = original;
-    };
+function claimActionRows() {
+    if (state.notes) return true;
 
-    Array.from(document.querySelectorAll(ACTION_ROW)).forEach(restamp);
+    const H = findHyperscript();
+    if (!H) return false;
+
+    const claimed = NOTE_ROWS.map((tag) => claimNotesOn(tag, H));
+    if (claimed.indexOf(false) !== -1) return false;
 
     state.notes = true;
     redrawSettingRows();

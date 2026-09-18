@@ -16,8 +16,8 @@ const PRIVACY = ART + 'privacy_and_terms.png';
 const RESTART = ART + 'reset_app.png';
 const MESSAGE = ART + 'send_feedback.png';
 
-const Switch = (key, title, summary, image, on = true) =>
-  ({ kind: 'switch', key, title, summary, image, on });
+const Switch = (key, title, summary, image, on = true, note) =>
+  ({ kind: 'switch', key, title, summary, image, on, note });
 
 const Choice = (key, title, summary, image, options, prefix, note) =>
   ({ kind: 'choice', key, title, summary, image, options, prefix: prefix || title, note });
@@ -121,8 +121,8 @@ const GROUPS = [
     title: 'SponsorBlock',
     items: [
       Switch('enableSponsorBlock', 'Enable',
-        'Skip the parts of a video the community has marked, from sponsor.ajay.app',
-        MONEY),
+        'Skip the parts of a video the community has marked',
+        MONEY, true, 'SponsorBlock — github.com/ajayyy/SponsorBlock'),
       Flags('segments', 'Segments to skip',
         'Skipped as soon as they start, with no prompt', SKIPPING, SEGMENTS),
       // The highlight is left out: it's a point, never auto-skipped, and already has its own "Skip to highlight" button.
@@ -146,8 +146,8 @@ const GROUPS = [
     title: 'DeArrow',
     items: [
       Switch('enableDeArrow', 'Enable',
-        'Replace clickbait titles with ones submitted by the community, from dearrow.ajay.app',
-        LOOKING),
+        'Replace clickbait titles with ones submitted by the community',
+        LOOKING, true, 'DeArrow — github.com/ajayyy/DeArrow'),
       Switch('enableDeArrowThumbnails', 'Thumbnails',
         'Thumbnails are replaced too, which loads slower over a thin connection', LOOKING)
     ]
@@ -157,8 +157,8 @@ const GROUPS = [
     title: 'Return YouTube Dislike',
     items: [
       Switch('enableReturnDislike', 'Enable',
-        'Show the real dislike count on the player’s own dislike button, from returnyoutubedislikeapi.com',
-        LOOKING)
+        'Show the real dislike count on the player’s own dislike button',
+        LOOKING, true, 'Return YouTube Dislike — github.com/Anarios/return-youtube-dislike')
     ]
   },
   {

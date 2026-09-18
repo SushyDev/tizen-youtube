@@ -4,29 +4,21 @@
     <tizen:allow-navigation href="*"/>
     <tizen:application id="tUb3Xq7Lm9.Tube" package="tUb3Xq7Lm9" required_version="5.5"/>
     <author>tube</author>
-    <!-- A widget will not install without a start file; nativeID means it never runs. -->
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
     <feature name="http://tizen.org/feature/web.service"/>
     <icon src="icon.png"/>
 
-    <!-- use.game.mode must stay absent: it leaves the video element at networkState 0 with no
-         error, and every video falls back to the default player. -->
-    <!-- Must stay true: false stops the app from starting at all. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/floating.navigation" value="false"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/use.uwe" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- The container cannot reach any loopback address of ours, so the boot screen sends it to
-         this set's own instead. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=file:///tube/boot.html --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
 
-    <!-- Must stay true: false terminates the app on focus loss, so Home and Back start it again
-         from nothing instead of returning to the video. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
 
@@ -48,9 +40,6 @@
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
     <tizen:profile name="tv-samsung"/>
 
-
-    <!-- Without auto-restart and on-boot nothing restarts the service after standby, because a
-         package carrying nativeID never runs its own content. -->
     <tizen:service id="tUb3Xq7Lm9.TubeService" auto-restart="true" on-boot="true">
         <tizen:content src="service/dist/index.js"/>
         <tizen:name>TubeService</tizen:name>

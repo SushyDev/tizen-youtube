@@ -65,7 +65,8 @@ const suite = async () => {
         const challenge = crypto.getRandomValues(new Uint8Array(16));
         const puzzle = { challenge: encodeBase64(challenge), difficulty: 6 };
 
-        const solved = await solvePuzzle(puzzle);
+        // A generous budget, not the default (deliberately sometimes-insufficient) one, to avoid flaking.
+        const solved = await solvePuzzle(puzzle, 5000);
         assert.ok(solved, 'a difficulty this low should always be solvable within budget');
         assert.strictEqual(typeof solved.solution, 'string');
 

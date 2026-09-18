@@ -16,6 +16,7 @@ const switchRow = (item) => ({
         enabled: configRead(item.key) === item.on,
         enableServiceEndpoint: storeCommand(item.key, item.on),
         disableServiceEndpoint: storeCommand(item.key, !item.on),
+        tubeNote: item.note,
         trackingParams: 'null',
         itemId: idFor(item),
         thumbnail: picture(item.image)

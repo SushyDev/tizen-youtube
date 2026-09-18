@@ -11,6 +11,11 @@ on:
   schedule:
     - cron: '0 4 1 * *'
 
+# A three-hour build; one at a time, and the running one keeps the runner.
+concurrency:
+  group: cobalt-image
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write

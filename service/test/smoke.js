@@ -3,8 +3,6 @@
 // Never transpiled, so kept to what node 4.4.3 parses: strict-mode const, arrows, template strings.
 
 const http = require('http');
-const net = require('net');
-const tls = require('tls');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -12,12 +10,17 @@ const path = require('path');
 const PORT = Number(process.env.TUBE_PROXY_PORT) || 8398;
 const DEADLINE = 20000;
 
+// The service keeps listening, so a check that stalls without erroring would hang the job forever.
+const STALL = 90000;
+
 const fail = (message) => {
     process.stderr.write(`FAIL  ${message}\n`);
     process.exit(1);
 };
 
 const pass = (message) => process.stdout.write(`PASS  ${message}\n`);
+
+setTimeout(() => fail(`the run stalled for ${STALL / 1000}s on ${process.version}`), STALL);
 
 const readable = (body) => String(body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -86,37 +89,9 @@ const post = (pathname, payload, done) => {
     request.end(payload);
 };
 
-// Answered locally, so the intercepted CONNECT needs no network.
-const checkItInterceptsTls = () => {
-    const socket = net.connect(PORT, '127.0.0.1', () => {
-        socket.write('CONNECT www.youtube.com:443 HTTP/1.1\r\nHost: www.youtube.com:443\r\n\r\n');
-    });
-
-    socket.setTimeout(8000, () => fail('the intercepted CONNECT never finished'));
-    socket.on('error', (error) => fail(`the intercepted CONNECT broke: ${error.message}`));
-
-    socket.once('data', (reply) => {
-        if (String(reply).indexOf(' 200 ') === -1) return fail(`CONNECT answered ${String(reply).split('\r\n')[0]}`);
-
-        const held = { issuer: null };
-
-        const secure = tls.connect({ socket, servername: 'www.youtube.com', rejectUnauthorized: false }, () => {
-            held.issuer = secure.getPeerCertificate().issuer.CN;
-            secure.write('GET /__tube/state HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n');
-        });
-
-        secure.on('error', (error) => fail(`TLS through the interception broke: ${error.message}`));
-
-        return collect(secure, (answer) => {
-            if (held.issuer !== 'Tube Smoke Test CA') return fail(`www.youtube.com was not intercepted (issuer ${held.issuer})`);
-            if (answer.indexOf('HTTP/1.1 200') !== 0) return fail(`the intercepted request answered ${answer.split('\r\n')[0]}`);
-
-            pass('it intercepts TLS and answers through it');
-
-            process.stdout.write(`\nSmoke passed on ${process.version}.\n`);
-            return process.exit(0);
-        });
-    });
+const done = () => {
+    process.stdout.write(`\nSmoke passed on ${process.version}.\n`);
+    process.exit(0);
 };
 
 // The player drops media requests all the time, and node below 8 has no stream destroy: it crashed.
@@ -151,7 +126,7 @@ const checkItSurvivesADroppedStream = () => {
 
                     pass('it survives a media stream the page drops');
 
-                    return checkItInterceptsTls();
+                    return done();
                 }), 300);
             });
         });

@@ -7,10 +7,16 @@ on:
     branches: [main]
   pull_request:
 
+# One run per branch; a new push supersedes the one still running. Pushes to main run to completion.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: Build and test
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v7
@@ -55,6 +61,7 @@ jobs:
     name: node ${{ matrix.node }}
     needs: check
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     strategy:
       fail-fast: false
@@ -100,6 +107,7 @@ jobs:
     name: Against real YouTube
     needs: check
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     continue-on-error: true
 
     steps:
@@ -136,6 +144,7 @@ jobs:
     name: In Cobalt
     needs: check
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     continue-on-error: true
 
     # A package published from a workflow is private until someone says otherwise, so reading it

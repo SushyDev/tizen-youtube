@@ -1,5 +1,4 @@
-// A persistent anonymous identity Return YouTube Dislike uses to attribute votes, generated once
-// and never tied to any YouTube or Google account.
+// A persistent anonymous identity for Return YouTube Dislike, never tied to a Google account.
 
 const KEY = 'tube.dislikeCredential';
 const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';

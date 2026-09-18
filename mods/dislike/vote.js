@@ -1,5 +1,4 @@
-// Submits a real vote to Return YouTube Dislike: register an anonymous credential if none is held
-// yet, then run the vote/confirm handshake, each half gated behind its own proof-of-work puzzle.
+// Registers a credential if needed, then runs vote/confirm, each half gated behind its own proof-of-work puzzle.
 
 import { credential, forget, generateUserId, remember } from './credential.js';
 import { solvePuzzle } from './puzzle.js';
@@ -14,8 +13,7 @@ const postJson = (path, body) => fetch(`${API}${path}`, {
 
 const REGISTRATION_PUZZLE_ATTEMPTS = 2;
 
-// Each attempt gets a fresh challenge — a failed solve is not a rejected puzzle, just an unlucky
-// search within this one's attempt budget, so trying again with a new challenge is worth it.
+// A failed solve isn't a rejected puzzle, just bad luck within the attempt budget — worth a fresh challenge.
 const registerWith = async (userId, puzzleAttemptsLeft) => {
     if (puzzleAttemptsLeft <= 0) throw new Error('unable to solve the registration puzzle');
 
@@ -81,8 +79,7 @@ const attemptVote = async (videoId, value, authRetriesLeft, puzzleAttemptsLeft) 
     return true;
 };
 
-// One submission attempt, start to finish — serializing repeated calls for the same video is
-// dislikeSync.js's job, not this function's.
+// One submission attempt, start to finish — serializing repeated calls for the same video isn't this function's job.
 const submitVote = (videoId, value) => attemptVote(videoId, value, 1, VOTE_PUZZLE_ATTEMPTS);
 
 export { submitVote };

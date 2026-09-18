@@ -3,8 +3,7 @@ import { videoIdIn } from '../sponsorblock/sponsorblock.js';
 import { fetchCount } from './api.js';
 import { dislikesOf, remember } from './store.js';
 
-// transportControls never reaches JSON.parse interception on this engine, confirmed live, so the
-// video id is read from the URL hash instead.
+// transportControls never reaches interception on this engine, so the video id comes from the URL hash instead.
 
 // In flight now, so a video whose hash is seen more than once is asked about only once.
 const asking = Object.create(null);

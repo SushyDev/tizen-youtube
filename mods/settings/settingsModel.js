@@ -125,8 +125,7 @@ const GROUPS = [
         MONEY),
       Flags('segments', 'Segments to skip',
         'Skipped as soon as they start, with no prompt', SKIPPING, SEGMENTS),
-      // The highlight is left out: it is a point, never auto-skipped in the first place, and
-      // already has its own always-offered "Skip to highlight" button (mods/sponsorblock/highlight.js).
+      // The highlight is left out: it's a point, never auto-skipped, and already has its own "Skip to highlight" button.
       Set_('sponsorBlockManualSkips', 'Ask before skipping',
         'These segments offer a button instead of skipping on their own', SKIPPING,
         SEGMENTS.filter((segment) => segment.key !== 'enableSponsorBlockHighlight').map((segment) => ({

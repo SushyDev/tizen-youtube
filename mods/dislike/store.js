@@ -1,5 +1,4 @@
-// Return YouTube Dislike's answers kept in localStorage, because a response is dressed
-// synchronously inside JSON.parse and cannot wait for the network.
+// Cached in localStorage since a response is dressed synchronously inside JSON.parse, before any fetch could return.
 
 const KEY = 'tube.dislikes';
 
@@ -31,8 +30,7 @@ const load = () => {
         .map((videoID) => ({ [videoID]: stored[videoID] })));
 };
 
-// A localStorage write is synchronous on the main thread, so a whole response's answer batches
-// with whatever else is in flight.
+// Debounced since a localStorage write is synchronous on the main thread and would block on every answer.
 const WRITE_AFTER = 250;
 
 const flush = () => {

@@ -1,19 +1,14 @@
-// A trailing debounce that also coalesces: ramming the button stays free of proof-of-work and
-// network work until presses stop, and at most one submission is ever in flight per video, chasing
-// whatever value is currently wanted rather than queuing one submission per press.
+// A trailing debounce that coalesces presses — at most one submission in flight per video, chasing the latest value.
 import { dislikesOf, remember } from './store.js';
 import { submitVote } from './vote.js';
 
-// Long enough that a rapid run of presses never starts a submission mid-run; short enough that a
-// single deliberate press still feels immediate once it lands.
+// Long enough to outlast a rapid run of presses, short enough that a single press still feels immediate.
 const SETTLE_AFTER = 500;
 
 const RETRY_STARTING_AT = 1000;
 const RETRY_CAPPED_AT = 15000;
 
-// Per video: `desired` is what the viewer's most recent press actually wants synced: `basis` is
-// the vote value already folded into the displayed count, so repeated presses adjust it against a
-// fixed point instead of compounding against whatever the display happens to read at that instant.
+// Per video: `desired` is the latest wanted value, `basis` the value already folded into the display.
 const tracked = Object.create(null);
 
 const stateFor = (videoId) => {
@@ -33,9 +28,7 @@ const applyOptimistically = (videoId, value, entry) => {
     entry.basis = value;
 };
 
-// Always re-reads `desired` at the top rather than closing over a value handed to it, so a change
-// made while a submission is in flight or backing off is picked up on the very next step, not
-// queued behind the one already running.
+// Re-reads `desired` fresh each step rather than closing over it, so a mid-flight change is picked up immediately.
 const chase = (videoId, retryDelay) => {
     const entry = stateFor(videoId);
     const target = entry.desired;

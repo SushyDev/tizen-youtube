@@ -1,5 +1,4 @@
-// The vote value is read from the button's own post-press aria-pressed state rather than
-// `likeStatus`, since that JSON never reaches JSON.parse interception on this engine, confirmed live.
+// Read from aria-pressed, not likeStatus — that JSON never reaches interception on this engine.
 import { configRead } from '../../framework/index.js';
 import { videoIdIn } from '../sponsorblock/sponsorblock.js';
 import { requestVote } from './sync.js';
@@ -14,8 +13,7 @@ const within = (el, tag) => {
     return within(el.parentElement, tag);
 };
 
-// idomkey also matches the icon inside the container, which querySelector finds first and which
-// has no aria-pressed of its own, confirmed live — scoped to yt-button-container for the real state.
+// Scoped to yt-button-container — its icon idomkey matches first and has no aria-pressed of its own.
 const isDislikePressed = () => {
     const button = document.querySelector('yt-button-container[idomkey="dislike-button"]');
     return !!button && button.getAttribute('aria-pressed') === 'true';

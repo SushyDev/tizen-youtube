@@ -1,6 +1,4 @@
-// Find a 4-byte counter such that SHA-512(counter ++ challenge) has at least `difficulty` leading
-// zero bits — the counter fills the first 4 bytes of a 20-byte buffer, the challenge the rest,
-// matching the reference client's layout exactly since the server checks the same bytes back.
+// Counter + challenge must SHA-512 to `difficulty` leading zero bits, in the reference client's exact byte layout.
 
 const decodeBase64 = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 const encodeBase64 = (bytes) => btoa(String.fromCharCode(...bytes));
@@ -27,8 +25,7 @@ const attempt = async (buffer, counterView, difficulty, counter, attemptsLeft) =
     return attempt(buffer, counterView, difficulty, counter + 1, attemptsLeft - 1);
 };
 
-// The reference client allows itself three times as many attempts as the expected number needed
-// to clear the difficulty (2^difficulty), giving comfortable odds without an unbounded search.
+// Defaults to 3x the expected attempts needed to clear the difficulty, for comfortable odds without an unbounded search.
 const solvePuzzle = (puzzle, maxAttempts) => {
     const challenge = decodeBase64(puzzle.challenge);
     const buffer = new ArrayBuffer(20);

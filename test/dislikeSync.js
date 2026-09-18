@@ -58,8 +58,7 @@ global.fetch = (url, options) => {
     return Promise.reject(new Error(`unexpected fetch: ${path}`));
 };
 
-// dislikeSync.js holds at most one timer per video (either the debounce or a retry backoff), never
-// both — but different videos can each have their own, so several are tracked by id.
+// At most one timer per video (debounce or retry backoff), but different videos each get their own.
 const realSetTimeout = global.setTimeout;
 
 const fakeTimers = () => {
@@ -73,10 +72,7 @@ const fakeTimers = () => {
     };
     global.clearTimeout = (id) => { pending.delete(id); };
 
-    // crypto.subtle.digest resolves through Node's own async I/O (the libuv threadpool), not the
-    // (faked) setTimeout above and not the plain microtask queue either — a chain of `await
-    // Promise.resolve()` never actually yields to it. A handful of real, unfaked event-loop turns
-    // does, and is enough for a puzzle solve plus the surrounding fetch/json hops either way.
+    // crypto.subtle.digest resolves via Node's libuv threadpool, so only real event-loop turns free it.
     const flush = async () => {
         await Array.from({ length: 60 }).reduce(
             (chain) => chain.then(() => new Promise((resolve) => realSetTimeout(resolve, 0))),
@@ -172,10 +168,7 @@ const suite = async () => {
         await timers.flush();
         await timers.flush(); // the immediate re-chase for the corrected value needs its own turns too
 
-        // The first (stale) attempt cannot be recalled once it is already on the wire — there is no
-        // way to abort a proof-of-work handshake mid-flight — so it is allowed to land. What matters
-        // is what happens next: the moment it is free, it notices `desired` moved on and immediately
-        // chases the real one, with no extra debounce wait and without piling up one call per press.
+        // The stale in-flight attempt can't be recalled, so it lands, but the next chase picks up `desired` at once.
         assert.strictEqual(server.votes.length, 2, `expected the stale value plus the corrected one, got ${server.votes.length}`);
         assert.strictEqual(server.votes[0].value, -1, 'the in-flight one could not be recalled');
         assert.strictEqual(server.votes[server.votes.length - 1].value, 0, 'but the server ends up with the real final value');

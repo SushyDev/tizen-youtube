@@ -1,14 +1,6 @@
-// This engine's spatial focus does not survive the like/dislike renderer's own DOM rebuild on a
-// vote, confirmed live as an immediate jump to Subscribe, so it is corrected here rather than
-// upstream in YouTube's own renderer.
-//
-// Native `.focus()` only moves `document.activeElement`, confirmed live — this app's own focus
-// indicator updates only in response to a real dispatched key it processes itself, so the
-// correction re-presses right instead.
-//
-// Matched by idomkey against `yt-button-container`'s own focus class, not aria-label or a
-// page-wide scan for whatever is deepest focused — confirmed live, the like button's label carries
-// a live count that changes after voting, and the page-wide scan gave stale answers.
+// A vote rebuilds the DOM and spatial focus doesn't survive it, jumping to Subscribe — corrected here.
+// `.focus()` only moves `activeElement`; this app's own indicator needs a real dispatched key instead.
+// Matched by idomkey's focus class, not aria-label — the like button's label changes after voting.
 const BUTTON = 'YTLR-LIKE-BUTTON-RENDERER';
 const ENTER = 13;
 const RIGHT = 39;
@@ -17,7 +9,7 @@ const HOP_AFTER = 350;
 const MAX_HOPS = 6;
 const FOCUS_CLASS = 'zylon-focus';
 
-// This engine has no Element.prototype.closest, confirmed live — ancestors are walked by hand.
+// No Element.prototype.closest on this engine, so ancestors are walked by hand.
 const within = (el, tag) => {
     if (!el) return false;
     if (el.tagName === tag) return true;

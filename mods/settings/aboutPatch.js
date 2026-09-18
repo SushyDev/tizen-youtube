@@ -2,10 +2,21 @@ import { redrawSettingRows } from './settingComponents.js';
 import { COMMIT, TREE, VERSION, sourceOf } from '../../framework/index.js';
 
 const PANEL = 'ytlr-setting-app-version';
-const LABEL = 'Patch';
 const STAMP = `${VERSION}-${COMMIT}-${TREE}`;
 
 const RENDERS = 'this.template(';
+
+// The same facts the phone-facing /diag page shows under "This TV" — Patch stands on its own
+// since it never needs a fetch, everything else arrives once /__tube/facts answers.
+const extra = { rows: [{ key: 'Patch', value: STAMP }] };
+
+fetch('/__tube/facts')
+    .then((res) => res.json())
+    .then((rows) => {
+        extra.rows = extra.rows.concat(rows);
+        redrawSettingRows();
+    })
+    .catch(() => undefined);
 
 const state = { claimed: false, panels: new WeakMap() };
 
@@ -17,16 +28,19 @@ const rowsKeyOf = (values) => Object.keys(values).find((key) => {
         && value.every((row) => row && typeof row.key === 'string' && typeof row.value === 'string');
 });
 
-// The template renders its rows from state, so the stamp is appended to that list rather than
-// built as hyperscript.
+// The template renders its rows from state, so the extra facts are appended to that list rather
+// than built as hyperscript.
 const withPatch = (original) => function withTubePatch(props, values) {
     const key = values && rowsKeyOf(values);
     const rows = key && values[key];
+    if (!rows) return original.call(this, props, values);
 
-    if (!rows || rows.some((row) => row.key === LABEL)) return original.call(this, props, values);
+    const already = rows.map((row) => row.key);
+    const missing = extra.rows.filter((row) => already.indexOf(row.key) === -1);
+    if (!missing.length) return original.call(this, props, values);
 
     const grown = Object.assign({}, values);
-    grown[key] = rows.concat({ key: LABEL, value: STAMP });
+    grown[key] = rows.concat(missing);
 
     return original.call(this, props, grown);
 };

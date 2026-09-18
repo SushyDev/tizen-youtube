@@ -6,13 +6,13 @@
 you've known about the 1 minute playback cutoff since july ([#555](<https://github.com/reisxd/TizenTube/issues/555>)). then this shows up less than 5 days after my branches went up
 
 **1. 127.0.0.2**
-tizen blocks apps from reaching each other on 127.0.0.1 but the rest of 127.x goes through. as far as i can tell that's not documented anywhere, i found it by probing addresses and wrote it up in [c7b5f43](<https://github.com/SushyDev/tizen-youtube/commit/c7b5f43>). their existing service is on 127.0.0.1, the new cobalt proxy listens on 127.0.0.2 and nothing else
+tizen blocks apps from reaching each other on 127.0.0.1 but the rest of 127.x goes through. as far as i can tell that's not documented anywhere, i found it by probing addresses and wrote it up in [c7b5f43](<https://github.com/SushyDev/tizen-youtube/commit/c7b5f43>). your existing service is on 127.0.0.1, the new cobalt proxy listens on 127.0.0.2 and nothing else
 
 **2. onStop**
 tizen's docs say the service callbacks are onStart/onRequest/onExit. i export onStart/onRequest/onStop as empty functions ([da3b238](<https://github.com/SushyDev/tizen-youtube/commit/da3b238>)). they export the exact same three in the same order. need to double check what the tv's service_runner.js actually calls, but if it's onExit that's basically a copied typo
 
 **3. cert hash code**
-node-forge has no subject hash function so this had to be handwritten. reis's has an `outerSequence` flag that toggles exactly the trap my comment warns about ("there is no outer SEQUENCE"), the helper is also called `hashName`, and the name cleanup is identical down to the character: `.replace(/\s+/g, ' ').trim().toLowerCase()`
+node-forge has no subject hash function so this had to be handwritten. yours has an `outerSequence` flag that toggles exactly the trap my comment warns about ("there is no outer SEQUENCE"), the helper is also called `hashName`, and the name cleanup is identical down to the character: `.replace(/\s+/g, ' ').trim().toLowerCase()`
 
 Part 2
 **4. the cobalt switches**

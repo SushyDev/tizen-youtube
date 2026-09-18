@@ -56,8 +56,13 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
-// `S` is the component's custom-element name; survives releases that rename the export.
+// Which static property carries a component's own custom-element name is not universal, confirmed
+// live — `S` is one component's own minified choice for it, another uses `K` for the same idea —
+// so a live instance's own constructor is asked first, `S` only a fallback before one exists.
 const findComponent = (tag) => {
+    const live = document.querySelector(tag);
+    if (live && live.__instance) return live.__instance.constructor;
+
     const match = entries().find(([, value]) => typeof value === 'function' && value.S === tag);
     return match ? match[1] : null;
 };

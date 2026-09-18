@@ -3,7 +3,7 @@ global.window.JSON = JSON;
 global.location = { hash: '#/' };
 global.fetch = () => new Promise(() => { });
 
-const { configRead, configWrite } = await import('../framework/config.js');
+const { configRead, configWrite } = await import('../framework/runtime/config.js');
 
 const results = [];
 

@@ -1,6 +1,5 @@
-// @ts-nocheck TODO: type-check once the sibling branches land.
 import { configRead } from '../../framework/index.js';
-import { SPEEDS } from '../shell/scrollSpeed.js';
+import { SPEEDS } from '../scroller/index.js';
 
 const ART = 'https://www.gstatic.com/ytlr/img/';
 

@@ -7,7 +7,7 @@
 
 const http = require('http');
 
-const ui = require('./report.js');
+const ui = require('./lib/report.js');
 const { DEV } = require('../service/lib/ports.js');
 
 // The reply is JSON twice over — the bridge's envelope and the probe's answer inside it — and
@@ -91,7 +91,7 @@ const request = http.request({
 
         ui.blank();
         ui.note('Everything present here is safe to remove from SINCE.cobalt3 in tools/check-output.js,');
-        ui.note('and the Babel target in tools/rollup.config.mjs can rise to match.');
+        ui.note('and the Babel target in tools/lib/rollup.config.mjs can rise to match.');
         ui.blank();
         return undefined;
     });

@@ -4,10 +4,10 @@ const { execFileSync } = require('child_process');
 const { rmSync, existsSync, statSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./report.js');
-const { ROOT } = require('./config.js');
+const ui = require('./lib/report.js');
+const { ROOT } = require('./lib/config.js');
 
-const ARTEFACTS = require('./paths.js').ARTEFACTS;
+const ARTEFACTS = require('./lib/paths.js').ARTEFACTS;
 
 const DEEP = ['node_modules'];
 

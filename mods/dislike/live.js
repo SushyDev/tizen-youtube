@@ -1,5 +1,5 @@
 import { configChangeEmitter, configRead, every, stop } from '../../framework/index.js';
-import { videoIdIn } from '../sponsorblock/sponsorblock.js';
+import { videoIdIn } from '../sponsorblock/index.js';
 import { compact } from './api.js';
 import { dislikesOf } from './store.js';
 

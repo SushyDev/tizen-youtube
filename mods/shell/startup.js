@@ -1,6 +1,6 @@
 import css from './ui.css';
 import { claimCommands, onKey, reloadGuide, whenFound, whenVideo } from '../../framework/index.js';
-import { claimInterpreters } from '../commands/interpreters.js';
+import { claimInterpreters } from '../commands/index.js';
 import { pipToFullscreen } from '../player/pictureInPicture.js';
 
 const RIGHT = 39;

@@ -6,10 +6,10 @@ const { readFileSync, existsSync } = require('fs');
 const { basename, join } = require('path');
 const JSZip = require('jszip');
 
-const ui = require('./report.js');
-const paths = require('./paths.js');
-const { ROOT, load } = require('./config.js');
-const { assertNoTokens } = require('./inject.js');
+const ui = require('./lib/report.js');
+const paths = require('./lib/paths.js');
+const { ROOT, load } = require('./lib/config.js');
+const { assertNoTokens } = require('./lib/inject.js');
 
 const RELEASE = process.argv.includes('--release');
 

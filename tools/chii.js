@@ -6,8 +6,8 @@
 const { spawn } = require('child_process');
 const { networkInterfaces } = require('os');
 
-const ui = require('./report.js');
-const { load } = require('./config.js');
+const ui = require('./lib/report.js');
+const { load } = require('./lib/config.js');
 
 // Pinned so a later install starts the inspector this was written against.
 const CHII = 'chii@1.15.5';

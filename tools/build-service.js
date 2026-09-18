@@ -5,9 +5,9 @@ const { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } = req
 const { basename, join } = require('path');
 const { randomBytes } = require('crypto');
 
-const { load, gitStamp } = require('./config.js');
-const { injectTokens } = require('./inject.js');
-const paths = require('./paths.js');
+const { load, gitStamp } = require('./lib/config.js');
+const { injectTokens } = require('./lib/inject.js');
+const paths = require('./lib/paths.js');
 
 const config = load();
 const legacy = process.env.TUBE_TARGET === 'legacy';

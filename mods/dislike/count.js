@@ -1,5 +1,5 @@
 import { configRead } from '../../framework/index.js';
-import { videoIdIn } from '../sponsorblock/sponsorblock.js';
+import { videoIdIn } from '../sponsorblock/index.js';
 import { fetchCount } from './api.js';
 import { dislikesOf, remember } from './store.js';
 

@@ -25,7 +25,6 @@
     "dev": "node tools/dev.js",
     "chii": "node tools/chii.js",
     "dev:service": "node service/index.js",
-    "deploy": "./install-dev.sh",
     "clean": "node tools/clean.js",
     "version:show": "node tools/version.js",
     "version:check": "node tools/version.js --check",

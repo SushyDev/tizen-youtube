@@ -2,10 +2,7 @@ import { configChangeEmitter, configRead, every, stop } from '../../framework/in
 import { thumbnailUrl } from '../feed/brandingApi.js';
 import { brandingOf } from '../feed/brandingStore.js';
 
-// A tile is dressed synchronously inside JSON.parse, before DeArrow's answer can possibly have
-// arrived (brandingStore.js), and nothing re-parses an already-rendered response afterwards — a
-// page landed on once (a channel's video list, say) never gets a second pass to pick the answer
-// up. This sweeps the tiles currently on screen and catches each one up once its answer lands.
+// A tile can render before DeArrow's answer arrives, so this sweeps the screen to catch it up.
 const TILE = 'ytlr-tile-renderer';
 const THUMBNAIL = 'ytlr-thumbnail-details';
 const TITLE = 'ytlr-tile-metadata-renderer yt-formatted-string';
@@ -13,8 +10,7 @@ const MARK = 'data-tube-dearrow-for';
 const NAME = 'dearrow live';
 const INTERVAL = 1000;
 
-// The video id is not carried on the element anywhere; the thumbnail's own URL is read back out
-// of it instead, the same way YouTube put it there.
+// The video id isn't on the element; it's read back out of the thumbnail's own URL.
 const videoIdOf = (tile) => {
     const thumb = tile.querySelector(THUMBNAIL);
     if (!thumb) return null;
@@ -24,8 +20,7 @@ const videoIdOf = (tile) => {
     return match ? match[1] : null;
 };
 
-// Marked by video id, not a plain flag — the list is virtualized, so the same element is reused
-// for a different video as the viewer scrolls, and a stale flag would leave that video undressed.
+// Marked by video id, not a flag — virtualized reuse would leave a stale flag on a new video.
 const catchUp = (tile) => {
     const videoID = videoIdOf(tile);
     if (!videoID || tile.getAttribute(MARK) === videoID) return;

@@ -116,8 +116,6 @@ check('the original is never a substitution', () => {
 });
 
 check('when the top pick is the original, a lesser entry behind it is not shown instead', () => {
-    // The server's own order says "keep the original" beat this custom thumbnail on votes; the
-    // old bug filtered the original out of contention and showed the runner-up instead.
     const topIsOriginal = {
         titles: [],
         thumbnails: [

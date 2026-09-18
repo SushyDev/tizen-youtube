@@ -1,6 +1,6 @@
 import { configRead, onResponse, timelyAction } from '../../framework/index.js';
 import { nameOf } from './segments.js';
-import { segmentsForVideo } from './sponsorblock.js';
+import { segmentsForVideo } from './index.js';
 import { skipTo } from './skipTo.js';
 
 const cardFor = (segment) => timelyAction(

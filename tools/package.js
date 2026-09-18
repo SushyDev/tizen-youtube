@@ -5,9 +5,9 @@ const { existsSync, mkdirSync, statSync, rmSync, cpSync, readdirSync, readFileSy
 const { join, dirname, relative, sep } = require('path');
 const JSZip = require('jszip');
 
-const ui = require('./report.js');
-const { load, parseUrl, ROOT } = require('./config.js');
-const paths = require('./paths.js');
+const ui = require('./lib/report.js');
+const { load, parseUrl, ROOT } = require('./lib/config.js');
+const paths = require('./lib/paths.js');
 const { PROXY, DEV } = require('../service/lib/ports.js');
 
 // Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the page from the service instead.

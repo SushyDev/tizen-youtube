@@ -6,7 +6,15 @@ import { fileURLToPath } from 'url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const SUITES = ['feed.js', 'surfaces.js', 'framework.js', 'json-routing.js', 'settings.js', 'adblock.js', 'feed-mods.js', 'player-mods.js', 'deArrow.js', 'dislikeCount.js', 'dislikePuzzle.js', 'dislikeVote.js', 'dislikeSync.js', 'playerButtons.js', 'startPage.js', 'scrollSpeed.js', 'subtitles.js', 'sponsorblock.js', 'autoSkip.js', 'quality.js', 'wait-for.js', 'dom-shims.js', 'originRewrite.js', 'pageOrigin.js', 'journal.js'];
+const SUITES = [
+    'framework/feed.js', 'mods/feed.js', 'framework/core.js', 'framework/json-routing.js',
+    'mods/settings.js', 'mods/adblock.js', 'mods/feed-mods.js', 'mods/player-mods.js',
+    'mods/dearrow.js', 'mods/dislike/count.js', 'mods/dislike/puzzle.js', 'mods/dislike/vote.js',
+    'mods/dislike/sync.js', 'mods/playerButtons.js', 'mods/startPage.js', 'mods/scroller.js',
+    'mods/subtitles.js', 'mods/sponsorblock/index.js', 'mods/sponsorblock/autoSkip.js',
+    'mods/quality.js', 'framework/wait-for.js', 'dom-shims.js', 'mods/network/originRewrite.js',
+    'mods/network/pageOrigin.js', 'framework/journal.js'
+];
 
 const failed = SUITES.filter((suite) => {
     try {

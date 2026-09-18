@@ -1,5 +1,5 @@
 import { ButtonRenderer, configRead, onResponse } from '../../framework/index.js';
-import { segmentsForVideo } from './sponsorblock.js';
+import { segmentsForVideo } from './index.js';
 import { skipTo } from './skipTo.js';
 
 onResponse('sponsorblock highlight', ['transportControls'], (response) => {

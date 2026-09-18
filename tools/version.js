@@ -3,8 +3,8 @@
 const { readFileSync, writeFileSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./report.js');
-const { ROOT, CONFIG_PATH } = require('./config.js');
+const ui = require('./lib/report.js');
+const { ROOT, CONFIG_PATH } = require('./lib/config.js');
 
 const PACKAGE_FILES = [
     'package.json',

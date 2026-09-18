@@ -85,6 +85,32 @@ const SIBLING_OWNED = [
     'mods/player/pictureInPicture.js'
 ];
 
+// mods/commands/interpreters.js is also sibling-owned (frozen — see SIBLING_OWNED above) and reaches
+// directly into player/pictureInPicture.js, player/speed.js and settings/settingsOptions.js by deep
+// path; it cannot be edited to route those through an index.js. Kept separate from SIBLING_OWNED so
+// this doesn't also loosen the style/tsc exemptions those files already hold.
+//
+// mods/shell/startup.js reaches pictureInPicture.js directly rather than through player/index.js on
+// purpose: pictureInPicture.js has import-time side effects (it touches window and document.readyState
+// at module scope), and startup.js is imported far earlier than player/index.js in mods/index.js's
+// list. Routing it through player/index.js would drag playerButtons/autoplay/overlays/codecs's
+// registration that much earlier too — reordering handlers that register order depends on.
+const PRIVACY_EXEMPT = SIBLING_OWNED.concat([
+    'mods/commands/interpreters.js',
+    'mods/shell/startup.js'
+]);
+
+const MOD_IMPORT_PATTERNS = [
+    {
+        group: ['**/framework/*', '!**/framework/index.js'],
+        message: 'import from framework/index.js — the rest of the framework is private'
+    },
+    {
+        group: ['**/service/**', '**/tools/**'],
+        message: 'a mod may not reach the service or the build tools'
+    }
+];
+
 const STYLED = [
     'service/**/*.js', 'framework/**/*.js', 'mods/**/*.js',
     'tools/**/*.js', 'tools/**/*.mjs'
@@ -103,7 +129,7 @@ const FEED_CONTAINERS = [
 
 const NOT_THE_FEEDS_KEEPER = {
     selector: `MemberExpression[property.name=/^(${FEED_CONTAINERS.join('|')})$/]`,
-    message: 'only mods/feed/surfaces.js descends to a feed container — register onTile/keepTile/'
+    message: 'only mods/feed/index.js descends to a feed container — register onTile/keepTile/'
         + 'onShelf/keepShelf/onSurface with the walk instead'
 };
 
@@ -149,7 +175,7 @@ module.exports = [
             '**/.dev/**',
             '**/release/**',
             '**/.package/**',
-            'framework/tiny-sha256.js'
+            'framework/vendor/tiny-sha256.js'
         ]
     },
     {
@@ -182,7 +208,7 @@ module.exports = [
         rules: CORRECTNESS_RULES
     },
     {
-        files: ['tools/rollup.config.mjs'],
+        files: ['tools/lib/rollup.config.mjs'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
@@ -236,17 +262,25 @@ module.exports = [
     {
         files: ['mods/**/*.js'],
         rules: {
+            'no-restricted-imports': ['error', { patterns: MOD_IMPORT_PATTERNS }]
+        }
+    },
+    // One level further than the rule above: a mod's own directory is its module boundary too, the
+    // same way framework/index.js fronts framework/. mods/index.js itself is unrestricted here — it's
+    // the orchestrator, exactly as framework/index.js is framework's.
+    //
+    // ESLint flat config replaces a rule's options outright for a file matched by more than one
+    // config, rather than merging them — so this block repeats MOD_IMPORT_PATTERNS rather than
+    // relying on the block above, which this one otherwise fully shadows for every file it matches.
+    {
+        files: ['mods/*/*.js'],
+        ignores: PRIVACY_EXEMPT,
+        rules: {
             'no-restricted-imports': ['error', {
-                patterns: [
-                    {
-                        group: ['**/framework/*', '!**/framework/index.js'],
-                        message: 'import from framework/index.js — the rest of the framework is private'
-                    },
-                    {
-                        group: ['**/service/**', '**/tools/**'],
-                        message: 'a mod may not reach the service or the build tools'
-                    }
-                ]
+                patterns: MOD_IMPORT_PATTERNS.concat([{
+                    group: ['../*/*', '!../*/index.js', '!../../**'],
+                    message: "import from the directory's index.js — the rest of it is private"
+                }])
             }]
         }
     },
@@ -259,7 +293,7 @@ module.exports = [
     },
     {
         files: ['mods/**/*.js'],
-        ignores: UNSTYLED.concat(['mods/feed/surfaces.js']),
+        ignores: UNSTYLED.concat(['mods/feed/index.js']),
         rules: {
             'no-restricted-syntax': ['error'].concat(BROWSER_SYNTAX, [NOT_THE_FEEDS_KEEPER])
         }

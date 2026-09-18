@@ -4,8 +4,8 @@
 //
 //   node tools/doctor-tv.js [--tv 192.168.1.29]
 
-const ui = require('./report.js');
-const { evaluate, settings, PORT } = require('./bridge.js');
+const ui = require('./lib/report.js');
+const { evaluate, settings, PORT } = require('./lib/bridge.js');
 
 const WHERE = settings();
 

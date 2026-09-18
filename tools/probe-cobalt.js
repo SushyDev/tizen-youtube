@@ -2,9 +2,9 @@
 
 // Lists which browser APIs the page on a set lacks, for the Chromium shim to take away.
 
-const ui = require('./report.js');
+const ui = require('./lib/report.js');
 
-const { evaluate, settings, PORT } = require('./bridge.js');
+const { evaluate, settings, PORT } = require('./lib/bridge.js');
 
 const WHERE = settings();
 

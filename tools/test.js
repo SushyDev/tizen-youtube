@@ -2,8 +2,8 @@
 
 const { execFileSync } = require('child_process');
 
-const ui = require('./report.js');
-const { ROOT } = require('./config.js');
+const ui = require('./lib/report.js');
+const { ROOT } = require('./lib/config.js');
 
 // A gate is judged only by its exit status; a suite is judged by the sum of its `n/m checks
 // passed` lines too.

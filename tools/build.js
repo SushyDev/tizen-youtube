@@ -4,17 +4,17 @@ const { execFileSync } = require('child_process');
 const { existsSync, statSync, readFileSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./report.js');
-const { load, ROOT } = require('./config.js');
-const paths = require('./paths.js');
-const { assertNoTokens } = require('./inject.js');
+const ui = require('./lib/report.js');
+const { load, ROOT } = require('./lib/config.js');
+const paths = require('./lib/paths.js');
+const { assertNoTokens } = require('./lib/inject.js');
 
 // Both services embed the userscript, so it builds first.
 const STEPS = [
     {
         label: 'userscript bundle',
         target: 'modern',
-        command: ['npx', ['rollup', '-c', 'tools/rollup.config.mjs']],
+        command: ['npx', ['rollup', '-c', 'tools/lib/rollup.config.mjs']],
         // Both widgets carry this same bundle, so it is held to the older engine of the two.
         after: [
             ['node', ['tools/check-output.js', paths.BUNDLE, 'cobalt20']],

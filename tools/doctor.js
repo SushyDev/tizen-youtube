@@ -3,8 +3,8 @@
 const { existsSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./report.js');
-const { load, CONFIG_PATH, ROOT } = require('./config.js');
+const ui = require('./lib/report.js');
+const { load, CONFIG_PATH, ROOT } = require('./lib/config.js');
 
 const checks = [];
 

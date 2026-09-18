@@ -8,8 +8,8 @@ const { execFile } = require('child_process');
 const { existsSync } = require('fs');
 const { join } = require('path');
 
-const ui = require('./report.js');
-const { load, ROOT } = require('./config.js');
+const ui = require('./lib/report.js');
+const { load, ROOT } = require('./lib/config.js');
 
 // Legacy runs on all of these; modern from node 12.
 const TARGETS = [

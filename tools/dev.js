@@ -4,8 +4,8 @@ const { spawn } = require('child_process');
 const { createServer } = require('net');
 const { join } = require('path');
 
-const ui = require('./report.js');
-const { load, ROOT } = require('./config.js');
+const ui = require('./lib/report.js');
+const { load, ROOT } = require('./lib/config.js');
 
 // Read from tizen.config.json rather than service/lib/ports.js: a build tool must not reach into
 // shipped runtime code.
@@ -64,7 +64,7 @@ const stopEverything = () => {
     children.forEach((child) => child.kill());
 };
 
-const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'tools/rollup.config.mjs', '-w'], {
+const watchTheUserscript = () => start('mods', 'npx', ['rollup', '-c', 'tools/lib/rollup.config.mjs', '-w'], {
     cwd: ROOT
 });
 

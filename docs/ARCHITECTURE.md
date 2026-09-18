@@ -1,38 +1,70 @@
 # How this is put together
 
-Five layers, and the directory listing is the map.
+Five layers, and the directory listing is the map. Below `mods/` and `framework/`, one more rule
+holds: a directory is a module, and its `index.js` — where it has one — is the only file of it
+anything outside may import.
 
 ```
 app/          config.xml · index.html · icon.png    what the .wgt is made of
 framework/    the patch framework — knows YouTube, never knows a feature
-mods/         features only, grouped by what they act on
+  framework/registries/   the traversal/registration machinery — see the table below
+  framework/runtime/      config, flags, switches, waitFor — state read while the app runs
+  framework/ui/           modal, toast, the renderer builders
+  framework/vendor/       tiny-sha256.js, vendored verbatim
+mods/         one directory per feature, named for what it does
+  mods/dev/       aliased out of a release build entirely
 service/      the Node service that ships inside the widget
   service/dev/    aliased out of a release build entirely
 tools/        every build, release and diagnostic script
+  tools/lib/      shared by more than one script — config, paths, report, inject, bridge, the
+                  rollup config
   tools/dev/      the dev server's injected page code
-test/         the userscript suites
+test/         the userscript suites, mirroring mods/ and framework/
+  test/framework/   whitebox tests against the registries directly
+  test/mods/        one file (or directory) per feature under test
 ```
+
+A mod that is one file is that file named `index.js` (`mods/adblock/index.js`). A mod that is
+several related files still gets one directory (`mods/dearrow/`, `mods/quality/`, `mods/dislike/`);
+it gets an `index.js` once there's a natural single entry point to register through, same as
+`mods/subtitles/` always has. Where there isn't one — `mods/settings/`, `mods/sponsorblock/`'s
+siblings, `mods/player/`'s — `mods/index.js` still imports each file it needs directly, exactly as
+it always has; nothing here forces a barrel where one wouldn't describe anything real.
 
 ## The rule
 
 > `mods/` may import `framework/index.js`, and nothing deeper.
+> A file inside `mods/<feature>/` may import another feature's `index.js`, and nothing deeper in it.
 > `framework/` may import nothing above it.
 > Nothing shipped may import `tools/`.
 > `service/` reaches `service/dev/` only through `service/dev/index.js`, which a ship build swaps for `none.js`.
 
-Only `framework/` and `mods/` are held to this, by `no-restricted-imports` in `eslint.config.js`;
-nothing lints the imports in `service/`. Without that rule `../mods/y.js` from inside the framework
-resolves perfectly well, and the separation goes back to being a habit.
+Held to this by `no-restricted-imports` in `eslint.config.js`, at two levels: `mods/**/*.js`
+against `framework/`, and `mods/*/*.js` against every other mod's internals. Nothing lints the
+imports in `service/`. Without those rules a deep relative import resolves perfectly well, and the
+separation goes back to being a habit.
 
-`framework/index.js` is the whole of the public surface. Everything else under `framework/` is
-private, and a mod that imports it directly fails lint.
+`framework/index.js` is the whole of the framework's public surface, regardless of how its own
+internals are grouped underneath it — a mod that imports anything else under `framework/` directly
+fails lint. The same now holds one level down: a mod's own directory is private beyond its
+`index.js`, to any other mod. `mods/index.js` itself is exempt from that second rule — it's the
+orchestrator, exactly as `framework/index.js` is framework's, and mechanically listing every
+feature's entry point is its whole job.
 
-Only `mods/feed/surfaces.js` may name a feed container such as `sectionListRenderer`. Every other
+A short, named list of files is exempt from all of this: `eslint.config.js`'s `PRIVACY_EXEMPT` and
+`SIBLING_OWNED` constants, each commented with why — mostly files a live sibling branch owns, where
+even a same-directory reshape would conflict on every restack, and one (`mods/shell/startup.js`)
+where routing a single import through the tidy path would drag five unrelated player mods'
+registration earlier than they're meant to run. See "Boot" below for why that timing matters.
+
+Only `mods/feed/index.js` may name a feed container such as `sectionListRenderer`. Every other
 mod registers with the walk instead, and `no-restricted-syntax` in `eslint.config.js` enforces it.
 
 ## What the framework is for
 
 Each registry replaced something that had been written several times and leaked differently.
+They live under `framework/registries/` now; the table names them by what they export, which is
+what a mod actually sees through `framework/index.js`.
 
 | Registry | What it replaced |
 |---|---|
@@ -61,7 +93,7 @@ registered afterwards warns instead of silently never firing.
 
 Two build-time gates, one per side.
 
-- **Userscript**: `framework/flags.js` folds `DEV_TOOLS` to a literal `false`, terser drops the
+- **Userscript**: `framework/runtime/flags.js` folds `DEV_TOOLS` to a literal `false`, terser drops the
   `if (DEV_TOOLS) { … }` block in `mods/dev/index.js`, and its `unused` pass drops the modules.
   The shape is load bearing — an array like `FEATURES.concat(DEV_TOOLS ? [...] : [])` folds the
   array and keeps the functions. Release is ~16KB smaller than `TUBE_DEV=1`.
@@ -74,7 +106,7 @@ Two build-time gates, one per side.
 
 - `app/` is a *source* directory. Tizen resolves `<content src>` and `<icon src>` relative to the
   **archive** root, and `service/lib/cobaltConfig.js` reads `../../config.xml` at runtime from
-  `service/dist/`. `tools/paths.js` stages `app/`'s contents flat for that reason.
+  `service/dist/`. `tools/lib/paths.js` stages `app/`'s contents flat for that reason.
 - The proxy port is written in three places: `tizen.config.json`, `service/lib/ports.js`, and the
   `--proxy` switch in `app/config.xml`. `npm run package` fails if `app/config.xml` disagrees with
   `tizen.config.json`, or if `service/lib/ports.js` does — a mismatch is a television that shows

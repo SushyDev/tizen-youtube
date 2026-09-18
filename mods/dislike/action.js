@@ -1,6 +1,6 @@
 // Read from aria-pressed, not likeStatus — that JSON never reaches interception on this engine.
 import { configRead } from '../../framework/index.js';
-import { videoIdIn } from '../sponsorblock/sponsorblock.js';
+import { videoIdIn } from '../sponsorblock/index.js';
 import { requestVote } from './sync.js';
 
 const BUTTON = 'YTLR-LIKE-BUTTON-RENDERER';

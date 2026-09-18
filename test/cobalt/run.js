@@ -5,8 +5,8 @@
 const { spawn } = require('child_process');
 const { join } = require('path');
 
-const ui = require('../../tools/report.js');
-const { ROOT } = require('../../tools/config.js');
+const ui = require('../../tools/lib/report.js');
+const { ROOT } = require('../../tools/lib/config.js');
 const { AGENT } = require('../e2e/cobalt.js');
 
 const at = (flag, fallback) => {
@@ -20,7 +20,7 @@ const DEV_PORT = Number(process.env.TUBE_DEV_PORT) || 8297;
 const TOKEN = process.env.TUBE_DEV_TOKEN || 'cobalt-ci';
 
 process.env.TUBE_DEV_PORT = String(DEV_PORT);
-const { evaluate } = require('../../tools/bridge.js');
+const { evaluate } = require('../../tools/lib/bridge.js');
 
 const BOOTING = 90000;
 

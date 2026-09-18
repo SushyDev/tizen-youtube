@@ -12,6 +12,7 @@ import { start as startSpeed } from './player/speed.js';
 
 import './feed/index.js';
 import './shell/guide.js';
+import './shell/deArrowLive.js';
 import './sponsorblock/sponsorblock.js';
 import './subtitles/index.js';
 import './player/preferredQuality.js';

@@ -1,16 +1,17 @@
+import { sha256 } from '../../framework/index.js';
+
+// Asks by a 4-character hash prefix so the server never learns the video id.
 const API = 'https://sponsor.ajay.app/api/branding';
 
-// Downvoted into the negative is DeArrow's way of saying "do not show this".
-const showable = (entry) => entry && entry.votes >= 0 && !entry.original;
+// A lock overrides vote count — it's the community's finalized verdict.
+const isRejected = (entry) => !entry || (!entry.locked && entry.votes < 0);
 
-// Ties keep the earlier entry, which is the order the server sent.
-const preferred = (entries) => (entries || [])
-    .filter(showable)
-    .reduce((best, one) => {
-        if (!best) return one;
-        if (!!best.locked !== !!one.locked) return best.locked ? best : one;
-        return best.votes >= one.votes ? best : one;
-    }, null);
+// Server output is already sorted by verdict, so the first entry wins without re-sorting.
+// `original: true` means keep YouTube's own pick, not fall back to a runner-up.
+const preferred = (entries) => {
+    const top = (entries || [])[0];
+    return isRejected(top) || top.original ? null : top;
+};
 
 const bestOf = (data) => {
     const title = preferred(data.titles);
@@ -22,9 +23,14 @@ const bestOf = (data) => {
     };
 };
 
-const brandingFor = (videoID) => fetch(`${API}?videoID=${videoID}`)
-    .then((res) => res.json())
-    .then(bestOf);
+// The response is keyed by videoID, since one hash prefix can match several videos.
+const brandingFor = (videoID) => {
+    const videoHash = sha256(videoID).substring(0, 4);
+
+    return fetch(`${API}/${videoHash}`)
+        .then((res) => res.json())
+        .then((results) => bestOf((results && results[videoID]) || {}));
+};
 
 const thumbnailUrl = (videoID, timestamp) =>
     `https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID=${videoID}&time=${timestamp}`;

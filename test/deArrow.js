@@ -115,6 +115,22 @@ check('the original is never a substitution', () => {
     assert.deepStrictEqual(bestOf(onlyOriginal), { title: null, timestamp: null });
 });
 
+check('when the top pick is the original, a lesser entry behind it is not shown instead', () => {
+    const topIsOriginal = {
+        titles: [],
+        thumbnails: [
+            { timestamp: null, votes: 50, locked: false, original: true },
+            { timestamp: 5, votes: 10, locked: false, original: false }
+        ]
+    };
+    assert.deepStrictEqual(bestOf(topIsOriginal), { title: null, timestamp: null });
+});
+
+check('a locked entry is never rejected for its vote count', () => {
+    const lockedButBuried = { titles: [{ title: 'locked title', votes: -5, locked: true, original: false }], thumbnails: [] };
+    assert.strictEqual(bestOf(lockedButBuried).title, 'locked title');
+});
+
 check('a downvoted submission is not shown', () => {
     const buried = {
         titles: [{ title: 'nonsense', votes: -2, locked: false, original: false }],
@@ -149,7 +165,7 @@ check("a thumbnail that is not YouTube's is left exactly as it is", () => {
 
 const suite = async () => {
     await checkAsync('a video never seen before is asked about and dressed by the next response', async () => {
-        answers.body = RICK;
+        answers.body = { rick: RICK };
         answers.calls = [];
 
         await withConfigAsync({ enableDeArrow: true, enableDeArrowThumbnails: true, enableHqThumbnails: true }, async () => {
@@ -170,7 +186,7 @@ const suite = async () => {
     });
 
     await checkAsync('one video carried by many shelves is asked about once', async () => {
-        answers.body = RICK;
+        answers.body = { twice: RICK };
         answers.calls = [];
 
         await withConfigAsync({ enableDeArrow: true }, async () => {
@@ -181,7 +197,7 @@ const suite = async () => {
     });
 
     await checkAsync('a video DeArrow has nothing for is asked about once and then left alone', async () => {
-        answers.body = { titles: [], thumbnails: [] };
+        answers.body = {};
         answers.calls = [];
 
         await withConfigAsync({ enableDeArrow: true }, async () => {
@@ -195,7 +211,7 @@ const suite = async () => {
     });
 
     await checkAsync('what DeArrow said survives a restart', async () => {
-        answers.body = RICK;
+        answers.body = { kept: RICK };
 
         await withConfigAsync({ enableDeArrow: true }, async () => {
             dressed([tile('kept')]);
@@ -211,6 +227,39 @@ const suite = async () => {
             { title: 'Rick Astley - Never gonna give you up (official music video)', timestamp: 3.92349 });
         assert.strictEqual(reloaded.brandingOf('never-seen'), undefined,
             'a video not in the store must read as unknown, not as nothing-to-say');
+    });
+
+    await checkAsync('the video id is never sent to the branding endpoint, only four characters of its hash', async () => {
+        answers.body = {};
+        answers.calls = [];
+
+        await withConfigAsync({ enableDeArrow: true }, async () => {
+            dressed([tile('hashcheck1')]);
+            await settled(20);
+        });
+
+        assert.strictEqual(answers.calls.length, 1);
+        assert.strictEqual(answers.calls[0].indexOf('hashcheck1'), -1,
+            `the id itself went to the server: ${answers.calls[0]}`);
+
+        const hash = answers.calls[0].split('/api/branding/')[1];
+        assert.strictEqual(hash.length, 4, `expected a four-character prefix, got ${hash}`);
+    });
+
+    await checkAsync('the answer covers every id sharing that prefix, and ours is picked out', async () => {
+        answers.body = {
+            someoneElse: { titles: [{ title: 'not ours', votes: 5, locked: false, original: false }], thumbnails: [] },
+            hashcheck2: { titles: [{ title: 'ours', votes: 1, locked: false, original: false }], thumbnails: [] }
+        };
+        answers.calls = [];
+
+        await withConfigAsync({ enableDeArrow: true }, async () => {
+            dressed([tile('hashcheck2')]);
+            await settled(20);
+
+            const again = dressed([tile('hashcheck2')]);
+            assert.strictEqual(again.metadata.tileMetadataRenderer.title.simpleText, 'ours');
+        });
     });
 
     const failed = results.filter((ok) => !ok).length;

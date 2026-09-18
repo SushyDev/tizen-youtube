@@ -63,8 +63,15 @@ check('it separates sets that agree on the Tizen version',
     ['<dt>Tizen</dt>', '<dt>Firmware</dt>', '<dt>Built</dt>', '<dt>Model</dt>', '<dt>App</dt>']
         .every((row) => html.indexOf(row) !== -1));
 
+const { build } = containerAgent;
+
+containerAgent.remember('Mozilla/5.0 (Tizen; /10.0/2025.30.1034943) Cobalt/25.lts.40.1035033-gold '
+    + '(unlike Gecko) gles Evergreen/5.40.2 Starboard/16, Samsung_TV_PONTUSM_2026/T-PTMHAKUC-0100-1106.3');
+check('a Tizen 10 agent still gives up its platform build', build() === '2025.30.1034943', String(build()));
 containerAgent.remember('Mozilla/5.0 (LINUX; Tizen/9.0/2025.20.1034877) '
     + 'Cobalt/25.lts.40.1035033-gold (unlike Gecko) v8/8.8.278.17-jit');
+check('and so does a Tizen 9 one', build() === '2025.20.1034877', String(build()));
+
 const named = page('192.168.1.29:8099');
 
 check('it names the Cobalt the container reports', named.indexOf('cobalt 25.lts.40.1035033-gold') !== -1);

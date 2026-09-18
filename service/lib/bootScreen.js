@@ -1,10 +1,10 @@
 'use strict';
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const ports = require('./ports.js');
+const { lanAddresses, serviceAddress } = require('./serviceAddress.js');
 const { SCREEN } = require('./pageLines.js');
 const { STAMP } = require('./stamp.js');
 const { DISCORD, REPO } = require('./links.js');
@@ -17,19 +17,7 @@ const RELATIVE = path.join('web', 'tube', 'boot.html');
 
 const YOUTUBE = 'https://www.youtube.com';
 
-// node 18.0 to 18.3 name the family 4.
-const lanAddresses = () => {
-    const interfaces = os.networkInterfaces();
-
-    return Object.keys(interfaces).reduce((all, device) => all.concat(interfaces[device]
-        .filter((entry) => !entry.internal && (entry.family === 'IPv4' || entry.family === 4))
-        .map((entry) => entry.address)), []);
-};
-
 const origin = (address) => `http://${address}:${ports.PROXY}`;
-
-// The container cannot reach any loopback address of ours.
-const serviceAddress = () => lanAddresses()[0] || '127.0.0.1';
 
 // Tried when the chosen address does not answer, to tell a blocked address from a dead service.
 const alternates = () => ['127.0.0.1'].concat(lanAddresses())

@@ -163,13 +163,6 @@ upstream.listen(0, '127.0.0.1', () => {
                     res.headers['access-control-allow-headers'] === 'authorization, x-goog-visitor-id',
                     res.headers['access-control-allow-headers']);
 
-                // How the container asks.
-                return get(`${target}/attested`);
-            })
-            .then((res) => {
-                check('a page served as its real host reaches attestation itself',
-                    res.body.toString() === ATTESTED, res.body.toString());
-
                 return bypass('/attested');
             })
             .then((res) => {

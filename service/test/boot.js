@@ -28,7 +28,7 @@ const fresh = (reachUrl) => {
     return require('../lib/bootReport.js');
 };
 
-const READY = { needsCertificate: true, prepared: true, failed: null };
+const READY = { prepared: true, failed: null };
 const SCRIPT = { bytes: 88064 };
 
 const server = http.createServer((_, res) => { res.writeHead(204); res.end(); });
@@ -46,20 +46,17 @@ server.listen(0, '127.0.0.1', async () => {
 
     await settled();
 
-    postmortem.note('cobalt', 'trusted: Tube Local CA');
+    postmortem.note('cobalt', 'staged: 136 files linked');
     const after = boot.report({ since: 0, status: READY, script: SCRIPT });
 
-    check('once YouTube is reachable and the certificate made, it hands over', after.ready && after.waiting === null,
+    check('once YouTube is reachable it hands over', after.ready && after.waiting === null,
         JSON.stringify(after.waiting));
-    check('it carries the service log', after.log.some((line) => line.what === 'cobalt' && line.text === 'trusted: Tube Local CA'));
+    check('it carries the service log', after.log.some((line) => line.what === 'cobalt' && line.text === 'staged: 136 files linked'));
     check('and notes the connection check in it', after.log.some((line) => line.what === 'network' && / is reachable/.test(line.text)));
     check('it asks from where the screen left off', boot.report({ since: after.next, status: READY, script: SCRIPT }).log.length === 0);
     check('it names node and the script', after.facts.node === process.version && after.facts.script === SCRIPT);
 
-    const preparing = boot.report({ since: 0, status: { needsCertificate: true, prepared: false, failed: null }, script: SCRIPT });
-    check('a certificate still being made holds it', !preparing.ready && /preparing the certificate/.test(preparing.waiting.what));
-
-    const failedPrep = boot.report({ since: 0, status: { needsCertificate: true, prepared: false, failed: 'EACCES' }, script: SCRIPT });
+    const failedPrep = boot.report({ since: 0, status: { prepared: false, failed: 'EACCES' }, script: SCRIPT });
     check('a failure to prepare Cobalt is shown as bad', failedPrep.waiting.tone === 'bad' && /EACCES/.test(failedPrep.waiting.what));
 
     postmortem.note('boot', 'a line\nwith a stack under it');

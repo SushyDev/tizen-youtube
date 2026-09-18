@@ -43,9 +43,6 @@ process.on('exit', () => {
 process.env.TUBE_PROXY_PORT = String(PORT);
 process.env.TUBE_LOG = path.join(scratch, 'service.log');
 
-// A test CA that is never packaged, so the intercepted path runs; node 4 used to abort on it.
-process.env.TUBE_MITM_DIR = path.join(__dirname, 'fixtures', 'mitm');
-
 const entry = process.env.TUBE_SMOKE_ENTRY
     ? path.resolve(process.env.TUBE_SMOKE_ENTRY)
     : path.join(__dirname, '..', 'dist', 'index.js');

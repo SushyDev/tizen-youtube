@@ -19,10 +19,11 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/no_use_process_pool" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/html5.4k.support" value="true"/>
 
-    <!-- proxy names 127.0.0.2 because the container, another package, cannot reach this one's 127.0.0.1. -->
+    <!-- The container cannot reach any loopback address of ours, so the boot screen sends it to
+         this set's own instead. -->
     <tizen:metadata key="http://samsung.com/tv/metadata/pkgid" value="com.samsung.tv.cobalt"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/nativeID" value="com.samsung.tv.cobalt-yt"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=file:///tube/boot.html --proxy=http://127.0.0.2:8099 --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=file:///tube/boot.html --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
 
     <!-- Must stay true: false terminates the app on focus loss, so Home and Back start it again
          from nothing instead of returning to the video. -->

@@ -9,7 +9,6 @@ const waitingFor = (status) => {
     const network = reach.current();
 
     if (status.failed) return { tone: 'bad', what: `the service could not prepare Cobalt: ${status.failed}` };
-    if (status.needsCertificate && !status.prepared) return { tone: 'warn', what: 'the service is preparing the certificate' };
     if (network.ok === false) return { tone: 'bad', what: `${network.host} is not reachable from the TV (${network.why})` };
     if (network.ok === null) return { tone: 'warn', what: `checking the connection to ${network.host}` };
 

@@ -9,7 +9,6 @@ const content = path.join(root, 'content');
 
 process.env.TUBE_LOG = path.join(root, 'service.log');
 process.env.TUBE_SHARE = root;
-process.env.TUBE_MITM_DIR = path.join(root, 'mitm');
 process.env.TUBE_COBALT_CONTENT = content;
 
 const postmortem = require('../lib/postmortem.js');
@@ -47,11 +46,11 @@ check('a host arriving without a port is still linked once', html.indexOf('http:
     && page('192.168.1.29').indexOf('http://192.168.1.29:8099/__tube/log') !== -1);
 
 check('it runs the same checks the boot screen asks for', html.indexOf('icu') !== -1
-    && html.indexOf('certificate') !== -1);
+    && html.indexOf('share') !== -1);
 
 check('a passing check is marked as passing', /class="ok"><b>icu<\/b>/.test(html), html.slice(html.indexOf('<ul>'), html.indexOf('</ul>')));
 check('a failing one stands out without a stylesheet',
-    /class="bad"><strong>FAILED<\/strong> <b>certificate<\/b>/.test(html));
+    /class="bad"><strong>FAILED<\/strong> <b>cobalt<\/b>/.test(html));
 
 // The element does the work a script would otherwise do: shut when there is nothing to read.
 check('the checks open themselves when something failed', html.indexOf('<details open>') !== -1);

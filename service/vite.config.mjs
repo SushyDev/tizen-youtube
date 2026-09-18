@@ -69,8 +69,7 @@ export default defineConfig({
             DEV ? {} : {
                 './dev/index.js': join(HERE, 'dev', 'none.js'),
                 '../dev/index.js': join(HERE, 'dev', 'none.js')
-            },
-            LEGACY ? { './carrier.js': join(HERE, 'legacy', 'carrier.js') } : {}
+            }
         )
     },
 

@@ -1,13 +1,9 @@
 'use strict';
 
 const os = require('os');
-const path = require('path');
-const dns = require('dns');
 
-const x509 = require('./x509.js');
 const postmortem = require('./postmortem.js');
-const { CONTAINER, appId, configuredContent, container, switches } = require('./cobaltConfig.js');
-const { MITM_DIR, existingMaterial, installCa, issue, stillGood } = require('./cobaltCa.js');
+const { CONTAINER, appId, configuredContent, container } = require('./cobaltConfig.js');
 const { STOCK, discover, locate, stageOrFail } = require('./cobaltContent.js');
 const { writeBootScreen } = require('./bootScreen.js');
 const evergreen = require('./evergreen.js');
@@ -27,61 +23,9 @@ const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.
 
 const state = {
     prepared: null, preparing: false, settled: false, failed: null,
-    lastWake: 0, waiting: [], listeningAt: 0, onListening: [],
-
-    // What checkAddress() made of the --proxy host.
-    addressed: null
+    lastWake: 0, waiting: [], listeningAt: 0, onListening: []
 };
 const proxied = { context: null, at: 0, lookedAt: 0 };
-
-const addresses = () => {
-    const interfaces = os.networkInterfaces();
-
-    return Object.keys(interfaces).reduce(
-        (all, device) => all.concat(interfaces[device].map((entry) => entry.address)), []
-    );
-};
-
-// The switch names 127.0.0.2, which is not in the interface list, so matching 127.0.0.1 alone
-// would call a correct configuration misdirected.
-const isLoopback = (address) => address === '::1' || String(address).indexOf('127.') === 0;
-
-// Cobalt resolves the set's own hostname, and a router that registers no DHCP name gives a silent
-// network error.
-const checkAddress = () => {
-    const named = /--proxy=http:\/\/([^:\s]+)/.exec(switches() || '');
-    if (!named) {
-        state.addressed = { ok: true, why: 'no --proxy switch names a host to check' };
-        return;
-    }
-
-    const mine = addresses();
-    const here = `This set is ${os.hostname()} at ${mine.join(', ')}.`;
-
-    const verdict = (ok, why) => { state.addressed = { ok, why }; };
-
-    dns.lookup(named[1], { all: true }, (error, found) => {
-        if (error) {
-            verdict(false, `--proxy names ${named[1]}, which does not resolve on this set (${error.code})`);
-            return note('unreachable', `--proxy names ${named[1]}, which does not resolve here `
-                + `(${error.code}). ${here}`);
-        }
-
-        const resolved = found.map((entry) => entry.address);
-        const ours = (address) => isLoopback(address) || mine.indexOf(address) !== -1;
-
-        if (resolved.some(ours)) {
-            verdict(true, `--proxy names ${named[1]}, which is this set`);
-            return undefined;
-        }
-
-        verdict(false, `--proxy names ${named[1]}, which resolves to ${resolved.join(', ')} — not this set`);
-        return note('misdirected', `--proxy names ${named[1]}, which resolves to `
-            + `${resolved.join(', ')} — not this set. ${here}`);
-    });
-};
-
-const addressing = () => state.addressed;
 
 const served = () => {
     const now = Date.now();
@@ -266,7 +210,7 @@ const prepare = (done) => {
 
     if (done) state.waiting = state.waiting.concat([done]);
 
-    if (state.prepared) return done ? done(null, state.prepared) : undefined;
+    if (state.settled && !state.failed) return done ? done(null, state.prepared) : undefined;
 
     // Answering while the work is still running would report an empty result as a real one.
     if (state.preparing) return undefined;
@@ -283,8 +227,6 @@ const prepare = (done) => {
     const content = configuredContent();
     if (!content) return finish(null, null);
 
-    checkAddress();
-
     if (!from) return finish(null, null);
 
     const staged = stageOrFail(content, from);
@@ -293,55 +235,16 @@ const prepare = (done) => {
     guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
     guarded(() => evergreen.bootstrap(content, from), (error) => note('evergreen', error));
 
-    const material = existingMaterial();
-
-    const trust = (issued) => {
-        try {
-            installCa(path.join(content, 'ssl', 'certs'), issued.ca);
-        } catch (e) {
-            return finish(e);
-        }
-
-        return finish(null, issued);
-    };
-
-    if (material && stillGood(material)) return trust(material);
-
-    if (!x509.available()) return finish(null, null);
-
-    // Key generation is pure JavaScript on the oldest sets, so the log shows it has begun.
-    note('issuing', 'making the CA and leaf; everything tunnels untouched until they exist');
-
-    return issue((error, issued) => (error ? finish(error) : trust(issued)));
+    return finish(null, { content });
 };
 
-// A widget without --content cannot plant our CA, so interception there would only break TLS.
-const trusted = () => !switches() || !!configuredContent();
-
-const material = () => {
-    if (!trusted()) return null;
-    if (state.prepared) return { key: state.prepared.key, cert: state.prepared.chain };
-
-    const existing = existingMaterial();
-    if (!existing) return null;
-
-    state.prepared = existing;
-    return { key: existing.key, cert: existing.chain };
-};
-
-const status = () => {
-    const needed = !!configuredContent();
-    const unmade = needed && state.settled && !state.prepared && !state.failed;
-
-    return {
-        needsCertificate: needed,
-        prepared: !!state.prepared,
-        failed: state.failed || (unmade ? 'Cobalt\'s content was not found on this TV' : null)
-    };
-};
+const status = () => ({
+    prepared: !!state.prepared,
+    failed: state.failed
+});
 
 module.exports = {
-    prepare, wake, served, listened, status, restart, relaunch, material, container, appId, MITM_DIR,
-    contact, addressing,
+    prepare, wake, served, listened, status, restart, relaunch, container, appId,
+    contact,
     heardOffer: evergreen.heardOffer
 };

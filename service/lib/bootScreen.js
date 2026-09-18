@@ -15,7 +15,6 @@ const BOOT_URL = 'file:///tube/boot.html';
 // file:// resolves against <content>/web.
 const RELATIVE = path.join('web', 'tube', 'boot.html');
 
-const SERVICE = `http://127.0.0.2:${ports.PROXY}`;
 const YOUTUBE = 'https://www.youtube.com';
 
 // node 18.0 to 18.3 name the family 4.
@@ -27,8 +26,15 @@ const lanAddresses = () => {
         .map((entry) => entry.address)), []);
 };
 
-// Tried when the switch's address does not answer, to tell a blocked address from a dead service.
-const alternates = () => ['127.0.0.1'].concat(lanAddresses()).map((address) => `http://${address}:${ports.PROXY}`);
+const origin = (address) => `http://${address}:${ports.PROXY}`;
+
+// The container cannot reach any loopback address of ours.
+const serviceAddress = () => lanAddresses()[0] || '127.0.0.1';
+
+// Tried when the chosen address does not answer, to tell a blocked address from a dead service.
+const alternates = () => ['127.0.0.1'].concat(lanAddresses())
+    .filter((address) => address !== serviceAddress())
+    .map(origin);
 
 const HELP = { discord: DISCORD, repo: REPO };
 
@@ -36,10 +42,11 @@ const HELP = { discord: DISCORD, repo: REPO };
 const onTheLan = (route) => `http://${lanAddresses()[0] || '127.0.0.1'}:${ports.PROXY}${route}`;
 
 const configFor = () => ({
-    service: SERVICE,
+    service: origin(serviceAddress()),
     alternates: alternates(),
-    target: `${YOUTUBE}/tv`,
-    probeUrl: `${YOUTUBE}/__tube/ping`,
+    // Served by us rather than fetched from YouTube: there is no proxy to intercept the real host.
+    target: `${origin(serviceAddress())}/tv`,
+    probeUrl: `${origin(serviceAddress())}/__tube/ping`,
     screen: SCREEN,
     journal: onTheLan('/__tube/log'),
     diag: onTheLan('/diag'),
@@ -49,7 +56,8 @@ const configFor = () => ({
 
 // Cobalt refuses whatever the policy omits, navigation included.
 const policyFor = (config) => `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; `
-    + `connect-src ${[config.service].concat(config.alternates).join(' ')} ${YOUTUBE}; h5vcc-location-src ${YOUTUBE}`;
+    + `connect-src ${[config.service].concat(config.alternates).join(' ')} ${YOUTUBE}; `
+    + `h5vcc-location-src ${YOUTUBE} ${config.service}`;
 
 const STYLE = `html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000000; }
 body { color: #aaaaaa; font-family: monospace; font-size: 19px; line-height: 29px; }

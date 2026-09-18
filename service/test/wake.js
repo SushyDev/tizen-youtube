@@ -10,9 +10,6 @@ process.env.TUBE_LOG = LOG;
 const ME = 'tUb3Xq7Lm9.Tube';
 const CONTAINER = 'com.samsung.tv.cobalt-yt';
 
-// A certificate left on disk, as an earlier build leaves one.
-process.env.TUBE_MITM_DIR = path.join(__dirname, 'fixtures', 'mitm');
-
 // A manifest claiming the slot, which off the set only a stand-in can give; no --content, as the
 // 5.0 widget has none.
 const manifest = { content: null };
@@ -21,7 +18,7 @@ require.cache[require.resolve('../lib/cobaltConfig.js')] = {
     exports: {
         CONTAINER,
         config: () => '<widget/>',
-        switches: () => '--proxy=http://127.0.0.2:8099',
+        switches: () => '--base_url=file:///tube/boot.html --dial_name=Tube --use_eden',
         configuredContent: () => manifest.content,
         container: () => CONTAINER,
         appId: () => ME
@@ -114,10 +111,7 @@ launched.length = 0;
 check('the boot screen can have the app started again', cobalt.restart() === true && launched.indexOf(ME) !== -1);
 check('but only once, so it can never loop', cobalt.restart() === false);
 
-check('a widget without --content never intercepts, even with a certificate on disk', cobalt.material() === null);
-
 manifest.content = '/home/owner/share/tube/cobalt-content';
-check('one with --content intercepts with that certificate', !!cobalt.material() && !!cobalt.material().cert);
 
 // The real timer, since setTimeout is stubbed above.
 const afterPromises = () => new Promise((resolve) => require('timers').setImmediate(resolve));

@@ -2,9 +2,10 @@
 
 const http2 = require('http2');
 const zlib = require('zlib');
+const { readFileSync } = require('fs');
+const { join } = require('path');
 
 const bigheaders = require('../lib/bigheaders.js');
-const x509 = require('../lib/x509.js');
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -74,18 +75,8 @@ const serve = (leaf) => {
     });
 };
 
-x509.createCa('Tube Test CA', (caError, ca) => {
-    if (caError) {
-        check('the server\'s CA is issued', false, caError.message);
-        return finish();
-    }
-
-    return x509.createLeaf(ca, 'localhost', ['localhost'], (leafError, leaf) => {
-        if (leafError) {
-            check('the server\'s certificate is issued', false, leafError.message);
-            return finish();
-        }
-
-        return serve(leaf);
-    });
+// Committed, because nothing in the service mints certificates any more.
+serve({
+    key: readFileSync(join(__dirname, 'fixtures', 'tls', 'key.pem'), 'utf8'),
+    chain: readFileSync(join(__dirname, 'fixtures', 'tls', 'cert.pem'), 'utf8')
 });

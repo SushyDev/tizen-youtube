@@ -58,6 +58,7 @@ const SEGMENTS = [
   { label: 'Recaps and previews', key: 'enableSponsorBlockPreview' },
   { label: 'Tangents and jokes', key: 'enableSponsorBlockFiller' },
   { label: 'Non-music parts', key: 'enableSponsorBlockMusicOfftopic' },
+  { label: 'Exclusive access plugs', key: 'enableSponsorBlockExclusiveAccess' },
   { label: 'Jump to the highlight', key: 'enableSponsorBlockHighlight' }
 ];
 
@@ -124,14 +125,17 @@ const GROUPS = [
         MONEY),
       Flags('segments', 'Segments to skip',
         'Skipped as soon as they start, with no prompt', SKIPPING, SEGMENTS),
+      // The highlight is left out: it is a point, never auto-skipped in the first place, and
+      // already has its own always-offered "Skip to highlight" button (mods/sponsorblock/highlight.js).
       Set_('sponsorBlockManualSkips', 'Ask before skipping',
         'These segments offer a button instead of skipping on their own', SKIPPING,
-        SEGMENTS.map((segment) => ({
+        SEGMENTS.filter((segment) => segment.key !== 'enableSponsorBlockHighlight').map((segment) => ({
           label: segment.label,
           value: segment.key
             .replace('enableSponsorBlock', '')
             .replace('MusicOfftopic', 'music_offtopic')
             .replace('SelfPromo', 'selfpromo')
+            .replace('ExclusiveAccess', 'exclusive_access')
             .toLowerCase()
         }))),
       Switch('enableSponsorBlockToasts', 'Skip notifications',

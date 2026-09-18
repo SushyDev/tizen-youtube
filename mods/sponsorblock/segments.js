@@ -39,6 +39,11 @@ export const SEGMENTS = {
     opacity: '0.7',
     name: 'non-music part'
   },
+  exclusive_access: {
+    color: '#008a5c',
+    opacity: '0.7',
+    name: 'exclusive access plug'
+  },
   poi_highlight: {
     color: '#9b044c',
     opacity: '0.7',

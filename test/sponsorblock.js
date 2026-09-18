@@ -370,7 +370,39 @@ const suite = async () => {
         const categories = JSON.parse(decodeURIComponent(asked.url.split('categories=')[1]));
         assert.ok(categories.indexOf('poi_highlight') !== -1,
             'poi_highlight is what the "Skip to highlight" button is drawn from');
+        assert.ok(categories.indexOf('exclusive_access') !== -1);
         assert.ok(categories.indexOf('sponsor') !== -1);
+    });
+
+    await checkAsync('a segment with no actionType at all is kept, as an ordinary skip', async () => {
+        answer.body = [{ videoID: 'dQw4w9WgXcQ', segments: [{ category: 'sponsor', segment: [0, 5] }] }];
+        assert.deepStrictEqual(await segmentsFor('dQw4w9WgXcQ'),
+            [{ category: 'sponsor', segment: [0, 5] }]);
+    });
+
+    await checkAsync('an explicit skip or poi segment is kept', async () => {
+        answer.body = [{
+            videoID: 'dQw4w9WgXcQ',
+            segments: [
+                { category: 'sponsor', segment: [0, 5], actionType: 'skip' },
+                { category: 'poi_highlight', segment: [10], actionType: 'poi' }
+            ]
+        }];
+
+        assert.strictEqual((await segmentsFor('dQw4w9WgXcQ')).length, 2);
+    });
+
+    await checkAsync('mute, chapter and full segments are dropped, having no skip target we handle', async () => {
+        answer.body = [{
+            videoID: 'dQw4w9WgXcQ',
+            segments: [
+                { category: 'music_offtopic', segment: [0, 5], actionType: 'mute' },
+                { category: 'chapter', segment: [5, 9], actionType: 'chapter' },
+                { category: 'sponsor', segment: [0, 600], actionType: 'full' }
+            ]
+        }];
+
+        assert.deepStrictEqual(await segmentsFor('dQw4w9WgXcQ'), []);
     });
 
     const failed = results.filter((ok) => !ok).length;

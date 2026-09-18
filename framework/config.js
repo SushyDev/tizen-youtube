@@ -25,6 +25,7 @@ const defaultConfig = {
   enableSponsorBlockSelfPromo: true,
   enableSponsorBlockPreview: true,
   enableSponsorBlockMusicOfftopic: true,
+  enableSponsorBlockExclusiveAccess: false,
   enableSponsorBlockFiller: false,
   enableSponsorBlockHighlight: true,
   sponsorBlockManualSkips: ['intro', 'outro', 'filler'],

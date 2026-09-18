@@ -20,8 +20,28 @@ const autoSkipper = (segments, skippable, manualOnly) => {
         held.video = video;
     };
 
-    const jump = (segment) => {
+    // Landing mid-way into a second segment that overlaps the one just skipped is jarring, so the
+    // jump follows the chain of overlapping auto-skip segments out to whichever's end is furthest.
+    // Recurses because one pass only reaches segments that overlap the start; a segment overlapping
+    // only the extended end needs a further pass to be picked up.
+    const latestEndOf = (segment) => {
+        const autoSkippable = segments.filter((candidate) =>
+            skippable.indexOf(candidate.category) !== -1 && manualOnly.indexOf(candidate.category) === -1);
+
+        const extend = (end) => {
+            const stretched = autoSkippable.reduce((furthest, other) => {
+                const [otherStart, otherEnd] = other.segment;
+                return otherStart < furthest && otherEnd > furthest ? otherEnd : furthest;
+            }, end);
+
+            return stretched === end ? end : extend(stretched);
+        };
+
         const [, end] = segment.segment;
+        return extend(end);
+    };
+
+    const jump = (segment) => {
         const skipName = nameOf(segment);
 
         if (manualOnly.indexOf(segment.category) !== -1) return;
@@ -37,6 +57,7 @@ const autoSkipper = (segments, skippable, manualOnly) => {
 
         announce(`Skipping ${skipName}`);
 
+        const end = latestEndOf(segment);
         held.video.currentTime = held.video.duration - end < TAIL ? end - TAIL : end;
         schedule();
     };
@@ -58,12 +79,16 @@ const autoSkipper = (segments, skippable, manualOnly) => {
         const [segment] = ahead;
         const [start] = segment.segment;
 
+        // A setTimeout counts real time, but `start` is video time, so the wait is scaled by
+        // playback rate — at 2x speed the video reaches `start` in half the real-time delay.
+        const rate = held.video.playbackRate || 1;
+
         held.timeout = setTimeout(() => {
             if (held.video.paused) return;
             if (skippable.indexOf(segment.category) === -1) return;
 
             jump(segment);
-        }, (start - held.video.currentTime) * 1000);
+        }, ((start - held.video.currentTime) * 1000) / rate);
     }
 
     const finish = () => {

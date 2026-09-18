@@ -10,6 +10,7 @@ const { STAMP } = require('./stamp.js');
 const { DISCORD, REPO } = require('./links.js');
 const { facts } = require('./platform.js');
 const { checks } = require('./diagnosis.js');
+const containerAgent = require('./containerAgent.js');
 
 const escaped = (value) => String(value === null || value === undefined ? '' : value)
     .replace(/&/g, '&amp;')
@@ -91,12 +92,18 @@ ${found.map(item).join('\n')}
 <h2>This TV</h2>
 <dl>
 ${pair('Tizen', known.tizen)}
+${pair('Firmware', known.firmware)}
+${pair('Built', known.built)}
 ${pair('Model', known.model)}
+${pair('App', known.app)}
+${pair('Container', containerAgent.engine())}
+${pair('Platform build', containerAgent.build())}
 ${pair('Node', known.node)}
 <dt>Service</dt><dd>pid ${escaped(known.pid)}, up <time datetime="PT${seconds()}S">${worded(seconds())}</time></dd>
 ${pair('Host', os.hostname())}
 ${pair('Address', here)}
 ${pair('On the network', onTheNetwork())}
+${pair('User agent', containerAgent.agent())}
 </dl>
 </section>
 </main>

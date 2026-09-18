@@ -13,6 +13,7 @@ process.env.TUBE_MITM_DIR = path.join(root, 'mitm');
 process.env.TUBE_COBALT_CONTENT = content;
 
 const postmortem = require('../lib/postmortem.js');
+const containerAgent = require('../lib/containerAgent.js');
 const { page } = require('../lib/diagPage.js');
 const { DISCORD, REPO } = require('../lib/links.js');
 
@@ -58,6 +59,19 @@ check('and the failure is called out at the top', /<strong>\d+ of \d+ checks fai
 
 // The address it took from the router is the one a viewer is asked for and cannot find.
 check('it names the addresses this TV answers on', html.indexOf('<dt>On the network</dt>') !== -1);
+
+check('it separates sets that agree on the Tizen version',
+    ['<dt>Tizen</dt>', '<dt>Firmware</dt>', '<dt>Built</dt>', '<dt>Model</dt>', '<dt>App</dt>']
+        .every((row) => html.indexOf(row) !== -1));
+
+containerAgent.remember('Mozilla/5.0 (LINUX; Tizen/9.0/2025.20.1034877) '
+    + 'Cobalt/25.lts.40.1035033-gold (unlike Gecko) v8/8.8.278.17-jit');
+const named = page('192.168.1.29:8099');
+
+check('it names the Cobalt the container reports', named.indexOf('cobalt 25.lts.40.1035033-gold') !== -1);
+check('and the platform build', named.indexOf('2025.20.1034877') !== -1);
+check('and the agent itself',
+    named.indexOf('<dt>User agent</dt>') !== -1 && named.indexOf('v8/8.8.278.17-jit') !== -1);
 
 check('it carries no stylesheet at all', html.indexOf('<style') === -1 && html.indexOf('style=') === -1);
 check('and the count is said at the top', /checks (failed|passed)/.test(html));

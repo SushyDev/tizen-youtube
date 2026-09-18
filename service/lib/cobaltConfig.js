@@ -52,4 +52,9 @@ const appId = () => {
     return found ? found[1] : null;
 };
 
-module.exports = { CONTAINER, config, switches, configuredContent, container, appId };
+const appVersion = () => {
+    const found = /<widget[^>]+version="([^"]+)"/.exec(config() || '');
+    return found ? found[1] : null;
+};
+
+module.exports = { CONTAINER, config, switches, configuredContent, container, appId, appVersion };

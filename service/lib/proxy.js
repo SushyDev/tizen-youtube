@@ -6,6 +6,7 @@ const { USER_SCRIPT, read } = require('./shipped.js');
 const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 const protection = require('./protection.js');
+const pageSeen = require('./pageSeen.js');
 const containerAgent = require('./containerAgent.js');
 const { upstream } = require('./knobs.js');
 const { localOrigin, proxyPrefix } = require('./origin.js');
@@ -206,6 +207,8 @@ const attachFallback = (app) => {
                     const served = rewriteStaticHosts(injected);
 
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
+
+                    if (req.path === '/tv' && source.status === 200) pageSeen.served();
 
                     res.send(abr ? rerouteAbr(served) : served);
                 });

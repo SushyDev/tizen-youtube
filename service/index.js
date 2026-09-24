@@ -23,6 +23,7 @@ const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
 const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
+const pageSeen = require('./lib/pageSeen.js');
 
 // A cobalt.js that will not load must not stop the proxy starting.
 const cobalt = require('./lib/cobaltIfItLoads.js')();
@@ -75,11 +76,12 @@ const userScript = () => sized(USER_SCRIPT);
 
 app.get('/__tube/state', (_, res) => res.json({ script: userScript(), platformVersion, container: containerRoute }));
 
-const retraceOnBoot = (line) => {
+const heardFromPage = (line) => {
+    pageSeen.heard(line);
     if (line.indexOf('booted ') === 0) proxy.retrace();
 };
 
-journalRoutes.attach(app, { heard: retraceOnBoot });
+journalRoutes.attach(app, { heard: heardFromPage });
 bootRoutes.attach(app, { cobalt, script: userScript });
 diagRoutes.attach(app);
 

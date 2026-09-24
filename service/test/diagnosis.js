@@ -106,6 +106,31 @@ check('a share that can be written to passes', asked('share').ok === true, asked
 check('no port check survives the switch it used to read', asked('proxy port') === undefined
     && asked('proxy address') === undefined);
 
+const pageSeen = require('../lib/pageSeen.js');
+
+check('a container that reached us without ever being served the page fails, and says the TV shows no mods',
+    asked('page').ok === false && /not ours and carries no mods/.test(asked('page').detail), asked('page').detail);
+
+pageSeen.served();
+
+check('a page just served waits for the userscript rather than failing',
+    asked('page').ok === true && /waiting for the userscript/.test(asked('page').detail), asked('page').detail);
+
+pageSeen.heard('booted 12:00:00: fetch untouched');
+
+check('a page the userscript did not run in fails, and points at the log',
+    asked('page').ok === false && /did not run/.test(asked('page').detail)
+    && /page: lines/.test(asked('page').detail), asked('page').detail);
+
+pageSeen.heard('booted 12:00:01: fetch patched by the userscript');
+
+check('and passes once the userscript ran in it', asked('page').ok === true
+    && /userscript ran/.test(asked('page').detail), asked('page').detail);
+
+pageSeen.heard('some other page line');
+
+check('a page line other than the boot beacon changes nothing', asked('page').ok === true, asked('page').detail);
+
 const { execFileSync } = require('child_process');
 
 // SHARE is read as the module loads, so this one is asked in a child process carrying the

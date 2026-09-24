@@ -106,8 +106,8 @@ Patch <code>${escaped(STAMP)}</code>.
 </ul>
 </nav>
 
-<details${failed.length ? ' open' : ''}>
-<summary>Checks</summary>
+<details open>
+<summary>Checks — copy these and the log into a report, not only the section below</summary>
 <ul>
 ${found.map(item).join('\n')}
 </ul>

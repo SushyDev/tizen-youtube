@@ -9,11 +9,15 @@ const reach = require('./reach.js');
 const postmortem = require('./postmortem.js');
 const claimants = require('./claimants.js');
 const cobaltIfItLoads = require('./cobaltIfItLoads.js');
+const pageSeen = require('./pageSeen.js');
 const { appId, configuredContent, container, switches } = require('./cobaltConfig.js');
 const { STOCK, locate } = require('./cobaltContent.js');
 
 const SHARE = process.env.TUBE_SHARE || '/home/owner/share/tube';
 const SHOWN = 8;
+
+// Long enough for the userscript to load and run on the slowest set.
+const BOOT_WITHIN = 60000;
 
 const result = (name, ok, detail) => ({ name, ok, detail });
 
@@ -121,6 +125,35 @@ const network = () => {
     return result('youtube', found.ok !== false, `${found.host}: ${found.why}`);
 };
 
+const ago = (at) => `${Math.round((Date.now() - at) / 1000)}s ago`;
+
+// What the TV shows carries our mods only when both of these hold.
+const page = () => {
+    const seen = pageSeen.seen();
+    const cobalt = cobaltIfItLoads();
+    const contact = cobalt ? cobalt.contact().at : 0;
+
+    if (!seen.servedAt) {
+        return contact
+            ? result('page', false, 'the container has reached us, but YouTube\'s page has not been served through us '
+                + 'since the service started, so what the TV shows is not ours and carries no mods — if YouTube is '
+                + 'on screen, it is another container, or the boot screen is still waiting (read the log)')
+            : result('page', true, 'the app has not been opened since the service started');
+    }
+
+    if (seen.bootedAt < seen.servedAt) {
+        return Date.now() - seen.servedAt < BOOT_WITHIN
+            ? result('page', true, `served ${ago(seen.servedAt)}, waiting for the userscript to report`)
+            : result('page', false, `served ${ago(seen.servedAt)}, but the userscript never reported that it ran, `
+                + 'so no mods are applied — the page: lines in the log say why');
+    }
+
+    return seen.patched
+        ? result('page', true, `served ${ago(seen.servedAt)}, and the userscript ran ${ago(seen.bootedAt)}`)
+        : result('page', false, `served ${ago(seen.servedAt)}, but the userscript did not run in it `
+            + `(fetch untouched ${ago(seen.bootedAt)}), so no mods are applied — the page: lines in the log say why`);
+};
+
 // A check that cannot run must not stop the rest.
 const guarded = (name, run) => {
     try {
@@ -140,6 +173,7 @@ const all = () => {
         content ? guarded('container slot', slot) : null,
         guarded('share', writable),
         guarded('youtube', network),
+        guarded('page', page),
         guarded('evergreen', evergreen),
         content ? guarded('content', () => ours(content)) : null,
         content ? guarded('icu', () => icu(content)) : null,

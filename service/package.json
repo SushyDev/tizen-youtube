@@ -9,7 +9,7 @@
     "test": "node test/injection.js && node test/upgrade.js && node test/chii.js && node test/cobalt.js && node test/routing.js && node test/rewrites.js && node test/proxying.js && node test/bigheaders.js && node test/shipped.js && node test/legacy.js && node test/serviceAddress.js && node test/wake.js && node test/evergreen.js && node test/claims.js && node test/protection.js && node test/bootScreen.js && node test/boot.js && node test/journal.js && node test/diagnosis.js && node test/diag.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
+    "express": "^4.22.3",
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {

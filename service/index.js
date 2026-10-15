@@ -169,9 +169,19 @@ module.exports = {
     // This wake is the only notice we get that a viewer opened the app, since the container starts
     // instead of our content.
     onRequest: () => {
-        if (!cobalt) return;
-        try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }
-    },
+    postmortem.note(
+        'debug',
+        `onRequest received at ${new Date().toISOString()}`
+    );
+
+    if (!cobalt) return;
+
+    try {
+        cobalt.wake();
+    } catch (e) {
+        postmortem.note('cobalt', e);
+    }
+},
 
     onStop: () => {}
 };

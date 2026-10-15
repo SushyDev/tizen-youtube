@@ -109,12 +109,16 @@ const replaceUnlessOurs = (up, me, since) => {
         const from = Math.max(since, state.listeningAt);
 
         setTimeout(() => {
-            if (proxied.at >= from) proxied.context = up.id;
-            if (up.id === proxied.context) return;
+            if (proxied.at >= from) {
+                proxied.context = up.id;
+                return;
+            }
 
-            note('woken', `the container is not ours; launching ${me}`);
-            replace(up.id, me);
-            expectContact(me, Date.now(), true);
+            note(
+                'woken',
+                `the container is already running (${up.id}); `
+                + 'leaving it alone instead of replacing it'
+            );
         }, CLAIM_WITHIN);
     });
 };

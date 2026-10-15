@@ -95,10 +95,27 @@ const survives = (run) => {
 };
 
 check('waking beside a container we may not kill does not throw', survives(() => cobalt.wake()));
-check('and launches ours anyway', launched.indexOf(ME) !== -1);
-check('and says why in the log', readFileSync(LOG, 'utf8').indexOf('could not close it: Permission denied') !== -1);
-check('and says so when the container never reaches us', readFileSync(LOG, 'utf8').indexOf('it is not running our switches') !== -1);
-check('and replaces a silent container once, so it cannot loop', readFileSync(LOG, 'utf8').split('; replacing it').length === 2);
+check(
+    'does not launch ours over an unclaimed running container',
+    launched.indexOf(ME) === -1
+);
+
+check(
+    'leaves the running container alone when it cannot be identified',
+    readFileSync(LOG, 'utf8').indexOf(
+        'the container is already running (stock); leaving it alone instead of replacing it'
+    ) !== -1
+);
+
+check(
+    'does not report replacing a silent container',
+    readFileSync(LOG, 'utf8').indexOf('; replacing it') === -1
+);
+
+check(
+    'does not try to kill the unclaimed container',
+    readFileSync(LOG, 'utf8').indexOf('could not close it: Permission denied') === -1
+);
 
 const answered = { error: undefined };
 launched.length = 0;

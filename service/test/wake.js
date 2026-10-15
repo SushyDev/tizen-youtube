@@ -82,8 +82,10 @@ check('a wake before the port is ours launches nothing yet', launched.length ===
 // The claim window counts from the port opening, so the service says it is listening.
 cobalt.listened();
 
-check('and is made as soon as the port is ours', launched.indexOf(ME) !== -1);
-
+check(
+    'does not launch ours over an unclaimed running container',
+    launched.indexOf(ME) === -1
+);
 const survives = (run) => {
     try {
         run();

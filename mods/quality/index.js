@@ -3,7 +3,7 @@ import { NAMED, chooseQuality } from './ladder.js';
 import { rungToAsk } from './ask.js';
 import { QUALITY, liftCeiling, seedPreferredQuality } from './seed.js';
 
-// Every playback starts on Auto and must be told its rung.
+// Every playback starts on Auto and must be told its ceiling.
 
 const CHECK_INTERVAL = 3000;
 
@@ -46,20 +46,21 @@ function watchPreferredQuality() {
         });
         if (!wanted) return;
 
-        player.setPlaybackQualityRange(wanted, wanted);
+        // A ceiling, not a pin: Auto still steps down when the link cannot carry the rung.
+        player.setPlaybackQualityRange('auto', wanted);
         held.asked = wanted;
     };
 
-    // Early enough that the first segment fetched is the right one, and a rung the video does not
-    // offer is corrected down once the ladder arrives.
-    const pinNamed = (player) => {
+    // Early enough that the first segment fetched is under the right ceiling, and a rung the video
+    // does not offer is corrected down once the ladder arrives.
+    const capNamed = (player) => {
         const named = NAMED[parseInt(configRead(QUALITY), 10)];
         if (!named) return;
 
         try {
-            player.setPlaybackQualityRange(named, named);
+            player.setPlaybackQualityRange('auto', named);
         } catch (e) {
-            console.warn('[tube] could not pin the preferred quality:', e);
+            console.warn('[tube] could not cap the preferred quality:', e);
         }
     };
 
@@ -68,7 +69,7 @@ function watchPreferredQuality() {
 
         held.player = player;
         player.addEventListener('onStateChange', tick);
-        pinNamed(player);
+        capNamed(player);
         tick();
     };
 

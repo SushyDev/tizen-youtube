@@ -129,7 +129,6 @@ const listen = (addresses, index) => {
         serving.yes = true;
 
         postmortem.note('listening', `${address}:${ports.PROXY}`);
-        if (cobalt) cobalt.listened();
         console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
     });
@@ -166,8 +165,6 @@ setTimeout(() => listen(candidates(), 0), holdFor);
 module.exports = {
     onStart: () => {},
 
-    // This wake is the only notice we get that a viewer opened the app, since the container starts
-    // instead of our content.
     onRequest: () => {
         if (!cobalt) return;
         try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }

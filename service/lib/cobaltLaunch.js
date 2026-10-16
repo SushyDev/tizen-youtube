@@ -55,4 +55,4 @@ const restart = () => {
     return true;
 };
 
-module.exports = { guarded, launch, launchOver, restart, containerUp };
+module.exports = { guarded, restart };

@@ -148,7 +148,7 @@ const survey = (switches) => {
             gid: safe(() => process.getgid()),
             cwd: process.cwd(),
             argv: process.argv,
-            memory: process.memoryUsage(),
+            memory: safe(() => process.memoryUsage()),
             env: Object.keys(process.env).sort()
         },
         proc: {

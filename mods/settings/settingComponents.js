@@ -49,9 +49,7 @@ function claimBooleanRows() {
 
 const NOTE_ROWS = ['ytlr-setting-action-renderer', 'ytlr-setting-boolean-renderer'];
 
-// Nodes carry a private stamp, so the note must be built with YouTube's own hyperscript — its
-// minified body returns `{type:a,props:b,children:c,...}` object-literal shorthand, confirmed live,
-// not the `.type = x` assignment form the markers here originally assumed.
+// Built with YouTube's own hyperscript since nodes carry a private stamp — its minified body returns a `{type,props,children}` object, not `.type = x`.
 const findHyperscript = () => findBySource('type:', 'props:', 'children:');
 
 const noteFor = (H, note) => H(

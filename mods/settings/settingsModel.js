@@ -220,7 +220,8 @@ const GROUPS = [
     title: 'Playback',
     items: [
       Choice('preferredVideoQuality', 'Preferred quality',
-        'Applied when playback starts, falling back to the next best the video has',
+        'The most it will use; YouTube steps down when your connection cannot keep up, '
+        + 'and the next best is used when the video lacks it',
         SCREEN, QUALITIES, 'Quality'),
       Choice('videoPreferredCodec', 'Preferred codec',
         'Some sets decode one codec in hardware and the rest in software',

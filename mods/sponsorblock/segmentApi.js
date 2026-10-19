@@ -10,10 +10,8 @@ const ASKED_FOR = [
     'preview', 'filler', 'music_offtopic', 'exclusive_access', 'poi_highlight'
 ];
 
-// A segment can carry an action other than a skip — mute for its length, stand in as a YouTube
-// chapter, or (Full) mean the entire video is the category, meant only as a warning, never a skip
-// target. We do none of those yet, so only ordinary skip and point (highlight) segments are kept.
-// An older result with no actionType at all is a skip, matching the API's own default.
+// Other actions exist (mute, chapter, full-video warning) but aren't handled yet, so only skip and point are kept.
+// A missing actionType defaults to skip, matching the API's own default.
 const KEPT_ACTION_TYPES = ['skip', 'poi'];
 
 const segmentsFor = async (videoID) => {

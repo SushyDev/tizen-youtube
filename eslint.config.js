@@ -85,16 +85,8 @@ const SIBLING_OWNED = [
     'mods/player/pictureInPicture.js'
 ];
 
-// mods/commands/interpreters.js is also sibling-owned (frozen — see SIBLING_OWNED above) and reaches
-// directly into player/pictureInPicture.js, player/speed.js and settings/settingsOptions.js by deep
-// path; it cannot be edited to route those through an index.js. Kept separate from SIBLING_OWNED so
-// this doesn't also loosen the style/tsc exemptions those files already hold.
-//
-// mods/shell/startup.js reaches pictureInPicture.js directly rather than through player/index.js on
-// purpose: pictureInPicture.js has import-time side effects (it touches window and document.readyState
-// at module scope), and startup.js is imported far earlier than player/index.js in mods/index.js's
-// list. Routing it through player/index.js would drag playerButtons/autoplay/overlays/codecs's
-// registration that much earlier too — reordering handlers that register order depends on.
+// interpreters.js is frozen too (deep-imports pictureInPicture.js/speed.js/settingsOptions.js) but kept out of SIBLING_OWNED so it doesn't also inherit their style/tsc exemptions.
+// startup.js deep-imports pictureInPicture.js on purpose: routing it through player/index.js would drag in that module's earlier registrations, reordering handlers whose order matters.
 const PRIVACY_EXEMPT = SIBLING_OWNED.concat([
     'mods/commands/interpreters.js',
     'mods/shell/startup.js'

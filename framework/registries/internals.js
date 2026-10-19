@@ -56,9 +56,7 @@ const findByPrototype = (matches) => {
     return match ? match[1] : null;
 };
 
-// Which static property carries a component's own custom-element name is not universal, confirmed
-// live — `S` is one component's own minified choice for it, another uses `K` for the same idea —
-// so a live instance's own constructor is asked first, `S` only a fallback before one exists.
+// Which static property carries the custom-element name isn't universal (`S`, `K`, ...), so a live instance's own constructor is asked first.
 const findComponent = (tag) => {
     const live = document.querySelector(tag);
     if (live && live.__instance) return live.__instance.constructor;

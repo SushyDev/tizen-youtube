@@ -1,30 +1,17 @@
 'use strict';
 
-const os = require('os');
-
 const postmortem = require('./postmortem.js');
 const { CONTAINER, appId, configuredContent, container } = require('./cobaltConfig.js');
 const { STOCK, discover, locate, stageOrFail } = require('./cobaltContent.js');
 const { writeBootScreen } = require('./bootScreen.js');
 const evergreen = require('./evergreen.js');
-const { guarded, launch, launchOver, restart } = require('./cobaltLaunch.js');
+const { guarded, restart } = require('./cobaltLaunch.js');
 
-const RELAUNCH_QUIET = 20000;
-
-// Seconds within which a wake is the platform's rather than a viewer's.
-const BOOT_WAKE = 5;
-const BOOT_QUIET = 120;
-const SILENT_AFTER = 20000;
-const CLAIM_WITHIN = 10000;
 const LOOKUP_QUIET = 5000;
-const KILL_SETTLE = 1200;
 
 const note = (what, detail) => postmortem.note('cobalt', `${what}: ${postmortem.describe(detail)}`);
 
-const state = {
-    prepared: null, preparing: false, settled: false, failed: null,
-    lastWake: 0, waiting: [], listeningAt: 0, onListening: []
-};
+const state = { prepared: null, preparing: false, settled: false, failed: null, waiting: [] };
 const proxied = { context: null, at: 0, lookedAt: 0 };
 
 const served = () => {
@@ -130,42 +117,14 @@ const refreshBootScreen = () => {
     guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
 };
 
-// Launched from the service because the container the platform starts on a reopen dies at once.
+// Only the platform wakes us (boot, standby, reclaim, install); an icon press never does.
 const wake = () => {
-    if (typeof tizen === 'undefined') return;
+    if (!container()) return;
 
-    const me = appId();
-    if (!me || !container()) return;
+    note('woken', 'the platform started the service; nothing is launched');
 
-    // A wake arriving with our own start on a set only just powered on is the platform's, and
-    // launching there would open YouTube on every boot.
-    if (process.uptime() < BOOT_WAKE && os.uptime() < BOOT_QUIET) {
-        return note('woken', `this wake came with the service's own start (${process.uptime().toFixed(1)}s) `
-            + `on a set booted ${Math.round(os.uptime())}s ago, so it is the platform's and the `
-            + 'container is left alone');
-    }
-
-    // Launching before the port is ours aims the container at whatever else holds it.
-    if (!state.listeningAt) {
-        note('woken', 'the proxy port is not ours yet, so the launch waits for it');
-        return whenListening(wake);
-    }
-
-    const now = Date.now();
-    if (now - state.lastWake < RELAUNCH_QUIET) return;
-    state.lastWake = now;
-
-    // Written again at every open, so a set DHCP moved is sent to its new address.
+    // Rewritten so a set DHCP moved sends the next open to its new address.
     refreshBootScreen();
-
-    tizen.application.getAppsContext((contexts) => {
-        const up = contexts.find((context) => context.appId === CONTAINER);
-        if (up) return replaceUnlessOurs(up, me, now);
-
-        note('woken', `the container is not up; launching ${me}`);
-        launch(me);
-        return expectContact(me, now, true);
-    }, () => {});
 };
 
 const LAUNCH_AFTER_KILL = 1200;
@@ -181,8 +140,6 @@ const relaunch = (done) => {
         const running = contexts.filter((context) => context.appId === CONTAINER || context.appId === me);
 
         const start = () => {
-            // Cleared so wake()'s own quiet period cannot swallow the launch that follows.
-            state.lastWake = 0;
             note('relaunch', `starting ${me}`);
             const refusedStart = (error) => done(new Error(`launch refused: ${error.message}`));
             guarded(() => tizen.application.launch(me, () => done(null, { killed: running.length }), refusedStart),
@@ -258,7 +215,6 @@ const status = () => ({
 });
 
 module.exports = {
-    prepare, wake, served, listened, status, restart, relaunch, container, appId,
-    contact,
+    prepare, wake, served, status, restart, relaunch, container, appId, contact,
     heardOffer: evergreen.heardOffer
 };

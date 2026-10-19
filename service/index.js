@@ -166,9 +166,19 @@ module.exports = {
     onStart: () => {},
 
     onRequest: () => {
-        if (!cobalt) return;
-        try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }
-    },
+    postmortem.note(
+        'debug',
+        `onRequest received at ${new Date().toISOString()}`
+    );
+
+    if (!cobalt) return;
+
+    try {
+        cobalt.wake();
+    } catch (e) {
+        postmortem.note('cobalt', e);
+    }
+},
 
     onStop: () => {}
 };

@@ -34,6 +34,82 @@ const served = () => {
 // A slot another app also claims is only a fault when nothing of ours has arrived.
 const contact = () => ({ at: proxied.at, context: proxied.context });
 
+// The claim window counts from the port opening, or the wake if later.
+const whenListening = (then) => {
+    if (state.listeningAt) return then();
+
+    state.onListening = state.onListening.concat([then]);
+    return undefined;
+};
+
+const listened = () => {
+    state.listeningAt = Date.now();
+
+    const waiting = state.onListening;
+    state.onListening = [];
+    waiting.forEach((then) => then());
+};
+
+const replace = (id, me) => guarded(
+    () => tizen.application.kill(id, () => setTimeout(() => launch(me), KILL_SETTLE), () => launchOver(me)),
+    (error) => {
+        note('woken', `could not close it: ${error.message}`);
+        launchOver(me);
+    }
+);
+
+// Our boot screen asks us within a second, so a launch that stays silent did not run our switches.
+const expectContact = (me, since, again) => setTimeout(() => {
+    if (proxied.at >= since) return;
+
+    guarded(() => tizen.application.getAppsContext((contexts) => {
+        const up = contexts.find((context) => context.appId === CONTAINER);
+        if (!up) {
+            note('silent', `nothing is running ${SILENT_AFTER / 1000}s after launching ${me}`);
+            return again ? relaunchAfterMerge(me, since) : undefined;
+        }
+
+        note('silent', `the container is up but nothing from it has reached us ${SILENT_AFTER / 1000}s after launching ${me}: `
+            + `either it is not running our switches or it cannot reach our address${again ? '; replacing it' : ''}`);
+        if (!again) return undefined;
+
+        state.lastWake = Date.now();
+        replace(up.id, me);
+        return expectContact(me, Date.now(), false);
+    }, () => {}), () => {});
+}, SILENT_AFTER);
+
+// Cobalt dies at once on content it lacks, so a launch that raced Evergreen's merge is made again.
+const relaunchAfterMerge = (me, since) => evergreen.settled().then(() => {
+    if (!evergreen.mergedSince(since)) return;
+
+    note('silent', `Evergreen content arrived after launching ${me}; launching it again`);
+    state.lastWake = Date.now();
+    launch(me);
+    expectContact(me, Date.now(), false);
+});
+
+const replaceUnlessOurs = (up, me, since) => {
+    if (up.id === proxied.context) return;
+
+    whenListening(() => {
+        const from = Math.max(since, state.listeningAt);
+
+        setTimeout(() => {
+            if (proxied.at >= from) {
+                proxied.context = up.id;
+                return;
+            }
+
+            note(
+                'woken',
+                `the container is already running (${up.id}); `
+                + 'leaving it alone instead of replacing it'
+            );
+        }, CLAIM_WITHIN);
+    });
+};
+
 const refreshBootScreen = () => {
     const content = configuredContent();
     if (!content) return;

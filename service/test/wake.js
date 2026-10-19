@@ -66,6 +66,42 @@ const shapes = [
     ['a container up, the service just restarted', [{ appId: CONTAINER, id: 'up' }], 0.4, 86400]
 ];
 
+check(
+    'does not launch ours over an unclaimed running container',
+    launched.indexOf(ME) === -1
+);
+const survives = (run) => {
+    try {
+        run();
+        return true;
+    } catch (e) {
+        console.log(`      threw ${e.name}: ${e.message}`);
+        return false;
+    }
+};
+
+check('waking beside a container we may not kill does not throw', survives(() => cobalt.wake()));
+check(
+    'does not launch ours over an unclaimed running container',
+    launched.indexOf(ME) === -1
+);
+
+check(
+    'leaves the running container alone when it cannot be identified',
+    readFileSync(LOG, 'utf8').indexOf(
+        'the container is already running (stock); leaving it alone instead of replacing it'
+    ) !== -1
+);
+
+check(
+    'does not report replacing a silent container',
+    readFileSync(LOG, 'utf8').indexOf('; replacing it') === -1
+);
+
+check(
+    'does not try to kill the unclaimed container',
+    readFileSync(LOG, 'utf8').indexOf('could not close it: Permission denied') === -1
+);
 shapes.forEach(([shape, contexts, serviceUp, setUp]) => {
     running.contexts = contexts;
     launched.length = 0;

@@ -20,6 +20,7 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/native.userdata" value="--base_url=file:///tube/boot.html --content=/home/owner/share/tube/cobalt-content --dial_name=Tube --use_eden"/>
 
     <tizen:metadata key="http://samsung.com/tv/metadata/multitasking.support" value="true"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="bg_service"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/voice.support" value="false"/>
 
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="hybrid"/>

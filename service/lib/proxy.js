@@ -6,6 +6,7 @@ const { USER_SCRIPT, read } = require('./shipped.js');
 const dev = require('../dev/index.js');
 const postmortem = require('./postmortem.js');
 const protection = require('./protection.js');
+const preview = require('./preview.js');
 const containerAgent = require('./containerAgent.js');
 const { upstream } = require('./knobs.js');
 const { localOrigin, proxyPrefix } = require('./origin.js');
@@ -208,6 +209,11 @@ const attachFallback = (app) => {
                     const abr = upstream.abrThroughService && route.url.indexOf('/youtubei/v1/player') !== -1;
 
                     res.send(abr ? rerouteAbr(served) : served);
+
+                    // After the page has its answer, which a feed of a megabyte must not hold up.
+                    if (source.status === 200 && route.url.indexOf('/youtubei/v1/browse') !== -1) {
+                        setTimeout(() => preview.heard(text), 0);
+                    }
                 });
             })
             .catch((error) => fail('upstream failed', error));

@@ -1,10 +1,11 @@
 import { gradientOver, stretches } from './segmentGradient.js';
 import { drawnBar } from './drawnBar.js';
-import { carry, nest, structureOf, wrapperFor } from './mirror.js';
+import { carry, fade, nest, structureOf, wrapperFor } from './mirror.js';
 
 // One band per chapter, because Cobalt has no clip-path to cut a single box to the bar's shape.
 
 const OVERLAY_ID = 'tube-sponsorblock-bar';
+const UNSHIFTED = { x: 0, y: 0 };
 
 const RADII = [
     'border-top-left-radius', 'border-top-right-radius',
@@ -24,7 +25,7 @@ const bandFor = (piece, all, at) => {
     element.style.setProperty('position', 'absolute', 'important');
     element.style.setProperty('background-image', gradient, 'important');
 
-    return { element, at, written: {} };
+    return { element, at, written: {}, faded: {} };
 };
 
 // Vertical edges round outwards so a half-pixel chapter is fully covered.
@@ -46,7 +47,7 @@ const place = (band, piece, shift) => {
         .forEach((name) => element.style.setProperty(name, wants[name], 'important'));
 
     const { className } = piece.element;
-    const placed = { element, at: band.at, written: Object.assign({}, wants, { className }) };
+    const placed = { element, at: band.at, written: Object.assign({}, wants, { className }), faded: band.faded };
 
     if (written.className === className) return placed;
 
@@ -147,7 +148,12 @@ const segmentOverlay = (segments) => {
             held.bands.forEach((band) => held.inner.appendChild(band.element));
         }
 
-        held.bands = held.bands.map((band) => place(band, bar.pieces[band.at], bar.shift));
+        // Measured where it is drawn, so nothing of ours slides and no shift is taken off.
+        held.bands = held.bands
+            .map((band) => place(band, bar.pieces[band.at], UNSHIFTED))
+            .map((band) => Object.assign({}, band, {
+                faded: fade({ element: band.element, written: band.faded }, bar.layers).written
+            }));
     };
 
     const tick = () => {

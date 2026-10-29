@@ -14,6 +14,19 @@ const INTERVAL = 1000;
 
 const observed = new WeakSet();
 
+// The label follows the account's language, so the button's own idomkey is asked first and the
+// label only where that is missing.
+const LABELS = ['Dislike', 'Mag ich nicht', 'Je n’aime pas', "Je n'aime pas", 'No me gusta', 'Non mi piace'];
+const WAS = 'data-tube-dislike-was';
+
+const inDislikeButton = (el) => {
+    if (!el || !el.getAttribute) return false;
+    if (el.getAttribute('idomkey') === 'dislike-button') return true;
+    return inDislikeButton(el.parentElement);
+};
+
+const isDislikeLabel = (el) => LABELS.indexOf(el.textContent) !== -1 || inDislikeButton(el);
+
 const swapIfNeeded = (el) => {
     if (!el) return;
 
@@ -25,7 +38,7 @@ const swapIfNeeded = (el) => {
 
     if (dislikes === undefined || dislikes === null) {
         if (markedFor !== null) {
-            el.textContent = 'Dislike';
+            el.textContent = el.getAttribute(WAS) || 'Dislike';
             el.removeAttribute(MARKER);
         }
         return;
@@ -33,8 +46,9 @@ const swapIfNeeded = (el) => {
 
     const expected = compact(dislikes);
     if (markedFor === videoID && el.textContent === expected) return;
-    if (markedFor === null && el.textContent !== 'Dislike') return;
+    if (markedFor === null && !isDislikeLabel(el)) return;
 
+    if (markedFor === null) el.setAttribute(WAS, el.textContent);
     el.textContent = expected;
     el.setAttribute(MARKER, videoID);
 };
@@ -82,3 +96,5 @@ sync();
 configChangeEmitter.addEventListener('configChange', (event) => {
     if (event.detail.key === 'enableReturnDislike') sync();
 });
+
+export { swapIfNeeded };

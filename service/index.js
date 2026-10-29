@@ -23,6 +23,7 @@ const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
 const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
+const lookup = require('./lib/lookup.js');
 
 // A cobalt.js that will not load must not stop the proxy starting.
 const cobalt = require('./lib/cobaltIfItLoads.js')();
@@ -155,6 +156,12 @@ const listen = (addresses, index) => {
         return setTimeout(() => listen(candidates(), 0), RETRY_LISTEN_AFTER);
     });
 };
+
+// Asked before the page needs them: the first boot request names most of these within seconds.
+lookup.warm([
+    'www.youtube.com', 'www.gstatic.com', 'fonts.gstatic.com', 'i.ytimg.com', 'yt3.ggpht.com',
+    'www.google.com', 'jnn-pa.googleapis.com', 'youtubei.googleapis.com', 'redirector.googlevideo.com'
+]);
 
 const holdFor = dev.startDelay();
 if (holdFor) postmortem.note('listen', `held shut for ${holdFor / 1000}s by TUBE_START_DELAY`);

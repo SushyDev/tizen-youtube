@@ -6,20 +6,39 @@ const https = require('https');
 
 const postmortem = require('./postmortem.js');
 const bigheaders = require('./bigheaders.js');
+const lookup = require('./lookup.js');
 
 // A booting page opens about thirty requests at once.
 const MOST_SOCKETS = 64;
 
 // No socket timeout: a paused SABR stream is an idle socket, and a timeout would cut playback.
 const AGENT_OPTIONS = { keepAlive: true, keepAliveMsecs: 15000, maxSockets: MOST_SOCKETS };
-const httpsAgent = new https.Agent(AGENT_OPTIONS);
-const httpAgent = new http.Agent(AGENT_OPTIONS);
-const agentFor = (url) => (String(url).indexOf('https:') === 0 ? httpsAgent : httpAgent);
+
+// One pool per host name: requests go to an address (see addressed), node pools by address alone,
+// and Google serves many names from one address. The agent is told the name itself: node 4 files
+// a freed socket under a key holding the name it took from the Host header but looks for one
+// without it, so a socket was never reused.
+const agents = new Map();
+const agentFor = (url) => {
+    const parts = /^(https?:)\/\/([^/:?#]+)[^/?#]*/.exec(String(url));
+    const key = parts ? parts[0] : String(url);
+
+    if (!agents.has(key)) {
+        const secure = !!parts && parts[1] === 'https:';
+        const options = Object.assign({}, AGENT_OPTIONS, secure ? { servername: parts[2] } : {});
+        agents.set(key, secure ? new https.Agent(options) : new http.Agent(options));
+    }
+
+    return agents.get(key);
+};
 
 // Only the wait for headers is bounded, so a streaming body is never cut.
 const HEADERS_DEADLINE = 20000;
 
 const RETRIABLE = ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'];
+
+// Failures that can mean the address we keep for a name has gone.
+const UNREACHED = ['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'ETIMEDOUT'];
 
 const BODIED = ['POST', 'PUT', 'PATCH'];
 
@@ -53,6 +72,27 @@ const untilHeaders = (make) => {
     return make(signal).then(stop, (error) => { stop(); throw error; });
 };
 
+const HOSTED = /^(https?:\/\/)([^/:?#]+)(.*)$/;
+
+// Connects to the address lookup.js found. The agent takes the TLS name and the certificate check
+// from the Host header, which headersFor always sets.
+const addressed = (url, headers) => {
+    const parts = HOSTED.exec(url);
+    if (!parts || !headers.host) return Promise.resolve({ target: url, name: null });
+
+    return lookup.resolve(parts[2]).then((address) => (address
+        ? { target: `${parts[1]}${address}${parts[3]}`, name: parts[2], at: `${parts[1]}${address}`, was: `${parts[1]}${parts[2]}` }
+        : { target: url, name: null }));
+};
+
+// node-fetch resolves a relative Location against the URL it asked, which named the address.
+const renamed = (response, to) => {
+    const location = to.name && response.headers.get('location');
+    if (location && location.indexOf(to.at) === 0) response.headers.set('location', to.was + location.slice(to.at.length));
+
+    return response;
+};
+
 const send = (url, req, headers, fresh) => {
     const body = isRepeatable(req) ? undefined : req;
 
@@ -64,9 +104,16 @@ const send = (url, req, headers, fresh) => {
         agent: fresh ? undefined : agentFor(url)
     };
 
-    const attempt = (changed) => (body && !SIGNAL_BESIDE_STREAM
-        ? fetch(url, Object.assign({}, options, changed))
-        : untilHeaders((signal) => fetch(url, Object.assign({}, options, changed, { signal }))));
+    const attempt = (changed) => addressed(url, headers).then((to) => {
+        const asked = (body && !SIGNAL_BESIDE_STREAM
+            ? fetch(to.target, Object.assign({}, options, changed))
+            : untilHeaders((signal) => fetch(to.target, Object.assign({}, options, changed, { signal }))));
+
+        return asked.then((response) => renamed(response, to), (error) => {
+            if (to.name && UNREACHED.indexOf(error.code) !== -1) lookup.forget(to.name);
+            throw error;
+        });
+    });
 
     return attempt().catch((error) => {
         if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {

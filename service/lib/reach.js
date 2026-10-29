@@ -1,6 +1,7 @@
 'use strict';
 
 const postmortem = require('./postmortem.js');
+const lookup = require('./lookup.js');
 
 // By hand: node 4.4.3 has no URL.
 const splitUrl = (text) => {
@@ -31,10 +32,17 @@ const settle = (ok, why) => {
     held.why = why;
 };
 
-const ask = () => {
+// The system resolver alone can spend 10 s of the boot screen here; see lookup.js.
+const ask = () => lookup.resolve(TARGET.hostname).then((address) => {
     const client = TARGET.protocol === 'http:' ? require('http') : require('https');
     const request = client.request({
-        protocol: TARGET.protocol, hostname: TARGET.hostname, port: TARGET.port, path: TARGET.path, method: 'HEAD'
+        protocol: TARGET.protocol,
+        hostname: address || TARGET.hostname,
+        servername: TARGET.hostname,
+        headers: { host: TARGET.port ? `${TARGET.hostname}:${TARGET.port}` : TARGET.hostname },
+        port: TARGET.port,
+        path: TARGET.path,
+        method: 'HEAD'
     }, (response) => {
         response.resume();
         settle(true, `answered ${response.statusCode}`);
@@ -46,7 +54,7 @@ const ask = () => {
     });
     request.on('error', (error) => settle(false, error.code || error.message));
     request.end();
-};
+}).catch((error) => settle(false, error.message));
 
 // At most every ten seconds, however often it is asked.
 const check = () => {

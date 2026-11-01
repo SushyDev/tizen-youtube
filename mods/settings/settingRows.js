@@ -2,6 +2,7 @@ import { configRead } from '../../framework/index.js';
 import { chosenLabel, chosenSummary } from './settingsModel.js';
 import { optionsCommand, storeCommand } from './settingsOptions.js';
 import { category, runs } from './settingsResponse.js';
+import { say } from '../i18n/index.js';
 
 const picture = (url) => ({ thumbnails: [{ url }] });
 
@@ -11,8 +12,8 @@ const idFor = (item) => `TUBE_${item.key || item.id}`;
 
 const switchRow = (item) => ({
     settingBooleanRenderer: {
-        title: runs(item.title),
-        summary: runs(item.summary),
+        title: runs(say(item.title)),
+        summary: runs(say(item.summary)),
         enabled: configRead(item.key) === item.on,
         enableServiceEndpoint: storeCommand(item.key, item.on),
         disableServiceEndpoint: storeCommand(item.key, !item.on),
@@ -26,8 +27,8 @@ const switchRow = (item) => ({
 // A getter rather than a value: the row object outlives the choice, so the label is read at draw time.
 const openerRow = (item, path, label) => {
     const row = {
-        title: runs(item.title),
-        summary: runs(item.summary),
+        title: runs(say(item.title)),
+        summary: runs(say(item.summary)),
         serviceEndpoint: optionsCommand(path),
         tubeNote: item.note,
         trackingParams: 'null',
@@ -42,13 +43,13 @@ const openerRow = (item, path, label) => {
 const rowFor = (item, path) =>
     item.kind === 'switch' ? switchRow(item)
         : item.kind === 'choice'
-            ? openerRow(item, path, () => `${item.prefix}: ${chosenLabel(item)}`)
+            ? openerRow(item, path, () => `${say(item.prefix)}: ${chosenLabel(item)}`)
             : openerRow(item, path, () => chosenSummary(item));
 
 // The path is how the option panel finds this item again: which group, then which item within it.
 const categoryFor = (group, groupIndex) => category(
     group.id,
-    group.title,
+    say(group.title),
     group.items.map((item, index) => rowFor(item, [groupIndex, index]))
 );
 

@@ -3,6 +3,7 @@ import { PASS, buttonItem, configRead, configWrite, onCommand, resolve, showToas
 import { openOptions, OPTIONS_ACTION } from '../settings/settingsOptions.js';
 import { openSpeedOptions } from '../player/speed.js';
 import { enterMiniPlayer } from '../player/pictureInPicture.js';
+import { say } from '../i18n/index.js';
 
 
 const APP_NAME = 'YouTube';
@@ -34,12 +35,12 @@ const ACTIONS = {
 
     ADD_TO_QUEUE: (parameters) => {
         window.queuedVideos.videos.push(parameters);
-        showToast(APP_NAME, 'Added to queue');
+        showToast(APP_NAME, say('Added to queue'));
     },
 
     CLEAR_QUEUE: () => {
         window.queuedVideos.videos = [];
-        showToast(APP_NAME, 'Queue cleared');
+        showToast(APP_NAME, say('Queue cleared'));
     }
 };
 
@@ -115,7 +116,7 @@ const dressPlaybackSettings = (command) => {
         const link = item.compactLinkRenderer;
         if (!link || !link.icon || link.icon.iconType !== 'SLOW_MOTION_VIDEO') return;
 
-        if (link.subtitle) link.subtitle.simpleText = 'More speeds';
+        if (link.subtitle) link.subtitle.simpleText = say('More speeds');
 
         link.serviceEndpoint = {
             clickTrackingParams: 'null',
@@ -130,7 +131,7 @@ const dressPlaybackSettings = (command) => {
 
     if (!hasMiniPlayer) {
         list.items.splice(2, 0, buttonItem(
-            { title: 'Mini Player' },
+            { title: say('Mini Player') },
             { icon: 'CLEAR_COOKIES' },
             [{ customAction: { action: 'ENTER_MP' } }]
         ));

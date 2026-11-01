@@ -1,3 +1,5 @@
+import { say } from '../i18n/index.js';
+
 export const SEGMENTS = {
   sponsor: {
     color: '#00d400',
@@ -51,4 +53,4 @@ export const SEGMENTS = {
   }
 };
 
-export const nameOf = (segment) => SEGMENTS[segment.category]?.name || segment.category;
+export const nameOf = (segment) => say(SEGMENTS[segment.category]?.name || segment.category);

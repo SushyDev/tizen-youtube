@@ -1,4 +1,5 @@
 import { buttonItem, configRead, onKey, overlayPanelItemListRenderer, showModal, whenVideo } from '../../framework/index.js';
+import { say } from '../i18n/index.js';
 
 const SPEED_KEYS = [406, 191];
 
@@ -36,10 +37,10 @@ function openSpeedOptions() {
     const rungs = speedLadder();
     const chosen = rungs.indexOf(currentRate());
     const buttons = rungs.map((speed) => speedButton(speed))
-        .concat([speedButton(STUTTER_FIX, `Fix stuttering (${STUTTER_FIX}x)`)]);
+        .concat([speedButton(STUTTER_FIX, say('Fix stuttering ({0}x)', [STUTTER_FIX]))]);
 
     showModal(
-        'Playback Speed',
+        say('Playback Speed'),
         overlayPanelItemListRenderer(buttons, chosen === -1 ? 0 : chosen),
         'options-speed'
     );

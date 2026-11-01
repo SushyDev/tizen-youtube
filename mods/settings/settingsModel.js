@@ -1,5 +1,6 @@
 import { configRead } from '../../framework/index.js';
 import { SPEEDS } from '../scroller/index.js';
+import { say } from '../i18n/index.js';
 
 const ART = 'https://www.gstatic.com/ytlr/img/';
 
@@ -295,24 +296,25 @@ function isChosen(item, value) {
 function chosenLabel(item) {
   const current = configRead(item.key);
   const match = item.options.find((option) => option.value === current);
-  return match ? match.label : item.options[0].label;
+  return say(match ? match.label : item.options[0].label);
 }
 
 function listOf(labels, total) {
-  if (labels.length === 0) return 'None';
-  if (labels.length === total) return 'All';
-  if (labels.length <= 2) return labels.join(' and ');
-  return `${labels.slice(0, 2).join(', ')} and ${labels.length - 2} more`;
+  if (labels.length === 0) return say('None');
+  if (labels.length === total) return say('All');
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return say('{0} and {1}', labels);
+  return say('{0}, {1} and {2} more', [labels[0], labels[1], labels.length - 2]);
 }
 
 function chosenSummary(item) {
   if (item.kind === 'flags') {
     const chosen = item.options.filter((option) => configRead(option.key));
-    return listOf(chosen.map((option) => option.label), item.options.length);
+    return listOf(chosen.map((option) => say(option.label)), item.options.length);
   }
 
   const chosen = item.options.filter((option) => isChosen(item, option.value));
-  return listOf(chosen.map((option) => option.label), item.options.length);
+  return listOf(chosen.map((option) => say(option.label)), item.options.length);
 }
 
 export { GROUPS, at, isChosen, chosenLabel, chosenSummary };

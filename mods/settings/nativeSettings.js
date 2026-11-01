@@ -5,6 +5,7 @@ import { ADDED, putMoved, takeMoved } from './adoptedRows.js';
 import { category, categoryOf, indexOfCategory } from './settingsResponse.js';
 import { claimDrawnRows } from './claimDrawn.js';
 import { redrawSettingRows } from './settingComponents.js';
+import { say } from '../i18n/index.js';
 
 // Our categories go in before YouTube's rows are taken out, so there is somewhere for them to land.
 
@@ -35,7 +36,7 @@ function PatchSettings(response) {
 
     const added = ADDED
         .filter((entry) => taken[entry.id] && taken[entry.id].length)
-        .map((entry) => category(entry.id, entry.title, []));
+        .map((entry) => category(entry.id, say(entry.title), []));
 
     insertAt(items, indexOfCategory(items, ABOUT), added);
 

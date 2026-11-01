@@ -2,9 +2,10 @@ import { configRead, onResponse, timelyAction } from '../../framework/index.js';
 import { nameOf } from './segments.js';
 import { segmentsForVideo } from './index.js';
 import { skipTo } from './skipTo.js';
+import { say } from '../i18n/index.js';
 
 const cardFor = (segment) => timelyAction(
-    `Skip ${nameOf(segment)}`,
+    say('Skip {0}', [nameOf(segment)]),
     'SKIP_NEXT',
     skipTo(segment.segment[1]),
     segment.segment[0] * 1000,

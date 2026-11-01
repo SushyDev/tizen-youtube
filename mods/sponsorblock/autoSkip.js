@@ -1,6 +1,7 @@
 import { configRead, showToast } from '../../framework/index.js';
 import { nameOf } from './segments.js';
 import { repeatGuard } from './repeatGuard.js';
+import { say } from '../i18n/index.js';
 
 const LEAD = 0.3;
 
@@ -50,12 +51,12 @@ const autoSkipper = (segments, skippable, manualOnly) => {
 
         if (judged.repeated) {
             if (judged.announce) {
-                announce(`Not skipping ${skipName} (was skipped ${judged.count} times)`);
+                announce(say('Not skipping {0} (was skipped {1} times)', [skipName, judged.count]));
             }
             return;
         }
 
-        announce(`Skipping ${skipName}`);
+        announce(say('Skipping {0}', [skipName]));
 
         const end = latestEndOf(segment);
         held.video.currentTime = held.video.duration - end < TAIL ? end - TAIL : end;

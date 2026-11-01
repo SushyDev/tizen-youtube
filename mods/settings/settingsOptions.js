@@ -1,5 +1,6 @@
 import { buttonItem, configRead, overlayPanelItemListRenderer, showModal } from '../../framework/index.js';
 import { at, isChosen } from './settingsModel.js';
+import { say } from '../i18n/index.js';
 
 const OPTIONS_ACTION = 'TUBE_OPTIONS';
 
@@ -39,7 +40,7 @@ function rowsFor(item, path) {
     if (item.kind === 'choice') {
         const current = configRead(item.key);
         return item.options.map((option, index) => buttonItem(
-            { title: option.label },
+            { title: say(option.label) },
             { secondaryIcon: radio(option.value === current) },
             writeThenRedraw(storeCommand(item.key, option.value), path, index)
         ));
@@ -47,14 +48,14 @@ function rowsFor(item, path) {
 
     if (item.kind === 'flags') {
         return item.options.map((option, index) => buttonItem(
-            { title: option.label },
+            { title: say(option.label) },
             { secondaryIcon: checkbox(!!configRead(option.key)) },
             writeThenRedraw(storeCommand(option.key, !configRead(option.key)), path, index)
         ));
     }
 
     return item.options.map((option, index) => buttonItem(
-        { title: option.label },
+        { title: say(option.label) },
         { secondaryIcon: checkbox(isChosen(item, option.value)) },
         writeThenRedraw(toggleInSetCommand(item.key, option.value), path, index)
     ));
@@ -67,7 +68,7 @@ function openOptions(parameters) {
     if (!item || !item.options) return;
 
     showModal(
-        { title: item.title, subtitle: item.summary },
+        { title: say(item.title), subtitle: say(item.summary) },
         overlayPanelItemListRenderer(rowsFor(item, options.path), options.index || 0),
         `tube-options-${options.path.join('-')}`,
         !!options.update

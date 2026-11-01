@@ -1,4 +1,5 @@
 import { PIVOT, ShelfRenderer, TileRenderer, onSurface } from '../../framework/index.js';
+import { say } from '../i18n/index.js';
 
 const queued = () => (window.queuedVideos && window.queuedVideos.videos) || [];
 
@@ -8,8 +9,8 @@ const openAt = (rows) =>
 onSurface('queue shelf', [PIVOT], (rows) => {
     if (!queued().length) return;
 
-    const videos = [TileRenderer('Clear Queue', { customAction: { action: 'CLEAR_QUEUE' } })]
+    const videos = [TileRenderer(say('Clear Queue'), { customAction: { action: 'CLEAR_QUEUE' } })]
         .concat(queued());
 
-    rows.unshift(ShelfRenderer('Queued Videos', videos, openAt(videos)));
+    rows.unshift(ShelfRenderer(say('Queued Videos'), videos, openAt(videos)));
 });

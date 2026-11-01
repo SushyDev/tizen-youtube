@@ -1,11 +1,12 @@
 import { MenuNavigationItemRenderer, MenuServiceItemRenderer } from '../../framework/index.js';
+import { say } from '../i18n/index.js';
 
 const WATCH_LATER = 'WL';
 
 const watchLaterRow = (data) => {
     const saved = data.watchEndpointData.playlistId === WATCH_LATER;
 
-    return MenuServiceItemRenderer(saved ? 'Remove from Watch Later' : 'Save to Watch Later', {
+    return MenuServiceItemRenderer(say(saved ? 'Remove from Watch Later' : 'Save to Watch Later'), {
         clickTrackingParams: null,
         commandMetadata: {
             webCommandMetadata: { sendPost: true, apiUrl: '/youtubei/v1/browse/edit_playlist' }
@@ -20,7 +21,7 @@ const watchLaterRow = (data) => {
 };
 
 // The queue draws its own shelf from these, so the whole tile travels rather than an id.
-const queueRow = (data) => MenuServiceItemRenderer('Add to Queue', {
+const queueRow = (data) => MenuServiceItemRenderer(say('Add to Queue'), {
     clickTrackingParams: null,
     playlistEditEndpoint: {
         customAction: { action: 'ADD_TO_QUEUE', parameters: data.item }
@@ -37,19 +38,19 @@ const longPressData = (data) => ({
         menu: {
             menuRenderer: {
                 items: [
-                    MenuNavigationItemRenderer('Play', {
+                    MenuNavigationItemRenderer(say('Play'), {
                         clickTrackingParams: null,
                         watchEndpoint: data.watchEndpointData
                     }),
                     watchLaterRow(data),
-                    MenuNavigationItemRenderer('Save to Playlist', {
+                    MenuNavigationItemRenderer(say('Save to Playlist'), {
                         clickTrackingParams: null,
                         addToPlaylistEndpoint: { videoId: data.videoId }
                     }),
                     queueRow(data)
                 ],
                 trackingParams: null,
-                accessibility: { accessibilityData: { label: 'Video options' } }
+                accessibility: { accessibilityData: { label: say('Video options') } }
             }
         }
     }

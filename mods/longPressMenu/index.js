@@ -1,5 +1,6 @@
 import { GRID, MenuServiceItemRenderer, PIVOT, SHELF, TILES, clone, onTile } from '../../framework/index.js';
 import { longPressData } from './items.js';
+import { say } from '../i18n/index.js';
 
 // Most tiles arrive with a menu from the container, so the usual job is appending one item to it.
 
@@ -9,7 +10,7 @@ const addLongPress = (item) => {
 
     if (item.tileRenderer.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items) {
         const copiedItem = clone(item);
-        item.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer('Add to Queue', {
+        item.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.push(MenuServiceItemRenderer(say('Add to Queue'), {
             clickTrackingParams: null,
             playlistEditEndpoint: {
                 customAction: {

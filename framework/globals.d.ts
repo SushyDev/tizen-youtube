@@ -24,6 +24,9 @@ interface Window {
 
     yt?: { config_?: Record<string, any> };
 
+    /** kabuki's config store; INNERTUBE_CONTEXT carries the language the viewer picked. */
+    ytcfg?: { get?: (key: string) => any };
+
     /** Set by the proxy before our script runs; false means it patched the page itself. */
     __TUBE_NATIVE_PROXY_PATCHES__?: boolean;
 

@@ -1,4 +1,5 @@
 import { ButtonRenderer, configRead, onResponse } from '../../framework/index.js';
+import { say } from '../i18n/index.js';
 
 const type = (entry) => String((entry && entry.type) || '');
 
@@ -10,7 +11,7 @@ const without = (actions, name) => actions.filter((entry) => !is(name)(entry));
 const miniPlayer = () => ({
     type: 'TRANSPORT_CONTROLS_BUTTON_TYPE_PIP',
     button: {
-        buttonRenderer: ButtonRenderer(false, 'Mini Player', 'CLEAR_COOKIES', {
+        buttonRenderer: ButtonRenderer(false, say('Mini Player'), 'CLEAR_COOKIES', {
             customAction: { action: 'ENTER_MP' }
         })
     }
@@ -53,10 +54,10 @@ onResponse('player buttons', ['transportControls'], (response) => {
     if (!configRead('enablePreviousNextButtons')) return;
 
     if (controls.skipPreviousButton) {
-        controls.skipPreviousButton = skipButton('Previous', 'SKIP_PREVIOUS', 'PLAYER_PLAY_PREVIOUS');
+        controls.skipPreviousButton = skipButton(say('Previous'), 'SKIP_PREVIOUS', 'PLAYER_PLAY_PREVIOUS');
     }
 
     if (controls.skipNextButton) {
-        controls.skipNextButton = skipButton('Next', 'SKIP_NEXT', 'PLAYER_PLAY_NEXT');
+        controls.skipNextButton = skipButton(say('Next'), 'SKIP_NEXT', 'PLAYER_PLAY_NEXT');
     }
 });

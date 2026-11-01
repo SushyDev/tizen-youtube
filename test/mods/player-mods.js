@@ -114,4 +114,21 @@ check('hiding nothing leaves the guide as it came', () => {
         assert.deepStrictEqual(iconsIn(through(guide())), ['GAMING', 'SUBSCRIPTIONS', 'none']));
 });
 
+const withFooter = () => Object.assign(guide(), {
+    footer: { guideSectionRenderer: { items: [{ guideEntryRenderer: { icon: { iconType: 'SETTINGS' } } }] } }
+});
+
+check('settings leaves the footer and follows the last entry', () => {
+    withConfig({ disabledSidebarContents: ['GAMING'] }, () => {
+        const out = through(withFooter());
+        assert.deepStrictEqual(iconsIn(out), ['SUBSCRIPTIONS', 'none', 'SETTINGS']);
+        assert.strictEqual(out.footer, undefined);
+    });
+});
+
+check('and does so with nothing hidden', () => {
+    withConfig({ disabledSidebarContents: [] }, () =>
+        assert.deepStrictEqual(iconsIn(through(withFooter())), ['GAMING', 'SUBSCRIPTIONS', 'none', 'SETTINGS']));
+});
+
 finish();

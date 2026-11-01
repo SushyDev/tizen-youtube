@@ -4,6 +4,7 @@ const dev = require('../dev/index.js');
 const { flagOverrides, upstream } = require('./knobs.js');
 const { proxyHost, localOrigin, proxyPrefix } = require('./origin.js');
 const { reporter, bootBeacon } = require('./pageReporter.js');
+const zone = require('./zone.js');
 
 // SABR's one media URL goes through the service so no page patch is needed to reach googlevideo.
 const rerouteAbr = (text) => text.replace(
@@ -75,6 +76,7 @@ const rewriteBody = (text, url) => {
     const origin = localOrigin();
 
     const tag = `<script>window.__TUBE_NATIVE_PROXY_PATCHES__=${upstream.nativeProxyPatches};</script>`
+        + zone.pageTag(zone.current())
         + `<script src="${origin}/__tube/userScript.js?v=${Date.now()}"></script>`
         + `<script>${bootBeacon(origin)}</script>`
         + dev.pageScripts(origin, '');

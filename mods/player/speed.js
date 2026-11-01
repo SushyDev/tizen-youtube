@@ -45,10 +45,21 @@ function openSpeedOptions() {
     );
 }
 
+// Cobalt keeps one <video> for video after video and its playbackRate with it, so with remembering
+// off a speed chosen once still carried on. Each new source starts at the speed it should; a
+// canplay after a seek or a stall is the same source, and a speed chosen meanwhile is kept.
+const startingRate = () => (configRead('rememberPlaybackSpeed') ? configRead('videoSpeed') : 1);
+
 const rememberSpeed = (video) => {
+    const held = { source: null };
+
     video.addEventListener('canplay', () => {
-        if (!configRead('rememberPlaybackSpeed')) return;
-        video.playbackRate = configRead('videoSpeed');
+        const source = video.currentSrc || video.src;
+        if (source && source === held.source) return;
+        held.source = source;
+
+        const wanted = startingRate();
+        if (video.playbackRate !== wanted) video.playbackRate = wanted;
     });
 };
 
@@ -63,4 +74,4 @@ const start = () => {
     whenVideo('playback speed', rememberSpeed);
 };
 
-export { openSpeedOptions, start };
+export { openSpeedOptions, rememberSpeed, start };

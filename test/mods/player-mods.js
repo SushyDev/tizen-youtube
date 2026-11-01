@@ -8,6 +8,7 @@ await import('../../mods/player/codecs.js');
 await import('../../mods/player/overlays.js');
 await import('../../mods/player/autoplay.js');
 await import('../../mods/shell/guide.js');
+const { rememberSpeed } = await import('../../mods/player/speed.js');
 
 interceptJson();
 
@@ -112,6 +113,53 @@ check('a hidden sidebar section is dropped and the rest are kept', () => {
 check('hiding nothing leaves the guide as it came', () => {
     withConfig({ disabledSidebarContents: [] }, () =>
         assert.deepStrictEqual(iconsIn(through(guide())), ['GAMING', 'SUBSCRIPTIONS', 'none']));
+});
+
+// One element plays video after video, as Cobalt's does.
+const fakeVideo = () => {
+    const held = { listeners: [] };
+    return {
+        playbackRate: 1,
+        currentSrc: 'blob:first',
+        addEventListener: (type, listener) => { if (type === 'canplay') held.listeners.push(listener); },
+        canplay() { held.listeners.forEach((listener) => listener()); }
+    };
+};
+
+check('with remembering off a new video starts at normal speed', () => {
+    withConfig({ rememberPlaybackSpeed: false, videoSpeed: 2 }, () => {
+        const video = fakeVideo();
+        rememberSpeed(video);
+        video.canplay();
+        video.playbackRate = 2;
+        video.currentSrc = 'blob:second';
+        video.canplay();
+        assert.strictEqual(video.playbackRate, 1);
+    });
+});
+
+check('a speed chosen during a video survives its seeks', () => {
+    withConfig({ rememberPlaybackSpeed: false, videoSpeed: 1.5 }, () => {
+        const video = fakeVideo();
+        rememberSpeed(video);
+        video.canplay();
+        video.playbackRate = 1.5;
+        video.canplay();
+        assert.strictEqual(video.playbackRate, 1.5);
+    });
+});
+
+check('with remembering on a new video starts at the chosen speed', () => {
+    withConfig({ rememberPlaybackSpeed: true, videoSpeed: 1.75 }, () => {
+        const video = fakeVideo();
+        rememberSpeed(video);
+        video.canplay();
+        assert.strictEqual(video.playbackRate, 1.75);
+        video.currentSrc = 'blob:second';
+        video.playbackRate = 1;
+        video.canplay();
+        assert.strictEqual(video.playbackRate, 1.75);
+    });
 });
 
 finish();

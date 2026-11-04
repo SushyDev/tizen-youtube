@@ -11,6 +11,7 @@ import { start as startRapidPress } from './scroller/rapidPress.js';
 import { start as startSmoothNavigation } from './scroller/smoothNavigation.js';
 import { start as startSpeed } from './player/speed.js';
 
+import './network/zone.js';
 import './feed/index.js';
 import './adblock/index.js';
 import './dearrow/index.js';

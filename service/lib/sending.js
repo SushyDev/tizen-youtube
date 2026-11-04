@@ -53,8 +53,9 @@ const untilHeaders = (make) => {
     return make(signal).then(stop, (error) => { stop(); throw error; });
 };
 
-const send = (url, req, headers, fresh) => {
-    const body = isRepeatable(req) ? undefined : req;
+// buffered: the request's body already read (zone.js corrects innertube bodies), sent in its place.
+const send = (url, req, headers, fresh, buffered) => {
+    const body = isRepeatable(req) ? undefined : (buffered || req);
 
     const options = {
         method: req.method,
@@ -75,7 +76,7 @@ const send = (url, req, headers, fresh) => {
         }
 
         // A streamed body cannot be sent twice.
-        if (!isRetriable(error) || body) throw error;
+        if (!isRetriable(error) || (body && !buffered)) throw error;
 
         postmortem.note('upstream', `${postmortem.describe(error)} on ${url.slice(0, 80)}`
             + ' — retrying on a fresh connection');

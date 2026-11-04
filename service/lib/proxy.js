@@ -11,6 +11,7 @@ const { upstream } = require('./knobs.js');
 const { localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, routeFor, headersFor } = require('./route.js');
 const { readText, send } = require('./sending.js');
+const zone = require('./zone.js');
 const {
     rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie,
     hidesWatermark, withHiddenWatermark, rewriteStaticHosts
@@ -164,7 +165,11 @@ const attachFallback = (app) => {
             return res.status(500).type('text/plain').send(`tube: ${what}`);
         };
 
-        return send(route.url, req, headers)
+        const sent = zone.carriesContext(req.method, route.url)
+            ? zone.correctRequest(req, headers, zone.current()).then((read) => send(route.url, req, read.headers, false, read.body))
+            : send(route.url, req, headers);
+
+        return sent
             .then((response) => {
                 if (route.isBypass) dev.journal.service('answered', `${response.status} ${route.url.slice(0, 110)}`);
 

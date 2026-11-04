@@ -27,6 +27,9 @@ interface Window {
     /** Set by the proxy before our script runs; false means it patched the page itself. */
     __TUBE_NATIVE_PROXY_PATCHES__?: boolean;
 
+    /** Set by the proxy: the set's own zone, which Cobalt in the container does not have. */
+    __TUBE_ZONE__?: { utcOffsetMinutes: number, timeZone: string | null };
+
     /** Dev builds only: set when an inspector attaches and kept until reload; loosens parentNode. */
     __tubeInspecting?: boolean;
 

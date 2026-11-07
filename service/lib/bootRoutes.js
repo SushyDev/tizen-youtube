@@ -1,6 +1,7 @@
 'use strict';
 
 const postmortem = require('./postmortem.js');
+const trail = require('./trail.js');
 const { report } = require('./bootReport.js');
 const { fromScreen } = require('./pageLines.js');
 
@@ -17,6 +18,7 @@ const attach = (app, { cobalt, script }) => {
     // Asked from inside the container, so an answer also claims it.
     app.get('/__tube/boot', (req, res) => {
         if (cobalt) cobalt.served();
+        trail.reach('boot page');
 
         noteWait(Number(req.query.waited) || 0);
         fromScreen(req.query.said);

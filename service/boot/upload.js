@@ -4,6 +4,7 @@ import { post } from './request.js';
 import { engine } from './engine.js';
 import { elapsed } from './clock.js';
 import { say } from './screen.js';
+import { trail } from './trail.js';
 
 const report = () => ({
     source: 'boot screen',
@@ -17,6 +18,7 @@ const report = () => ({
     elsewhere: held.elsewhere,
     waiting: held.badWaiting || held.waiting,
     facts: held.factsSeen || null,
+    trail,
     log: held.lines
 });
 

@@ -110,6 +110,7 @@ const run = (script, replies, turns, options) => {
         setTimeout: (act, delay) => timers.push({ act, delay: delay || 0 }),
         window: {
             TUBE_BOOT: support ? Object.assign({}, CONFIG, { supportUrl: 'https://help.example' }) : CONFIG,
+            TUBE_TRAIL: options && options.trail,
             performance: { now: () => clock.now },
             innerWidth: 1920,
             innerHeight: 1080,
@@ -320,8 +321,9 @@ const checks = (script) => {
     check('a service that never answers turns the card into steps', dead.card.tone === 'tone-bad'
         && dead.card.head === 'Tube\'s background service isn\'t running' && dead.card.steps.length === 3,
         JSON.stringify(dead.card));
-    check('which suggest Tizen Homebrew as something to try, not a promise',
-        dead.card.steps.some((step) => step.indexOf('try opening Tizen Homebrew') !== -1), dead.card.steps.join(' | '));
+    check('and never send the viewer to another app to start it',
+        dead.card.steps.concat(dead.lines.map((line) => line.text)).every((text) => text.indexOf('Homebrew') === -1),
+        dead.card.steps.join(' | '));
     check('and without a support bot point at the Discord', dead.card.label === 'Scan to ask on Discord' && dead.card.qr > 0,
         JSON.stringify(dead.card));
 
@@ -339,6 +341,25 @@ const checks = (script) => {
         && reported.card.label === 'Post this code in Discord' && reported.card.qr > 0, JSON.stringify(reported.card));
     check('and says it in the log too', has(reported.lines, 'post code K7QF-29XM'));
     check('a normal start sends nothing', run(script, [ready], 12, { support: true }).posted.length === 0);
+
+    const ago = (ms) => Date.now() - ms;
+    const crashed = [{ at: ago(600000), uptime: 30, pid: 41, reached: [{ stage: 'loaded', after: 0 }], ended: { how: 'exit code 0', after: 900 } },
+        { at: ago(120000), uptime: 12, pid: 42, control: { operation: 'http://tizen.org/appcontrol/operation/default', caller: '' },
+            reached: [{ stage: 'loaded', after: 0 }, { stage: 'modules', after: 800 }],
+            ended: { how: 'crashed: Cannot find module \'express\'', after: 820 } }];
+    const trailed = run(script, [null], 32, { support: true, trail: crashed });
+    const trailedReport = (trailed.posted[0] || { body: { report: {} } }).body.report;
+    check('a dead service\'s last run is shown in the log from the trail it left', has(trailed.lines, 'last run started 2m ago, 12s after the TV booted, pid 42')
+        && has(trailed.lines, 'loaded → modules +0.8s') && has(trailed.lines, 'crashed: Cannot find module'),
+        trailed.lines.map((line) => line.text).join(' | ').slice(0, 600));
+    check('and only the last run, so the screen is not filled with old ones', !has(trailed.lines, 'pid 41'));
+    check('the card says the last run crashed instead of guessing', trailed.card.detail.indexOf('The last time it ran, 2m ago, it crashed') === 0,
+        trailed.card.detail);
+    check('and the report carries every run', Array.isArray(trailedReport.trail) && trailedReport.trail.length === 2,
+        JSON.stringify(trailedReport.trail));
+    const hung = run(script, [null], 32, { trail: [{ at: ago(30000), uptime: 8, pid: 43, reached: [{ stage: 'loaded', after: 0 }, { stage: 'modules', after: 700 }], ended: null }] });
+    check('a run with no ending says how far it got', hung.card.detail === 'It last started 30s ago and got as far as "modules".', hung.card.detail);
+    check('without a trail the card keeps its plain words', dead.card.detail.indexOf('The TV didn\'t start') === 0, dead.card.detail);
 
     const unsent = run(script, [null], 32, { support: 'down' });
     check('a report that cannot be sent falls back to a photo', has(unsent.lines, 'post a photo of this screen')
@@ -360,7 +381,8 @@ const checks = (script) => {
     check('its policy lets it reach the service and go to the page we serve',
         page.indexOf(`connect-src ${CONFIG.service} `) !== -1
         && page.indexOf(`h5vcc-location-src https://www.youtube.com ${CONFIG.service} file:`) !== -1
-        && page.indexOf('help.example') === -1,
+        && page.indexOf('help.example') === -1
+        && page.indexOf("script-src 'unsafe-inline' file:;") !== -1 && page.indexOf('<script src="trail.js"></script>') !== -1,
         (/content="([^"]*)"/.exec(page) || [])[1]);
 
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-boot-'));

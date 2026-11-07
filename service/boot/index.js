@@ -5,6 +5,7 @@ import { ago } from './clock.js';
 import { say } from './screen.js';
 import { poll } from './poll.js';
 import { refresh } from './view.js';
+import { lastRun, describeRun } from './trail.js';
 
 say('tube', `boot screen, ${engine()}`, 'note');
 
@@ -14,6 +15,9 @@ say('tube', `viewport ${window.innerWidth}x${window.innerHeight}, dpr ${window.d
 
 // An old page means the service has not run since.
 if (written) say('tube', `page written ${ago(written.at)} ago by service pid ${written.pid}, patch ${written.patch}`);
+
+// Read from a file the service wrote, so it still says how far the last start got when nothing answers.
+if (lastRun()) say('service', `last run ${describeRun(lastRun())}`);
 
 say('service', `waiting for it at ${service.replace('http://', '')}`);
 

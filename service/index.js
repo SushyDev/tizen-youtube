@@ -1,5 +1,10 @@
 'use strict';
 
+// First, so a service that dies while loading still leaves a trail for the boot page.
+const trail = require('./lib/trail.js');
+
+trail.begin();
+
 const dns = require('dns');
 const os = require('os');
 
@@ -32,6 +37,8 @@ const addressWatch = require('./lib/addressWatch.js');
 
 // A cobalt.js that will not load must not stop the proxy starting.
 const cobalt = require('./lib/cobaltIfItLoads.js')();
+
+trail.reach('modules');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -135,6 +142,7 @@ const listen = (addresses, index) => {
         serving.yes = true;
 
         postmortem.note('listening', `${address}:${ports.PROXY}`);
+        trail.reach('listening');
         console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
     });
@@ -167,9 +175,10 @@ if (holdFor) postmortem.note('listen', `held shut for ${holdFor / 1000}s by TUBE
 
 // Tizen's service runner calls these on every wake message, and a missing one kills the service.
 module.exports = {
-    onStart: () => {},
+    onStart: () => trail.count('starts'),
 
     onRequest: () => {
+        trail.count('requests');
         if (!cobalt) return;
         try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }
     },
@@ -192,6 +201,8 @@ const prepare = () => {
         sending.dropAll();
         if (cobalt) cobalt.refreshBootScreen();
     });
+
+    trail.reach('prepared');
 };
 
 setTimeout(() => listen(candidates(), 0), holdFor);

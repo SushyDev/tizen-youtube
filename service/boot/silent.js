@@ -16,8 +16,7 @@ const GIVE_UP_ALIVE = `still not answering after ${TIMING.giveUp / 1000}s: close
     + 'open it again; if this screen comes back, turn the TV off at the power button until the Samsung logo shows';
 
 const GIVE_UP_DEAD = `still not answering after ${TIMING.giveUp / 1000}s: the TV has not started Tube's background `
-    + 'service. Hold the power button until the Samsung logo shows, then open Tube; on Tizen 9 or 10, try opening '
-    + 'Tizen Homebrew once first';
+    + 'service. Hold the power button until the Samsung logo shows, then open Tube';
 
 // Named only when something answers, because the page is served by the same service.
 const advise = () => {

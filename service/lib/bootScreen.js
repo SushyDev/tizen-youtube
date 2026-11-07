@@ -45,8 +45,8 @@ const configFor = () => ({
 });
 
 // Cobalt refuses whatever the policy omits, navigation included.
-// file: lets the page read itself again after the service rewrote it for a new address.
-const policyFor = (config) => `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; `
+// file: lets the page read itself again after the service rewrote it for a new address, and load trail.js.
+const policyFor = (config) => `default-src 'none'; script-src 'unsafe-inline' file:; style-src 'unsafe-inline'; `
     + `connect-src ${[config.service].concat(config.alternates).join(' ')} ${YOUTUBE}`
     + `${config.supportUrl ? ` ${config.supportUrl}` : ''}; `
     + `h5vcc-location-src ${YOUTUBE} ${config.service} file:`;
@@ -96,6 +96,7 @@ ${STYLE}
 <body>
 ${CARD}
 <div id="log"></div>
+<script src="trail.js"></script>
 <script>window.TUBE_BOOT = ${JSON.stringify(config)};</script>
 <script>
 ${script}

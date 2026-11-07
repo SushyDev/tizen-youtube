@@ -3,6 +3,7 @@ import { held } from './state.js';
 import { showCard } from './card.js';
 import { elapsed } from './clock.js';
 import { TIMING } from './timing.js';
+import { lastRunSays } from './trail.js';
 
 const bare = (url) => String(url || '').replace(/^https?:\/\//, '');
 
@@ -79,9 +80,9 @@ const silent = () => {
         ], held.code ? helpAside() : diagAside());
     }
 
-    return failed('Tube\'s background service isn\'t running', 'The TV didn\'t start the part of Tube that loads YouTube, so there is nothing to show yet.', [
+    return failed('Tube\'s background service isn\'t running', lastRunSays() || 'The TV didn\'t start the part of Tube that loads YouTube, so there is nothing to show yet.', [
         POWER,
-        'On Tizen 9 or 10, try opening Tizen Homebrew once: it can start Tube\'s background service. Then open Tube again.',
+        'Right after switching on, the TV can take a minute to start it: wait, then open Tube again.',
         lastStep(false)
     ], helpAside());
 };

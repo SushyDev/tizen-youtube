@@ -2,6 +2,7 @@
 
 const { appendFileSync, readFileSync, statSync, renameSync, mkdirSync } = require('fs');
 const { dirname } = require('path');
+const { withoutQueries } = require('./redact.js');
 
 const LOG = process.env.TUBE_LOG || '/home/owner/share/tube/service.log';
 const MAX_BYTES = 64 * 1024;
@@ -37,8 +38,9 @@ const remember = (what, text) => {
     kept.next += 1;
 };
 
+// Errors quote the URL they failed on, and other packages can read this log.
 const note = (what, detail) => {
-    const text = describe(detail);
+    const text = withoutQueries(describe(detail));
     remember(what, text);
 
     try {

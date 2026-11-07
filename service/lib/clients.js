@@ -31,4 +31,9 @@ const bypassAllows = (host) => {
     return GOOGLE.test(name) || listed('TUBE_BYPASS_HOSTS').indexOf(name) !== -1;
 };
 
-module.exports = { fromThisTv, bypassAllows, remoteOf, GOOGLE };
+// Restarting the service and writing to its log are for the TV's own pages, not a phone on the LAN.
+const onlyThisTv = (handler) => (req, res) => (fromThisTv(req)
+    ? handler(req, res)
+    : res.status(403).type('text/plain').send('tube: only this TV may ask for this'));
+
+module.exports = { fromThisTv, onlyThisTv, bypassAllows, remoteOf, GOOGLE };

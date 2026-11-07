@@ -75,6 +75,26 @@ const clientChecks = () => {
         && bypassAllows('jnn-pa.googleapis.com:443') && bypassAllows('www.youtube.com'));
     check('and nothing else on the network or the internet', !bypassAllows('192.168.1.1')
         && !bypassAllows('evilgoogle.com') && !bypassAllows('googlevideo.com.example.org'));
+
+    const { onlyThisTv } = require('../lib/clients.js');
+    const answered = (remoteAddress) => {
+        const seen = { ran: false, status: 200 };
+        const res = { status: (code) => { seen.status = code; return res; }, type: () => res, send: () => res };
+        onlyThisTv(() => { seen.ran = true; })(from(remoteAddress), res);
+        return seen;
+    };
+    const phone = answered('192.168.1.77');
+    check('only this TV may restart the service or write to its log', answered('127.0.0.1').ran
+        && answered('192.168.1.40').ran && !phone.ran && phone.status === 403, JSON.stringify(phone));
+};
+
+const redactChecks = () => {
+    const postmortem = require('../lib/postmortem.js');
+
+    postmortem.note('upstream', 'FetchError: request to https://www.youtube.com/api/stats?ip=203.0.113.9&docid=x failed');
+    const written = fs.readFileSync(process.env.TUBE_LOG, 'utf8');
+    check('an error\'s URL is logged without its query string', written.indexOf('203.0.113.9') === -1
+        && written.indexOf('https://www.youtube.com/api/stats?…') !== -1, written.slice(-200));
 };
 
 const addressChecks = () => {
@@ -136,6 +156,7 @@ const reportChecks = () => {
 qrModule()
     .then(qrChecks)
     .then(clientChecks)
+    .then(redactChecks)
     .then(addressChecks)
     .then(reportChecks)
     .catch((error) => check('the suite runs', false, error.stack))

@@ -5,6 +5,7 @@ import { flush } from './outbox.js';
 import { sayHelp } from './help.js';
 import { refresh } from './view.js';
 import { sendReport } from './upload.js';
+import { stopLaunching } from './launching.js';
 
 const GIVE_UP = 'youtube still does not answer through the service: close Tube with a long press on Back and '
     + 'open it again, closing the stock YouTube app first if it is open; reinstall Tube if this keeps happening';
@@ -29,6 +30,7 @@ export const blocked = (again) => {
 
     if (held.probed === TIMING.probeGiveUp) {
         held.blockedOut = true;
+        stopLaunching('youtube does not answer through the service');
         say('tube', GIVE_UP, 'bad');
         sendReport(refresh);
         sayHelp();

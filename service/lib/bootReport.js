@@ -30,6 +30,7 @@ const report = ({ since, status, script, stuck }) => {
         facts: facts(script),
         ready: !waiting,
         waiting,
+        cobalt: { settled: !!status.settled, failed: status.failed || null },
         log: log.lines.map((line) => ({ seq: line.seq, at: line.at, what: line.what, text: firstLine(line.text) })),
         next: log.next
     };

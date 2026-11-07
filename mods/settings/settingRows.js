@@ -39,8 +39,21 @@ const openerRow = (item, path, label) => {
     return { settingActionRenderer: row };
 };
 
+const actionRow = (item) => ({
+    settingActionRenderer: {
+        title: runs(item.title),
+        summary: runs(item.summary),
+        serviceEndpoint: { customAction: { action: item.action } },
+        actionLabel: runs(item.label),
+        trackingParams: 'null',
+        itemId: idFor(item),
+        thumbnail: picture(item.image)
+    }
+});
+
 const rowFor = (item, path) =>
-    item.kind === 'switch' ? switchRow(item)
+    item.kind === 'action' ? actionRow(item)
+    : item.kind === 'switch' ? switchRow(item)
         : item.kind === 'choice'
             ? openerRow(item, path, () => `${item.prefix}: ${chosenLabel(item)}`)
             : openerRow(item, path, () => chosenSummary(item));

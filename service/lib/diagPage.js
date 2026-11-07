@@ -96,7 +96,8 @@ h2 { font-size: 18px; margin: 24px 0 8px; }
 .verdict { padding: 12px 14px; border-radius: 8px; background: #e3f4e8; }
 .verdict.failing { background: #fde8e8; }
 .verdict p { margin: 4px 0; }
-button { font: inherit; font-weight: 600; padding: 12px 16px; border-radius: 8px; border: 0; width: 100%; margin: 6px 0; }
+button, a.button { display: block; box-sizing: border-box; text-align: center; text-decoration: none; }
+button, a.button { font: inherit; font-weight: 600; padding: 12px 16px; border-radius: 8px; border: 0; width: 100%; margin: 6px 0; }
 .primary { background: #3b5bdb; color: #ffffff; }
 .secondary { background: #dfe3e8; color: #1d232a; }
 #code { font: 700 32px/1.3 ui-monospace, monospace; letter-spacing: 3px; text-align: center; margin: 8px 0; }
@@ -144,12 +145,14 @@ ${failed.map((one) => `<p>${escaped(plainly(one))}</p>`).join('\n')}
 </div>`
     : `<div class="verdict"><p>All ${found.length} checks passed. Tube's service is running on this TV.</p></div>`);
 
-const sharing = (text) => `<section>
+const sharing = (text, here) => `<section>
 <h2>Get help</h2>
 ${SUPPORT_URL ? '<button class="primary" id="send" type="button">Send to support</button>' : ''}
 <div id="code"></div>
 <button class="secondary" id="copy-code" type="button" style="display:none">Copy code</button>
 <button class="secondary" id="copy" type="button">Copy report</button>
+<a class="secondary button" href="${escaped(here)}/diag/logs.txt?download=1" download>Download logs (.txt)</a>
+<a class="secondary button" href="${escaped(here)}/diag/logs.txt">Open logs</a>
 <p id="said"></p>
 <textarea id="report" readonly style="display:none" data-text="${escaped(text)}"></textarea>
 </section>`;
@@ -182,13 +185,13 @@ Patch <code>${escaped(STAMP)}</code>.
 ${verdict(found, failed)}
 </header>
 
-${sharing(asText(bundle(rows)))}
+${sharing(asText(bundle(rows)), here)}
 
 <nav>
 <h2>Help</h2>
 <ul>
 <li><a href="${escaped(DISCORD)}">Join the Discord</a> — ask there, with the code or the report above</li>
-<li><a href="${escaped(here)}/__tube/log">Open the log</a></li>
+<li><a href="${escaped(here)}/__tube/log">Open the raw log</a></li>
 <li><a href="${escaped(REPO)}">Report on GitHub</a></li>
 </ul>
 </nav>

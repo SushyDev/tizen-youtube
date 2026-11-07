@@ -27,6 +27,9 @@ const Set_ = (key, title, summary, image, options, invert = false) =>
 const Flags = (id, title, summary, image, options) =>
   ({ kind: 'flags', id, title, summary, image, options });
 
+const Action = (id, title, summary, image, action, label) =>
+  ({ kind: 'action', id, title, summary, image, action, label });
+
 const QUALITIES = ['highest', 'auto', '2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p']
   .map((quality) => ({
     label: quality === 'highest' ? 'Highest available'
@@ -164,6 +167,9 @@ const GROUPS = [
     id: 'tube_startup',
     title: 'Startup',
     items: [
+      Action('tubeLauncher', 'Tube launcher',
+        'Tube\u2019s checks, logs, service restart and the auto-launch switch',
+        SCREEN, 'TUBE_LAUNCHER', 'Open'),
       Choice('startupPage', 'Page to open',
         'Opened at launch, so the home feed is never drawn first',
         RESTART, START_PAGES, 'Startup'),

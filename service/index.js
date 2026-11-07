@@ -1,6 +1,10 @@
 'use strict';
 
+const dns = require('dns');
 const os = require('os');
+
+// Node 17+ hands out AAAA answers first, and a network with broken IPv6 then hangs every connection.
+if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
 
 const postmortem = require('./lib/postmortem.js');
 const lastRun = require('./lib/lastRun.js');
@@ -23,6 +27,8 @@ const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
 const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
+const sending = require('./lib/sending.js');
+const addressWatch = require('./lib/addressWatch.js');
 
 // A cobalt.js that will not load must not stop the proxy starting.
 const cobalt = require('./lib/cobaltIfItLoads.js')();
@@ -159,8 +165,6 @@ const listen = (addresses, index) => {
 const holdFor = dev.startDelay();
 if (holdFor) postmortem.note('listen', `held shut for ${holdFor / 1000}s by TUBE_START_DELAY`);
 
-setTimeout(() => listen(candidates(), 0), holdFor);
-
 // Tizen's service runner calls these on every wake message, and a missing one kills the service.
 module.exports = {
     onStart: () => {},
@@ -174,10 +178,23 @@ module.exports = {
 };
 
 // Staging a directory and issuing a certificate must not be able to stop the proxy answering.
-if (cobalt) {
-    try {
-        cobalt.prepare();
-    } catch (e) {
-        postmortem.note('cobalt', `prepare threw: ${postmortem.describe(e)}`);
+const prepare = () => {
+    if (cobalt) {
+        try {
+            cobalt.prepare();
+        } catch (e) {
+            postmortem.note('cobalt', `prepare threw: ${postmortem.describe(e)}`);
+        }
     }
-}
+
+    addressWatch.watch((was, now) => {
+        postmortem.note('address', `${was} → ${now}: dropping connections made from the old one`);
+        sending.dropAll();
+        if (cobalt) cobalt.refreshBootScreen();
+    });
+};
+
+setTimeout(() => listen(candidates(), 0), holdFor);
+
+// Queued behind the listen, so the port opens before staging walks the whole content tree.
+setTimeout(prepare, 0);

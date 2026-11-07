@@ -9,7 +9,7 @@ const { restoreCookiePrefixes } = require('./rewrites.js');
 const YOUTUBE_HOST = 'www.youtube.com';
 const YOUTUBE_ORIGIN = `https://${YOUTUBE_HOST}`;
 
-const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|googleapis\.com|google\.com|ggpht\.com|gstatic\.com|googleusercontent\.com)$/;
+const { GOOGLE } = require('./clients.js');
 
 const routeFor = (req) => {
     const bypassTarget = () => {

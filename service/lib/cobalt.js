@@ -139,6 +139,6 @@ const status = () => ({
 });
 
 module.exports = {
-    prepare, wake, served, status, restart, relaunch, container, appId, contact,
+    prepare, wake, served, status, restart, relaunch, container, appId, contact, refreshBootScreen,
     heardOffer: evergreen.heardOffer
 };

@@ -40,11 +40,17 @@ const ask = () => {
         settle(true, `answered ${response.statusCode}`);
     });
 
-    request.setTimeout(TIMEOUT, () => {
-        settle(false, 'timed out');
+    // request.setTimeout arms only once connected, and an unanswered connect waits out the kernel's ~130s.
+    const deadline = setTimeout(() => {
+        settle(false, `no connection in ${TIMEOUT / 1000}s`);
         request.abort();
+    }, TIMEOUT);
+
+    request.on('response', () => clearTimeout(deadline));
+    request.on('error', (error) => {
+        clearTimeout(deadline);
+        settle(false, error.code || error.message);
     });
-    request.on('error', (error) => settle(false, error.code || error.message));
     request.end();
 };
 

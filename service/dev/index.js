@@ -109,6 +109,8 @@ const startDelay = () => Number(process.env.TUBE_START_DELAY
 module.exports = {
     attach: bridge.attach,
     startDelay,
+    // A developer reaches the proxy from a computer rather than from the TV itself.
+    openProxy: () => process.env.TUBE_OPEN_PROXY !== '0',
     routes,
     pageRoutes,
     pageScripts,

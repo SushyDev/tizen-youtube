@@ -1,6 +1,7 @@
 'use strict';
 
 const { page, thisTvRows } = require('./diagPage.js');
+const { bundle } = require('./diagBundle.js');
 
 const attach = (app) => {
     app.get('/diag', (req, res) => {
@@ -10,6 +11,8 @@ const attach = (app) => {
     });
 
     app.get('/__tube/facts', (req, res) => res.json(thisTvRows(req.headers.host)));
+
+    app.get('/diag.json', (req, res) => res.json(bundle(thisTvRows(req.headers.host))));
 };
 
 module.exports = { attach };

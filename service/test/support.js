@@ -3,11 +3,13 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { rollup } = require('rollup');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-support-'));
 
 process.env.TUBE_LOG = path.join(root, 'service.log');
 process.env.TUBE_SHARE = root;
+process.env.TUBE_SUPPORT_URL = 'https://help.example';
 process.env.TUBE_OPEN_PROXY = '0';
 delete process.env.TUBE_PROXY_CLIENTS;
 delete process.env.TUBE_BYPASS_HOSTS;
@@ -23,6 +25,34 @@ const results = [];
 const check = (label, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok || !detail ? '' : `  <- ${detail}`}`);
     results.push(!!ok);
+};
+
+const qrModule = async () => {
+    const bundle = await rollup({ input: path.join(__dirname, '..', 'boot', 'vendor', 'qr.js') });
+    const { output } = await bundle.generate({ format: 'cjs', exports: 'named' });
+    const loaded = { exports: {} };
+    new Function('module', 'exports', output[0].code)(loaded, loaded.exports);
+    return loaded.exports;
+};
+
+const qrChecks = ({ encode }) => {
+    const short = encode('http://192.168.1.40:8099/diag', 'M');
+    check('a diag address fits a small QR code', short.length === 29 && short.every((row) => row.length === 29),
+        `${short.length} modules`);
+    check('with the three finder patterns in their corners', short[0][0] && short[0][28] && short[28][0] && !short[28][28]);
+
+    const long = encode(`https://help.example/r/K7QF-29XM?${'x'.repeat(120)}`, 'M');
+    check('a longer one grows by whole versions', (long.length - 17) % 4 === 0 && long.length > 29, `${long.length} modules`);
+
+    const threw = (() => {
+        try {
+            encode('x'.repeat(400), 'M');
+            return false;
+        } catch (e) {
+            return true;
+        }
+    })();
+    check('and one too long to scan says so rather than drawing nonsense', threw);
 };
 
 const clientChecks = () => {
@@ -74,11 +104,40 @@ const addressChecks = () => {
 
     check('a new address is noticed once', moves.length === 1 && moves[0] === '192.168.1.40 → 10.0.0.12', moves.join(', '));
     check('and the boot screen is written for it', pageAt() === 'http://10.0.0.12:8099', pageAt());
+    check('with the support bot allowed in its policy', fs.readFileSync(path.join(content, 'web', 'tube', 'boot.html'), 'utf8')
+        .indexOf('connect-src http://10.0.0.12:8099') !== -1
+        && fs.readFileSync(path.join(content, 'web', 'tube', 'boot.html'), 'utf8').indexOf(' https://help.example;') !== -1);
 };
 
-Promise.resolve()
+const reportChecks = () => {
+    const postmortem = require('../lib/postmortem.js');
+    const { bundle } = require('../lib/diagBundle.js');
+    const { page, thisTvRows } = require('../lib/diagPage.js');
+
+    postmortem.note('upstream', 'upstream failed on https://www.youtube.com/youtubei/v1/player?key=AIzaSecret&cpn=abc123: ETIMEDOUT');
+    postmortem.note('req', 'GET /api/lounge/bc/bind?id=lounge42&token=t0p → 200');
+    postmortem.note('screen', 'tube: patch 1.5.1');
+
+    const made = bundle(thisTvRows('10.0.0.12:8099'));
+    const flat = JSON.stringify(made);
+
+    check('the report is shaped for the support bot', made.app === 'youtube' && typeof made.version === 'string'
+        && Array.isArray(made.report.checks) && Array.isArray(made.report.log));
+    check('it keeps what the lines say', flat.indexOf('ETIMEDOUT') !== -1 && flat.indexOf('/youtubei/v1/player') !== -1);
+    check('and drops their query strings and tokens', ['AIzaSecret', 'abc123', 'lounge42', 't0p'].every((leak) => flat.indexOf(leak) === -1),
+        flat.slice(0, 400));
+
+    const html = page('10.0.0.12:8099');
+    check('with a support bot the diag page offers to send it', html.indexOf('id="send"') !== -1
+        && html.indexOf('data-support="https://help.example"') !== -1 && html.indexOf('/diag.json') !== -1);
+    check('and its copy fallback carries no tokens either', html.indexOf('t0p') === -1 && html.indexOf('AIzaSecret') === -1);
+};
+
+qrModule()
+    .then(qrChecks)
     .then(clientChecks)
     .then(addressChecks)
+    .then(reportChecks)
     .catch((error) => check('the suite runs', false, error.stack))
     .then(() => {
         fs.rmSync(root, { recursive: true, force: true });

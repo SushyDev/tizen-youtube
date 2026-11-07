@@ -29,6 +29,15 @@ const bundled = async () => {
     return output[0].code;
 };
 
+const storage = () => {
+    const kept = {};
+    return {
+        getItem: (key) => (key in kept ? kept[key] : null),
+        setItem: (key, value) => { kept[key] = String(value); },
+        removeItem: (key) => { delete kept[key]; }
+    };
+};
+
 // Only as much of a page as the boot screen touches; replies[] answers each ask in turn.
 const run = (script, replies, turns, options) => {
     const probeStatus = options && options.probe !== undefined ? options.probe : 204;
@@ -36,23 +45,43 @@ const run = (script, replies, turns, options) => {
     const hangs = !!(options && options.hang);
     const updater = options && options.updater;
     const answered = { count: 0 };
-    const node = () => ({ className: '', textContent: '', kids: [], appendChild(kid) { this.kids.push(kid); } });
-    const log = {
-        childNodes: [],
-        appendChild(line) { this.childNodes.push(line); },
-        removeChild(line) { this.childNodes.splice(this.childNodes.indexOf(line), 1); }
+    const node = () => ({
+        className: '',
+        textContent: '',
+        style: {},
+        kids: [],
+        get childNodes() { return this.kids; },
+        appendChild(kid) { this.kids.push(kid); },
+        removeChild(kid) { this.kids.splice(this.kids.indexOf(kid), 1); }
+    });
+    const log = node();
+    const nodes = { log };
+    const byId = (id) => {
+        if (!nodes[id]) nodes[id] = node();
+        return nodes[id];
     };
+    const support = options && options.support;
+    const posted = [];
     const timers = [];
     const asked = [];
     const replaced = [];
     const clock = { now: 0 };
 
     function XMLHttpRequest() {}
-    XMLHttpRequest.prototype.open = function open(method, url) { this.url = url; };
+    XMLHttpRequest.prototype.open = function open(method, url) { this.method = method; this.url = url; };
     XMLHttpRequest.prototype.abort = function abort() {};
-    XMLHttpRequest.prototype.send = function send() {
+    XMLHttpRequest.prototype.setRequestHeader = function setRequestHeader() {};
+    XMLHttpRequest.prototype.send = function send(body) {
         asked.push(this.url);
         this.readyState = 4;
+
+        if (this.method === 'POST') {
+            posted.push({ url: this.url, body: JSON.parse(body) });
+            this.status = support === 'down' ? 0 : 201;
+            this.responseText = support === 'down' ? '' : JSON.stringify({ code: 'K7QF-29XM', url: 'https://help.example/r/K7QF-29XM' });
+            if (this.onreadystatechange) this.onreadystatechange();
+            return;
+        }
 
         // The probe goes to YouTube through Cobalt's proxy; a fire-and-forget send has no handler.
         if (this.url.indexOf(`${ELSEWHERE}/__tube/ping`) === 0) {
@@ -75,18 +104,24 @@ const run = (script, replies, turns, options) => {
     };
 
     const page = {
-        document: { getElementById: () => log, createElement: node },
+        document: { getElementById: byId, createElement: node },
         navigator: { userAgent: AGENT },
         XMLHttpRequest,
         setTimeout: (act, delay) => timers.push({ act, delay: delay || 0 }),
         window: {
-            TUBE_BOOT: CONFIG,
+            TUBE_BOOT: support ? Object.assign({}, CONFIG, { supportUrl: 'https://help.example' }) : CONFIG,
             performance: { now: () => clock.now },
             innerWidth: 1920,
             innerHeight: 1080,
             devicePixelRatio: 1,
             h5vcc: updater ? { updater } : undefined,
-            location: { search: '?launch=menu&cert_scope=samsung', hash: '', replace: (to) => replaced.push(to) }
+            location: {
+                href: 'file:///tube/boot.html?launch=menu&cert_scope=samsung',
+                search: '?launch=menu&cert_scope=samsung',
+                hash: '',
+                replace: (to) => replaced.push(to)
+            },
+            localStorage: options && options.storage ? storage() : undefined
         }
     };
 
@@ -106,7 +141,19 @@ const run = (script, replies, turns, options) => {
         tone: line.kids[2] ? line.kids[2].className : ''
     }));
 
-    return { lines, asked, replaced };
+    const card = {
+        tone: byId('card').className,
+        head: byId('state').textContent,
+        detail: byId('detail').textContent,
+        steps: byId('steps').kids.map((step) => step.textContent),
+        label: byId('aside-label').textContent,
+        code: byId('aside-code').textContent,
+        url: byId('aside-url').textContent,
+        version: byId('version').textContent,
+        qr: byId('qr').style.display === 'block' ? byId('qr').kids.length : 0
+    };
+
+    return { lines, asked, replaced, card, posted };
 };
 
 const host = (url) => url.replace('http://', '');
@@ -183,33 +230,35 @@ const checks = (script) => {
 
     // Each failed ask moves the clock 4.5s (its 4s guard, then the 0.5s retry), so 16 turns is about 36s.
     const slow = run(script, [null], 16);
+    const dead = run(script, [null], 32);
     check('a slow start is only warned about, not called a failure', slow.lines.some((line) => line.tone === 'warn')
         && slow.lines.every((line) => line.tone !== 'bad'));
 
     const silent = run(script, [null], 90);
-    check('only after a minute is it told what to do, in red', toneOf(silent.lines, 'still not answering after 60s') === 'bad');
+    const minute = run(script, [null], 30);
+    check('only after a minute is it told what to do, in red', toneOf(minute.lines, 'still not answering after 60s') === 'bad',
+        minute.lines.map((line) => line.text).join(' | '));
 
     check('it says which build wrote the page, and when', has(handed.lines, `tube: page written 0s ago by service pid ${process.pid}, patch `));
     check('a refused ask is named at once', has(slow.lines, `service: ${host(CONFIG.service)}: refused at once`),
         slow.lines.map((line) => line.text).join(' | '));
 
-    // The page is reached from a phone over the network rather than the path that just failed.
-    check('the first resistance already points at the page that explains it',
-        has(slow.lines, CONFIG.diag) && CONFIG.diag.indexOf('/diag') !== -1,
-        slow.lines.map((line) => line.text).join(' | '));
+    // The diag page is served by the service that just refused, so it would never load.
+    check('a refused service is never sent to the page it cannot serve',
+        !has(slow.lines, CONFIG.diag) && !has(silent.lines, CONFIG.diag), slow.lines.map((line) => line.text).join(' | '));
+    check('a minute of refusals says how to get the service started',
+        has(minute.lines, 'hold the power button') || has(minute.lines, 'Hold the power button'),
+        minute.lines.map((line) => line.text).join(' | '));
 
-    const advised = (lines) => lines.filter((line) => line.text.indexOf('to see what, and what to do') !== -1).length;
+    const advised = (lines) => lines.filter((line) => line.text.indexOf('it shows what failed and what to do') !== -1).length;
 
-    check('and once rather than on every retry', advised(slow.lines) === 1, `said ${advised(slow.lines)} times`);
-
-    // The screen keeps only the last 34 lines, so the line said at the first refusal has scrolled
-    // away by the time of the give-up.
-    check('a silence long enough to scroll it away still ends by naming the page',
-        has(silent.lines, CONFIG.diag), CONFIG.diag);
+    const dropped = run(script, [null], 6, { hang: true });
+    check('a service that is there but silent points at the page that explains it', has(dropped.lines, CONFIG.diag),
+        dropped.lines.map((line) => line.text).join(' | '));
+    check('and once rather than on every retry', advised(run(script, [null], 14, { hang: true }).lines) === 1);
     check('and the other addresses are asked too, without a verdict at first', has(slow.lines, 'service: nor at 127.0.0.1:8099 yet'));
     check('which comes once the silence lasts', has(slow.lines, 'nor at 127.0.0.1:8099: the service is not running, or is stuck'));
 
-    const dropped = run(script, [null], 6, { hang: true });
     check('a dropped ask is told from a refused one', has(dropped.lines, `service: ${host(CONFIG.service)}: no answer in 4s`));
 
     const blockedAddress = run(script, [null], 6, { hang: true, elsewhere: 204 });
@@ -249,10 +298,58 @@ const checks = (script) => {
     check('a start that answers at once never asks for the deep check',
         quick.asked.every((url) => url.indexOf('stuck=1') === -1), quick.asked.join(' '));
 
-    check('a service that never answers is reported the same way', has(silent.lines, `${CONFIG.journal}`)
-        && has(silent.lines, 'https://discord.gg/'));
+    check('a service that never answers is reported to the Discord, not to its own dead log',
+        has(minute.lines, 'https://discord.gg/') && !has(minute.lines, CONFIG.journal),
+        minute.lines.map((line) => line.text).join(' | '));
     check('and the checks it could not run are not claimed to have passed',
         silent.lines.every((line) => line.text.indexOf('ok: ') === -1));
+
+    const early = run(script, [null], 4);
+    check('a start still under way stays calm on the card', early.card.tone === 'tone-calm'
+        && early.card.head === 'Starting Tube' && early.card.steps.length === 0, JSON.stringify(early.card));
+    const cold = run(script, [null], 12);
+    check('a slow cold start says so calmly before it turns red', cold.card.tone === 'tone-calm'
+        && cold.card.head === 'Still starting' && cold.card.steps.length === 0, JSON.stringify(cold.card));
+    check('the card always names the build', early.card.version.indexOf('Tube ') === 0, early.card.version);
+    check('a normal start never turns the card red', handed.card.tone === 'tone-ok' && handed.card.head === 'Opening YouTube',
+        JSON.stringify(handed.card));
+    check('and shows the patch the service reports', handed.card.version === 'Tube 1.0.1-abc1234-clean', handed.card.version);
+    check('a service that answers but is not ready offers the diag page as a QR code', echoed.card.qr > 0
+        && echoed.card.label === 'Scan for help' && echoed.card.tone === 'tone-calm', JSON.stringify(echoed.card));
+
+    check('a service that never answers turns the card into steps', dead.card.tone === 'tone-bad'
+        && dead.card.head === 'Tube\'s background service isn\'t running' && dead.card.steps.length === 3,
+        JSON.stringify(dead.card));
+    check('which suggest Tizen Homebrew as something to try, not a promise',
+        dead.card.steps.some((step) => step.indexOf('try opening Tizen Homebrew') !== -1), dead.card.steps.join(' | '));
+    check('and without a support bot point at the Discord', dead.card.label === 'Scan to ask on Discord' && dead.card.qr > 0,
+        JSON.stringify(dead.card));
+
+    check('a broken connection to YouTube is said plainly on the card', stuck.card.tone === 'tone-bad'
+        && stuck.card.head === 'Can\'t reach YouTube' && stuck.card.qr > 0, JSON.stringify(stuck.card));
+    check('and so is YouTube not loading through the service', blocked.card.head === 'YouTube doesn\'t load through Tube',
+        JSON.stringify(blocked.card));
+
+    const reported = run(script, [null], 32, { support: true });
+    const sent = reported.posted[0] || { body: { report: { log: [] } } };
+    check('a stuck screen sends its own report, once', reported.posted.length === 1
+        && sent.url === 'https://help.example/api/reports' && sent.body.app === 'youtube', JSON.stringify(reported.posted).slice(0, 300));
+    check('with the lines it showed', sent.body.report.log.some((line) => line.text.indexOf('refused at once') !== -1));
+    check('and shows the code to post, with a QR code of it', reported.card.code === 'K7QF-29XM'
+        && reported.card.label === 'Post this code in Discord' && reported.card.qr > 0, JSON.stringify(reported.card));
+    check('and says it in the log too', has(reported.lines, 'post code K7QF-29XM'));
+    check('a normal start sends nothing', run(script, [ready], 12, { support: true }).posted.length === 0);
+
+    const unsent = run(script, [null], 32, { support: 'down' });
+    check('a report that cannot be sent falls back to a photo', has(unsent.lines, 'post a photo of this screen')
+        && unsent.card.label === 'Scan to ask on Discord', JSON.stringify(unsent.card));
+
+    check('without storage the page never reads itself again', silent.replaced.length === 0, silent.replaced.join(' '));
+
+    const reread = run(script, [null], 60, { storage: true });
+    check('with storage a page nobody answers reads itself again, at most twice',
+        reread.replaced.length === 2 && reread.replaced.every((to) => to.indexOf('file:///tube/boot.html?launch=menu') === 0),
+        reread.replaced.join(' '));
 
     const page = html(script);
     const config = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'config.xml'), 'utf8');
@@ -262,7 +359,8 @@ const checks = (script) => {
         config.indexOf('--proxy=') === -1);
     check('its policy lets it reach the service and go to the page we serve',
         page.indexOf(`connect-src ${CONFIG.service} `) !== -1
-        && page.indexOf(`h5vcc-location-src https://www.youtube.com ${CONFIG.service}`) !== -1,
+        && page.indexOf(`h5vcc-location-src https://www.youtube.com ${CONFIG.service} file:`) !== -1
+        && page.indexOf('help.example') === -1,
         (/content="([^"]*)"/.exec(page) || [])[1]);
 
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-boot-'));

@@ -16,6 +16,9 @@ const showOnce = (facts) => {
 export const showFacts = (facts) => {
     if (!facts) return;
 
+    held.factsSeen = facts;
+    held.patch = facts.patch || held.patch;
+
     if (held.pid && facts.pid !== held.pid) say('service', `restarted: pid ${held.pid} is now pid ${facts.pid}`, 'bad');
     held.pid = facts.pid;
 

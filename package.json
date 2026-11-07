@@ -22,6 +22,7 @@
     "test:matrix": "node tools/matrix.js",
     "probe:engine": "node tools/engine-probe.js",
     "package": "node tools/package.js",
+    "package:start-poc": "node tools/package-start-poc.js",
     "dev": "node tools/dev.js",
     "chii": "node tools/chii.js",
     "dev:service": "node service/index.js",

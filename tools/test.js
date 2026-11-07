@@ -14,7 +14,8 @@ const GATES = [
 
 const SUITES = [
     { name: 'userscript', command: ['node', ['test/index.js']] },
-    { name: 'service', workspace: 'service' }
+    { name: 'service', workspace: 'service' },
+    { name: 'startup PoC', command: ['node', ['tools/test-start-poc.js']] }
 ];
 
 const RUN = { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' };

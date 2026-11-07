@@ -1,0 +1,46 @@
+{
+  "description": "Working two-WGT Tizen 5.0 workaround, confirmed by user; before original Starter icon restoration.",
+  "upstream_tag": "v1.5.1",
+  "upstream_commit": "02c4d8b4bacfa6f0f0efb518fbb588d6fcd60e0e",
+  "backup_directory": "release/archive/verified-before-original-icon-2026-11-07",
+  "git_tag": "local/tizen5-working-before-original-icon-20261107",
+  "source_sha256": {
+    "docs/COBALT-CONTEXT-POC.md": "e7209a36b3226ba72d02c9068bf7e437c57c76d5062fb378b2fc91d9bca26cb6",
+    "docs/DAILY-START-TIZEN5.md": "a95f3e3b6289a8290faabc174815af03d15c600f9db62442aea9eee31496d31c",
+    "docs/ONE-PACKAGE-TIZEN5.md": "f369a0123348d4ceff11f06b34950abccb6c30f39a9d9a2ec1102a0c0cff6680",
+    "docs/START-POC.md": "1d6390c420230bee26fa24a12b7d83bf337b8ce215c9108d440f7ba941ea73f3",
+    "package.json": "6397d9823140b10190e0ca2e15a2d8446f49c7dc7b6f90d26e93b0fd386c9550",
+    "service/legacy/index.js": "a65e5424ffeb2f707a487fc1bb3aec2da0574b52935c32a44c934a70d7d3896c",
+    "service/test/legacy.js": "25522bfad565866eb0ae093ec160aff3804d911ae7c86d1f6fc614f73b113876",
+    "tools/package-start-poc.js": "34a4ab68248b2f9207c324d403b609878ae88c0ee12feb43f894fe3007fb6b85",
+    "tools/poc/icons/icon-cobalt.png": "3456f2bed8dea17dd035a383d07fa8d0ad1e5685ab0cb7ec64e242b3f39e0c47",
+    "tools/poc/icons/icon-starter.png": "875bb33cbdf8e5f28b8a6780cda17992213437e8201179a55a5541862422de24",
+    "tools/poc/start.html": "d1c4eb1bf9d1991d5b304033dc4de30731217a06a36f960e0057ce2a93a410ac",
+    "tools/poc/start.js": "2e0afff6dc81b639431c39d8583087e658ca3fa99be7c57ccd8077b5a1d1754a",
+    "tools/test-start-poc.js": "9573d810b70b10fe03733644e808bb194255d9315a90de7650b8a031dbb55039",
+    "tools/test.js": "5cc4102ea2282dd7574fc0c5b8f4a480912b6e99004c8129872a763dd0ef1206"
+  },
+  "artifacts": {
+    "tube-tizen-5.0-start-poc.wgt": {
+      "bytes": 532068,
+      "sha256": "d4e3cabe498691800cb424df7ac2e65064eebd471bb205fdff736e0397053428",
+      "entries_sha256": {
+        "config.xml": "b5a892a0133cf55d7cbb179ab4e7b08d5d7e44677f7714ebc87f448a5fea2049",
+        "index.html": "0a1fa5040a3f2836a8d11af014ad5e840ea1d5cda175cfed1f08b5da19bac450",
+        "service/dist/assets/bootScreen.js": "40a5675aa446946d2c4aff7e1295a5df27b9c2a37b017ab511a935150172fc53",
+        "service/dist/assets/userScript.js": "e034b49d88528605736d9dd427bccd074630dae83ddf0aa0e54e10c4db15d2e2",
+        "service/dist/index.js": "320190e01d2618351cb73bdabfc46f79e8a79e4bf07b519c9e9fb26efad06461",
+        "icon-starter.png": "875bb33cbdf8e5f28b8a6780cda17992213437e8201179a55a5541862422de24"
+      }
+    },
+    "tube-tizen-5.0-cobalt-handoff-poc.wgt": {
+      "bytes": 7177,
+      "sha256": "e117ecd15aadc45aa1dc0c0afa1636b7978ff3c0df6565b38455edea5343a1b2",
+      "entries_sha256": {
+        "config.xml": "623f3f71d2e53d7bb4aa1238fb4310a6a981a57f15218b5fe15c87f89ea38b10",
+        "index.html": "d9bfd09eaafd5d72b68c1363d7a0ad828d78311cd1c5001a3cdfe7b29c62da9d",
+        "icon-cobalt.png": "3456f2bed8dea17dd035a383d07fa8d0ad1e5685ab0cb7ec64e242b3f39e0c47"
+      }
+    }
+  }
+}

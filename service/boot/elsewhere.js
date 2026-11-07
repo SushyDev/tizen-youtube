@@ -25,7 +25,8 @@ const nowhere = (late) => say('service', `nor at ${alternates.map(host).join(', 
 const settle = (answered) => {
     held.looking = false;
 
-    const late = elapsed() > TIMING.nag * 2;
+    // A restart asked for from here is silent on purpose, so it is never the verdict.
+    const late = !held.restarting && elapsed() > TIMING.nag * 2;
     const found = answered.length ? answered.join(' ') : `none${late ? ' late' : ''}`;
     if (held.seen || found === held.elsewhere) return;
 

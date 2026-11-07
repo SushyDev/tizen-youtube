@@ -36,6 +36,8 @@ check('the elements carry the meaning', ['<main>', '<header>', '<nav>', '<sectio
 check('the tally is drawn rather than described', /<meter value="\d+" max="\d+"/.test(html));
 check('the uptime is machine-readable', /<time datetime="PT\d+S">/.test(html));
 
+check('it offers the logs as a .txt download and to open', html.indexOf('href="http://192.168.1.29:8099/diag/logs.txt?download=1" download') !== -1
+    && html.indexOf('href="http://192.168.1.29:8099/diag/logs.txt"') !== -1);
 check('it offers the Discord', html.indexOf(DISCORD) !== -1);
 check('and the repository', html.indexOf(REPO) !== -1);
 

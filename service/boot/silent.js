@@ -9,6 +9,8 @@ import { sayHelp } from './help.js';
 import { phoneCanHelp, refresh } from './view.js';
 import { sendReport } from './upload.js';
 import { maybeReread } from './reread.js';
+import { restartSilent } from './restart.js';
+import { stopLaunching } from './launching.js';
 
 const HOST = service.replace('http://', '');
 
@@ -59,12 +61,14 @@ export const silent = (again, status, how) => {
         say('service', 'stopped answering', 'bad');
     }
 
+    restartSilent();
     tell(failureOf(status, how));
     nag(waited);
     maybeReread();
 
     if (!held.silentStuck && (held.answeredOnce ? silentFor(waited) : waited) > TIMING.stuck) {
         held.silentStuck = true;
+        stopLaunching('the service is not answering');
         sendReport(refresh);
     }
 

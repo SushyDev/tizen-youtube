@@ -29,8 +29,8 @@ const bundled = async () => {
     return output[0].code;
 };
 
-const storage = () => {
-    const kept = {};
+const storage = (preset) => {
+    const kept = Object.assign({}, preset || {});
     return {
         getItem: (key) => (key in kept ? kept[key] : null),
         setItem: (key, value) => { kept[key] = String(value); },
@@ -45,6 +45,7 @@ const run = (script, replies, turns, options) => {
     const hangs = !!(options && options.hang);
     const updater = options && options.updater;
     const answered = { count: 0 };
+    const restarts = [];
     const node = () => ({
         className: '',
         textContent: '',
@@ -90,6 +91,12 @@ const run = (script, replies, turns, options) => {
         } else if (this.url.indexOf('/__tube/ping') !== -1) {
             this.status = probeStatus;
             this.responseText = '';
+        } else if (this.url.indexOf('/__tube/restart-service') !== -1) {
+            restarts.push(this.url);
+            replies = (options && options.afterRestart) || replies;
+            answered.count = 0;
+            this.status = 202;
+            this.responseText = '';
         } else if (hangs && this.url.indexOf(CONFIG.service) === 0) {
             // Dropped: only the page's own guard ends the wait.
             return;
@@ -103,8 +110,10 @@ const run = (script, replies, turns, options) => {
         if (this.onreadystatechange) this.onreadystatechange();
     };
 
+    const listeners = [];
+    const keys = (options && options.keys) || {};
     const page = {
-        document: { getElementById: byId, createElement: node },
+        document: { getElementById: byId, createElement: node, addEventListener: (type, act) => listeners.push(act) },
         navigator: { userAgent: AGENT },
         XMLHttpRequest,
         setTimeout: (act, delay) => timers.push({ act, delay: delay || 0 }),
@@ -119,17 +128,23 @@ const run = (script, replies, turns, options) => {
             location: {
                 href: 'file:///tube/boot.html?launch=menu&cert_scope=samsung',
                 search: '?launch=menu&cert_scope=samsung',
-                hash: '',
-                replace: (to) => replaced.push(to)
+                hash: (options && options.hash) || '',
+                // A navigation ends this page's timers, unless the test is about a page that never arrives.
+                replace: (to) => {
+                    replaced.push(to);
+                    if (!(options && options.stays)) timers.length = 0;
+                }
             },
-            localStorage: options && options.storage ? storage() : undefined
+            localStorage: options && (options.storage || options.auto) ? storage(options.auto ? { 'tube.launcher.auto': options.auto } : null) : undefined
         }
     };
 
     vm.runInNewContext(script, page);
 
     // Each timer moves the page's clock on by its own delay, so waiting takes time as it would.
-    Array.from({ length: turns }).forEach(() => {
+    Array.from({ length: turns }).forEach((_, turn) => {
+        (keys[turn] || []).forEach((keyCode) => listeners.forEach((act) => act({ keyCode, preventDefault: () => undefined })));
+
         const next = timers.shift();
         if (!next) return;
 
@@ -151,10 +166,18 @@ const run = (script, replies, turns, options) => {
         code: byId('aside-code').textContent,
         url: byId('aside-url').textContent,
         version: byId('version').textContent,
-        qr: byId('qr').style.display === 'block' ? byId('qr').kids.length : 0
+        qr: byId('qr').style.display === 'block' ? byId('qr').kids.length : 0,
+        platform: byId('platform').textContent,
+        checks: byId('checks').kids.map((row) => ({ state: row.className.replace('check check-', ''), name: row.kids[1].textContent, text: row.kids[2].textContent })),
+        buttons: byId('buttons').kids.map((one) => ({ label: one.textContent, off: one.className.indexOf(' off') !== -1,
+            focus: one.className.indexOf(' focus') !== -1,
+            sub: (one.kids.find((kid) => kid.className === 'sub') || {}).textContent || '',
+            value: (one.kids.find((kid) => kid.className === 'value') || {}).textContent || '' })),
+        hint: byId('hint').textContent,
+        view: byId('logs').style.display === 'block' ? 'logs' : 'launcher'
     };
 
-    return { lines, asked, replaced, card, posted };
+    return { lines, asked, replaced, card, posted, restarts, hash: page.window.location.hash };
 };
 
 const host = (url) => url.replace('http://', '');
@@ -316,7 +339,7 @@ const checks = (script) => {
         JSON.stringify(handed.card));
     check('and shows the patch the service reports', handed.card.version === 'Tube 1.0.1-abc1234-clean', handed.card.version);
     check('a service that answers but is not ready offers the diag page as a QR code', echoed.card.qr > 0
-        && echoed.card.label === 'Scan for help' && echoed.card.tone === 'tone-calm', JSON.stringify(echoed.card));
+        && echoed.card.label === 'Help on your phone' && echoed.card.tone === 'tone-calm', JSON.stringify(echoed.card));
 
     check('a service that never answers turns the card into steps', dead.card.tone === 'tone-bad'
         && dead.card.head === 'Tube\'s background service isn\'t running' && dead.card.steps.length === 3,
@@ -360,6 +383,102 @@ const checks = (script) => {
     const hung = run(script, [null], 32, { trail: [{ at: ago(30000), uptime: 8, pid: 43, reached: [{ stage: 'loaded', after: 0 }, { stage: 'modules', after: 700 }], ended: null }] });
     check('a run with no ending says how far it got', hung.card.detail === 'It last started 30s ago and got as far as "modules".', hung.card.detail);
     check('without a trail the card keeps its plain words', dead.card.detail.indexOf('The TV didn\'t start') === 0, dead.card.detail);
+
+    const OK = 13;
+    const DOWN = 40;
+    const BACK = 27;
+    const labels = (card) => card.buttons.map((one) => one.label);
+    const focused = (card) => (card.buttons.find((one) => one.focus) || {}).label;
+
+    const idle = run(script, [ready], 8, { auto: 'off' });
+    check('with auto-launch off a ready Tube waits on the launcher', idle.replaced.length === 0 && idle.card.head === 'Ready'
+        && idle.card.tone === 'tone-ok', JSON.stringify(idle.card).slice(0, 300));
+    check('with every check passed', idle.card.checks.map((one) => one.state).join(',') === 'ok,ok,ok'
+        && idle.card.checks.map((one) => one.name).join(',') === 'Background service,YouTube container,YouTube through Tube',
+        JSON.stringify(idle.card.checks));
+    check('and Launch focused first, then Logs, Restart service and Auto-launch Off',
+        labels(idle.card).join(',') === 'Launch YouTube,Logs,Restart service,Auto-launch' && focused(idle.card) === 'Launch YouTube'
+        && idle.card.buttons[3].value === 'Off', JSON.stringify(idle.card.buttons));
+    check('it names the Tizen it runs on', idle.card.platform === 'Tizen 9.0', idle.card.platform);
+
+    const launched = run(script, [ready], 8, { auto: 'off', keys: { 1: [OK] } });
+    check('OK on Launch hands over', launched.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`,
+        launched.replaced.join(' '));
+
+    const waiting = { facts: FACTS, ready: false, waiting: null, next: 1, log: [] };
+    const pending = run(script, [waiting], 4, { auto: 'off' });
+    check('a check still running greys Launch out and counts what is ready', pending.card.buttons[0].off
+        && pending.card.buttons[0].sub === ' · 2 of 3 ready' && focused(pending.card) === 'Logs',
+        JSON.stringify(pending.card.buttons));
+    check('and OK on a greyed-out Launch does nothing', run(script, [waiting], 6, { auto: 'off', keys: { 1: [OK] } }).card.view === 'logs');
+
+    const starting = run(script, [waiting], 4);
+    check('auto-launch shows Stop while it waits', labels(starting.card).join(',') === 'Stop,Logs' && focused(starting.card) === 'Stop'
+        && starting.card.hint.indexOf('Back') !== -1, JSON.stringify(starting.card.buttons));
+    const stopped = run(script, [waiting, waiting, ready], 8, { keys: { 1: [BACK] } });
+    check('Back stops it on the launcher, and it then never launches by itself', stopped.replaced.length === 0
+        && labels(stopped.card)[0] === 'Launch YouTube' && has(stopped.lines, 'stopped: showing the launcher'),
+        JSON.stringify(stopped.card.buttons));
+
+    const anyway = run(script, [{
+        facts: FACTS, ready: false, next: 0, log: [], waiting: { tone: 'bad', what: 'www.youtube.com is not reachable from the TV (ENOTFOUND)' }
+    }], 8, { keys: { 3: [OK] } });
+    check('a failed check stops auto-launch and offers Launch anyway', has(anyway.lines, 'auto-launch stopped: www.youtube.com is not reachable')
+        && anyway.card.checks[2].state === 'bad', JSON.stringify(anyway.card.checks));
+    check('which hands over when pressed', anyway.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`, anyway.replaced.join(' '));
+
+    check('a dead service greys Launch out, hides Restart and focuses Logs', dead.card.buttons[0].off
+        && dead.card.buttons[0].sub === ' · needs the service' && labels(dead.card).indexOf('Restart service') === -1
+        && focused(dead.card) === 'Logs' && dead.card.checks[0].state === 'bad' && dead.card.checks[1].state === 'idle',
+        JSON.stringify(dead.card.buttons) + JSON.stringify(dead.card.checks));
+
+    const logs = run(script, [ready], 6, { auto: 'off', keys: { 1: [DOWN, OK] } });
+    check('Logs shows the log in place of the launcher', logs.card.view === 'logs');
+    check('and Back returns to it', run(script, [ready], 6, { auto: 'off', keys: { 1: [DOWN, OK], 3: [BACK] } }).card.view === 'launcher');
+
+    const restarted = run(script, [ready], 24, { auto: 'off', keys: { 1: [DOWN, DOWN, OK] }, afterRestart: [null, null, ready] });
+    check('Restart service asks the service to restart', restarted.restarts.length === 1
+        && restarted.restarts[0] === `${CONFIG.service}/__tube/restart-service`, restarted.restarts.join(' '));
+    check('without calling the service dead while it restarts', !has(restarted.lines, 'the service is not running, or is stuck'),
+        restarted.lines.map((line) => line.text).join(' | ').slice(-600));
+    check('and says when it is back', has(restarted.lines, 'service: back after the restart') && restarted.card.head === 'Ready',
+        restarted.lines.map((line) => line.text).join(' | ').slice(-600));
+    const restartingNow = run(script, [ready], 3, { auto: 'off', keys: { 1: [DOWN, DOWN, OK] }, afterRestart: [null] });
+    check('while it restarts the card stays calm and Restart is greyed out', restartingNow.card.tone === 'tone-calm'
+        && restartingNow.card.checks[0].text === 'Restarting…' && restartingNow.card.buttons[2].off, JSON.stringify(restartingNow.card).slice(0, 400));
+
+    const auto = run(script, [ready], 6, { auto: 'off', keys: { 1: [DOWN, DOWN, DOWN, OK] } });
+    check('Auto-launch switches on from the launcher', auto.card.buttons[3].value === 'On' && has(auto.lines, 'auto-launch switched on'));
+
+    const unprepared = run(script, [{ facts: FACTS, ready: false, next: 0, log: [], cobalt: { settled: true, failed: 'EACCES: permission denied' },
+        waiting: { tone: 'bad', what: 'the service could not prepare Cobalt: EACCES: permission denied' } }], 6);
+    check('a container the service could not prepare is the check that fails', unprepared.card.checks[1].state === 'bad'
+        && unprepared.card.checks[2].state === 'idle' && unprepared.card.head === 'Tube could not start', JSON.stringify(unprepared.card.checks));
+    const preparing = run(script, [Object.assign({}, waiting, { cobalt: { settled: false, failed: null } })], 4);
+    check('and one still being prepared is pending', preparing.card.checks[1].state === 'pending', JSON.stringify(preparing.card.checks));
+
+    const served = html('', { origin: 'http://127.0.0.2:8099' });
+    const servedConfig = JSON.parse(/window\.TUBE_BOOT = (\{[^<]*\});/.exec(served)[1]);
+    check('a launcher the service sends names that address and nothing else', servedConfig.service === 'http://127.0.0.2:8099'
+        && servedConfig.target === 'http://127.0.0.2:8099/tv' && servedConfig.alternates.length === 0
+        && served.indexOf('trail.js') === -1, JSON.stringify(servedConfig).slice(0, 300));
+
+    const fromSettings = run(script, [ready], 8, { hash: '#launcher' });
+    check('opened from Tube\'s settings it stays on the launcher with auto-launch on', fromSettings.replaced.length === 0
+        && fromSettings.card.head === 'Ready' && has(fromSettings.lines, 'opened from Tube\'s settings'), JSON.stringify(fromSettings.card).slice(0, 200));
+    const relaunched = run(script, [ready], 8, { hash: '#launcher', keys: { 1: [OK] } });
+    check('and Launch from there leaves the #launcher behind', relaunched.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`,
+        relaunched.replaced.join(' '));
+
+    const slowArrival = run(script, [ready], 20, { stays: true });
+    check('a YouTube that has not arrived 8s after the handover is said so on the page still showing',
+        slowArrival.replaced.length === 1 && slowArrival.card.head === 'Still opening YouTube'
+        && labels(slowArrival.card).join(',') === 'Back to launcher' && has(slowArrival.lines, 'youtube has not loaded 8s after the handover'),
+        JSON.stringify(slowArrival.card).slice(0, 300));
+    const backFromSlow = run(script, [ready], 20, { stays: true, keys: { 15: [BACK] } });
+    check('and Back then loads the launcher again instead of waiting', backFromSlow.hash === 'launcher'
+        && has(backFromSlow.lines, 'handover stopped'), backFromSlow.hash);
+    check('a quick handover never says it is slow', !has(launched.lines, 'has not loaded'));
 
     const unsent = run(script, [null], 32, { support: 'down' });
     check('a report that cannot be sent falls back to a photo', has(unsent.lines, 'post a photo of this screen')

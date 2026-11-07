@@ -135,6 +135,7 @@ const prepare = (done) => {
 
 const status = () => ({
     prepared: !!state.prepared,
+    settled: state.settled,
     failed: state.failed
 });
 

@@ -10,7 +10,7 @@ const { load, parseUrl, ROOT } = require('./lib/config.js');
 const paths = require('./lib/paths.js');
 const { PROXY, DEV } = require('../service/lib/ports.js');
 
-// Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the page from the service instead.
+// Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the launcher from the service instead.
 const APPS = [
     { label: 'youtube 5.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null, packageId: null },
     {
@@ -18,7 +18,7 @@ const APPS = [
         output: paths.WGT_LEGACY,
         include: paths.WIDGET_LEGACY,
         requiredVersion: '5.0',
-        servedFrom: `http://127.0.0.2:${PROXY}/tv`,
+        servedFrom: `http://127.0.0.2:${PROXY}/tube/boot.html`,
         // Its own package, so neither widget installs over the other.
         packageId: 'tUb3Xq7L50'
     }

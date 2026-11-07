@@ -8,7 +8,10 @@ const USERDATA = 'http://samsung.com/tv/metadata/native.userdata';
 
 // A container already running keeps the switches of whichever app launched it, and one we did not
 // start is one we may not close.
-const state = { surveyed: false, claims: [] };
+const state = { surveyed: false, claims: [], at: 0, asking: false, said: '' };
+
+// Apps installed after the service started claim the slot too, so a survey this old is taken again.
+const FRESH = 30000;
 
 const note = (detail) => postmortem.note('claims', detail);
 
@@ -47,25 +50,42 @@ const report = (apps) => {
 
     state.claims = claims.map((found) => recordOf(found.app, found.entries));
     state.surveyed = true;
+    state.asking = false;
+    state.at = Date.now();
 
-    claims.forEach((found) => note(describe(found.app, found.entries)));
-    if (!claims.length) note(`none of ${apps.length} apps claims a container slot`);
-    if (refused.length) note(`${refused.length} apps' metadata unreadable: ${refused[0].error}`);
+    // Logged only when it changed, because a fresh survey every half minute would otherwise fill the log.
+    const lines = claims.map((found) => describe(found.app, found.entries))
+        .concat(claims.length ? [] : [`none of ${apps.length} apps claims a container slot`])
+        .concat(refused.length ? [`${refused.length} apps' metadata unreadable: ${refused[0].error}`] : []);
+
+    if (lines.join('\n') === state.said) return;
+    state.said = lines.join('\n');
+    lines.forEach(note);
 };
 
-// null while the survey has not answered, which is not the same as none.
-const rivals = () => (state.surveyed
-    ? state.claims.filter((claim) => claim.slot === CONTAINER && claim.id !== appId())
-    : null);
-
 const survey = () => {
-    if (typeof tizen === 'undefined') return;
+    if (typeof tizen === 'undefined' || state.asking) return;
+    state.asking = true;
+
+    const failed = (why) => {
+        state.asking = false;
+        note(`could not list apps: ${why}`);
+    };
 
     try {
-        tizen.application.getAppsInfo(report, (error) => note(`could not list apps: ${error.message}`));
+        tizen.application.getAppsInfo(report, (error) => failed(error.message));
     } catch (e) {
-        note(`could not list apps: ${postmortem.describe(e)}`);
+        failed(postmortem.describe(e));
     }
+};
+
+// null while the survey has not answered, which is not the same as none; a stale answer is given and retaken.
+const rivals = () => {
+    if (state.surveyed && Date.now() - state.at > FRESH) survey();
+
+    return state.surveyed
+        ? state.claims.filter((claim) => claim.slot === CONTAINER && claim.id !== appId())
+        : null;
 };
 
 module.exports = { survey, rivals };

@@ -54,8 +54,13 @@ const untilHeaders = (make) => {
     return make(signal).then(stop, (error) => { stop(); throw error; });
 };
 
+// A page whose headers overflow HTTP/1 does so on every launch, so after the first it goes straight to HTTP/2.
+const overflowed = new Set();
+
 const send = (url, req, headers, fresh) => {
     const body = isRepeatable(req) ? undefined : req;
+
+    if (!body && overflowed.has(withoutQuery(url))) return bigheaders.fetchOverHttp2(url, { method: req.method, headers });
 
     const options = {
         method: req.method,
@@ -71,7 +76,8 @@ const send = (url, req, headers, fresh) => {
 
     return attempt().catch((error) => {
         if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {
-            postmortem.note('upstream', `header overflow on ${withoutQuery(url).slice(0, 80)} — retrying over http2`);
+            postmortem.note('upstream', `header overflow on ${withoutQuery(url).slice(0, 80)} — asking over http2 from now on`);
+            overflowed.add(withoutQuery(url));
             return bigheaders.fetchOverHttp2(url, { method: req.method, headers });
         }
 

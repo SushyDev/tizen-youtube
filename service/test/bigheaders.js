@@ -70,9 +70,34 @@ const serve = (leaf) => {
             .then(() => fetched(origin, 'deflate'))
             .then((response) => response.text())
             .then((text) => check('a deflated body is decoded', text === PAGE, text.slice(0, 60)))
+            .then(remembered)
             .catch((error) => check('the fetch completes', false, error.message))
             .then(finish);
     });
+};
+
+// HTTP/1 is faked to overflow, so only whether it was asked at all is being checked.
+const remembered = () => {
+    const asked = { http1: [], http2: [] };
+    const overflow = Object.assign(new Error('Parse Error: Header overflow'), { code: 'HPE_HEADER_OVERFLOW' });
+
+    require.cache[require.resolve('node-fetch')] = {
+        exports: (url) => { asked.http1.push(url); return Promise.reject(overflow); }
+    };
+    bigheaders.fetchOverHttp2 = (url) => { asked.http2.push(url); return Promise.resolve({ status: 200 }); };
+
+    const { send } = require('../lib/sending.js');
+    const get = { method: 'GET' };
+
+    return send('https://www.youtube.com/tv?launch=1', get, {})
+        .then(() => send('https://www.youtube.com/tv?launch=2', get, {}))
+        .then(() => send('https://www.youtube.com/tv_config', get, {}))
+        .then(() => {
+            check('a page that overflowed once goes straight to HTTP/2 the next time',
+                asked.http1.filter((url) => url.indexOf('/tv?') !== -1).length === 1 && asked.http2.length === 3,
+                JSON.stringify(asked));
+            check('while another page still tries HTTP/1 first', asked.http1.indexOf('https://www.youtube.com/tv_config') !== -1);
+        });
 };
 
 // Committed, because nothing in the service mints certificates any more.

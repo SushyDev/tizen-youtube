@@ -40,9 +40,18 @@ const ask = () => {
         settle(true, `answered ${response.statusCode}`);
     });
 
+    // A name that never resolves and an address that never answers need different fixes.
+    const looked = { up: !!require('net').isIP(TARGET.hostname) };
+    request.on('socket', (socket) => {
+        if (socket.connecting === false) looked.up = true;
+        socket.once('lookup', () => { looked.up = true; });
+    });
+
     // request.setTimeout arms only once connected, and an unanswered connect waits out the kernel's ~130s.
     const deadline = setTimeout(() => {
-        settle(false, `no connection in ${TIMEOUT / 1000}s`);
+        settle(false, looked.up
+            ? `no connection in ${TIMEOUT / 1000}s`
+            : `the TV's DNS did not answer for ${TARGET.hostname} in ${TIMEOUT / 1000}s`);
         request.abort();
     }, TIMEOUT);
 

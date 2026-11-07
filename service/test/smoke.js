@@ -53,13 +53,20 @@ const entry = process.env.TUBE_SMOKE_ENTRY
 
 if (!fs.existsSync(entry)) fail(`no bundle at ${entry} — run \`npm run build\` first.`);
 
+const loaded = { service: null };
+
 try {
-    require(entry);
+    loaded.service = require(entry);
 } catch (e) {
     fail(`the bundle would not load on ${process.version}: ${(e && e.stack) || e}`);
 }
 
 pass(`the bundle loads on ${process.version}`);
+
+const missing = ['onStart', 'onRequest', 'onStop'].filter((name) => typeof (loaded.service || {})[name] !== 'function');
+if (missing.length) fail(`the bundle does not export ${missing.join(', ')}, which Tizen's service runner calls`);
+
+pass('the bundle exports the handlers Tizen\'s service runner calls');
 
 const collect = (stream, done) => {
     const parts = [];

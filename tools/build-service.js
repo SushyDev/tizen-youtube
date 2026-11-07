@@ -50,8 +50,9 @@ const chii = process.env.TUBE_CHII || 'off';
 const { commit, tree } = gitStamp();
 const stamp = `${config.version}-${commit}-${tree}`;
 
+// `off` for the same reason as chii: injectTokens refuses a blank value.
 const tokens = Object.assign(
-    { __TUBE_STAMP__: stamp },
+    { __TUBE_STAMP__: stamp, __TUBE_SUPPORT_URL__: config.supportUrl || 'off' },
     dev ? {
         __TUBE_DEV_TOKEN__: devToken,
         __TUBE_CHII__: chii,

@@ -79,14 +79,18 @@ check('and the platform build', named.indexOf('2025.20.1034877') !== -1);
 check('and the agent itself',
     named.indexOf('<dt>User agent</dt>') !== -1 && named.indexOf('v8/8.8.278.17-jit') !== -1);
 
-check('it carries no stylesheet at all', html.indexOf('<style') === -1 && html.indexOf('style=') === -1);
+check('its style travels inside it', html.indexOf('<style>') !== -1 && html.indexOf('<link') === -1);
 check('and the count is said at the top', /checks (failed|passed)/.test(html));
 
 check('it says what could not be read rather than printing null',
     html.indexOf('>null<') === -1 && html.indexOf('not readable here') !== -1);
 
-check('it needs nothing from the internet to render',
-    html.indexOf('<script') === -1 && html.indexOf('src=') === -1 && html.indexOf('@import') === -1);
+check('it needs nothing from the internet to render', html.indexOf('src=') === -1 && html.indexOf('@import') === -1);
+check('the failure is said in plain words before the raw checks',
+    html.indexOf('Tube cannot write its files') === -1 && html.indexOf('was not found, so Tube has nothing to run') !== -1
+    && html.indexOf('was not found, so Tube has nothing to run') < html.indexOf('<summary>Checks</summary>'));
+check('without a support bot there is no send button, only a copy', html.indexOf('id="send"') === -1
+    && html.indexOf('id="copy"') !== -1);
 
 // A page that may be reloaded must not push the history out of a 64KB journal.
 page('h');

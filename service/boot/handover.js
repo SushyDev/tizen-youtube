@@ -3,6 +3,7 @@ import { TIMING } from './timing.js';
 import { held } from './state.js';
 import { say } from './screen.js';
 import { flush } from './outbox.js';
+import { refresh } from './view.js';
 
 const to = () => (held.serving ? `${held.serving}/tv` : target);
 
@@ -11,6 +12,7 @@ const go = () => window.location.replace(`${to()}${window.location.search}${wind
 
 export const handOver = () => {
     held.handed = true;
+    refresh();
 
     say('tube', 'youtube answers through the service', 'ok');
     say('tube', `handing over to ${to()}`, 'ok');

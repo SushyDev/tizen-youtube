@@ -167,7 +167,8 @@ module.exports = [
             '**/.dev/**',
             '**/release/**',
             '**/.package/**',
-            'framework/vendor/tiny-sha256.js'
+            'framework/vendor/tiny-sha256.js',
+            'service/boot/vendor/qr.js'
         ]
     },
     {

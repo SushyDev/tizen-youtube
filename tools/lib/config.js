@@ -50,10 +50,19 @@ const gitStamp = () => {
 
 const load = () => {
     const file = readConfigFile();
-    const config = { version: process.env.TUBE_VERSION || file.version, ports: file.ports };
+    const config = {
+        version: process.env.TUBE_VERSION || file.version,
+        ports: file.ports,
+        supportUrl: String(process.env.TUBE_SUPPORT_URL || file.supportUrl || '').replace(/\/+$/, '')
+    };
 
     if (!/^\d+\.\d+\.\d+$/.test(String(config.version || ''))) {
         fail(`version must be MAJOR.MINOR.PATCH, got ${JSON.stringify(config.version)}`);
+    }
+
+    const support = config.supportUrl && parseUrl(config.supportUrl);
+    if (config.supportUrl && (!support || support.protocol !== 'https:' || support.pathname !== '/')) {
+        fail(`supportUrl must be an https origin such as https://support.example.org, got ${JSON.stringify(config.supportUrl)}`);
     }
 
     return config;

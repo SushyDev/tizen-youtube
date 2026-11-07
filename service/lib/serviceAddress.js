@@ -34,4 +34,12 @@ const lanAddresses = () => {
 // Loopback only off a television, where nothing else is listening.
 const serviceAddress = () => lanAddresses()[0] || '127.0.0.1';
 
-module.exports = { lanAddresses, serviceAddress };
+// Skips the cache, for a check that must not refuse the container in the seconds after a new lease.
+const freshAddresses = () => {
+    held.at = Date.now();
+    held.addresses = readAddresses();
+
+    return held.addresses;
+};
+
+module.exports = { lanAddresses, freshAddresses, serviceAddress };

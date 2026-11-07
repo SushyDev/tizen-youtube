@@ -7,6 +7,10 @@ const https = require('https');
 const URL = require('url');
 
 const postmortem = require('./postmortem.js');
+const clients = require('./clients.js');
+const { withoutQuery } = require('./redact.js');
+
+const CONNECT_DEADLINE = 15000;
 
 // An upgrade arrives in one of two shapes: absolute-form from a client using us as a proxy, or
 // origin-form over our own MITM TLS, where the Host header is the only thing naming the target.
@@ -58,10 +62,17 @@ const attach = (server, options) => {
     server.on('upgrade', (req, socket, head) => {
         hold(socket);
 
-        const target = rewrite(req) || targetOf(req);
+        const rewritten = rewrite(req);
+        const target = rewritten || targetOf(req);
 
         if (!target || !target.host) {
             socket.destroy();
+            return;
+        }
+
+        if (!rewritten && !clients.fromThisTv(req)) {
+            postmortem.note('refused', `${clients.remoteOf(req)} asked for an upgrade to ${target.host}`);
+            socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
             return;
         }
 
@@ -80,7 +91,16 @@ const attach = (server, options) => {
 
         outgoing.on('socket', hold);
 
+        // setTimeout on a request arms only once it has connected.
+        const deadline = setTimeout(() => {
+            postmortem.note('upgrade', `${target.host}:${target.port} — no connection in ${CONNECT_DEADLINE / 1000}s`);
+            outgoing.abort();
+            socket.destroy();
+        }, CONNECT_DEADLINE);
+        const answered = () => clearTimeout(deadline);
+
         outgoing.on('upgrade', (answer, upstream, upstreamHead) => {
+            answered();
             hold(upstream);
 
             const lines = Object.keys(answer.headers).map((key) => {
@@ -103,7 +123,7 @@ const attach = (server, options) => {
             upstream.pipe(socket);
             socket.pipe(upstream);
 
-            postmortem.note('upgrade', `open ${target.host}:${target.port}${target.path}`);
+            postmortem.note('upgrade', `open ${target.host}:${target.port}${withoutQuery(target.path)}`);
 
             const close = () => {
                 if (moved.closed) return;
@@ -122,6 +142,7 @@ const attach = (server, options) => {
         });
 
         outgoing.on('response', (answer) => {
+            answered();
             postmortem.note('upgrade', `${target.host}:${target.port} refused the upgrade (${answer.statusCode})`);
             answer.resume();
             outgoing.destroy();
@@ -129,6 +150,7 @@ const attach = (server, options) => {
         });
 
         outgoing.on('error', (error) => {
+            answered();
             postmortem.note('upgrade', `${target.host}:${target.port} — ${postmortem.describe(error)}`);
             socket.destroy();
         });

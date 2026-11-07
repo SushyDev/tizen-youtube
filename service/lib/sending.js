@@ -6,6 +6,7 @@ const https = require('https');
 
 const postmortem = require('./postmortem.js');
 const bigheaders = require('./bigheaders.js');
+const { withoutQuery } = require('./redact.js');
 
 // A booting page opens about thirty requests at once.
 const MOST_SOCKETS = 64;
@@ -71,14 +72,14 @@ const send = (url, req, headers, fresh, buffered) => {
 
     return attempt().catch((error) => {
         if (bigheaders.isHeaderOverflow(error) && !body && url.indexOf('https:') === 0) {
-            postmortem.note('upstream', `header overflow on ${url.slice(0, 80)} — retrying over http2`);
+            postmortem.note('upstream', `header overflow on ${withoutQuery(url).slice(0, 80)} — retrying over http2`);
             return bigheaders.fetchOverHttp2(url, { method: req.method, headers });
         }
 
         // A streamed body cannot be sent twice.
         if (!isRetriable(error) || (body && !buffered)) throw error;
 
-        postmortem.note('upstream', `${postmortem.describe(error)} on ${url.slice(0, 80)}`
+        postmortem.note('upstream', `${postmortem.describe(error)} on ${withoutQuery(url).slice(0, 80)}`
             + ' — retrying on a fresh connection');
 
         return attempt({ agent: undefined });
@@ -90,10 +91,16 @@ const textOf = (response) => response.text().then((text) => ({ response, text })
 const readText = (response, url, req, headers) => textOf(response).catch((error) => {
     if (!isRetriable(error) || !isRepeatable(req)) throw error;
 
-    postmortem.note('upstream', `${postmortem.describe(error)} reading ${url.slice(0, 80)}`
+    postmortem.note('upstream', `${postmortem.describe(error)} reading ${withoutQuery(url).slice(0, 80)}`
         + ' — asking again');
 
     return send(url, req, headers, true).then(textOf);
 });
 
-module.exports = { send, readText };
+// Pooled sockets stay bound to an address the TV no longer has, and each fails one request or hangs.
+const dropAll = () => {
+    [httpsAgent, httpAgent].forEach((agent) => agent.destroy());
+    bigheaders.reset();
+};
+
+module.exports = { send, readText, dropAll };

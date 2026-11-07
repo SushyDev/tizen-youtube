@@ -11,6 +11,8 @@ const { upstream } = require('./knobs.js');
 const { localOrigin, proxyPrefix } = require('./origin.js');
 const { YOUTUBE_ORIGIN, routeFor, headersFor } = require('./route.js');
 const { readText, send } = require('./sending.js');
+const clients = require('./clients.js');
+const { withoutQuery } = require('./redact.js');
 const zone = require('./zone.js');
 const {
     rewriteAttestation, rewriteBody, rerouteAbr, rewriteSetCookie,
@@ -31,7 +33,7 @@ const CSP_HEADER = 'content-security-policy';
 // the partition.
 const TRACE_LIMIT = 40;
 
-const state = { traced: 0 };
+const state = { traced: 0, refused: [] };
 
 // Readable.destroy arrived in node 8.
 const release = (stream) => (typeof stream.destroy === 'function' ? stream.destroy() : stream.unpipe().resume());
@@ -65,7 +67,7 @@ const create = () => {
         if (tracing && !ours) {
             state.traced += 1;
             res.on('finish', () => postmortem.note('req',
-                `${req.method} ${req.headers.host || '?'}${path.slice(0, 110)} → ${res.statusCode}`));
+                `${req.method} ${req.headers.host || '?'}${withoutQuery(path).slice(0, 110)} → ${res.statusCode}`));
         }
 
         return next();
@@ -143,7 +145,21 @@ const attachFallback = (app) => {
             return res.status(502).end();
         }
 
+        // Anyone else on the LAN would otherwise have an open relay into the home network.
+        if (!clients.fromThisTv(req)) {
+            if (state.refused.indexOf(clients.remoteOf(req)) === -1) {
+                state.refused = state.refused.concat([clients.remoteOf(req)]).slice(-20);
+                postmortem.note('refused', `${clients.remoteOf(req)} asked for ${req.method} ${withoutQuery(req.path).slice(0, 80)}`);
+            }
+            return res.status(403).type('text/plain').send('tube: only this TV may use the proxy');
+        }
+
         const route = routeFor(req);
+
+        if (route.isBypass && !clients.bypassAllows(route.host)) {
+            postmortem.note('refused', `the bypass to ${route.host}, which is not one of Google's hosts`);
+            return res.status(403).type('text/plain').send('tube: the bypass only reaches Google');
+        }
 
         // Served as ourselves, the page has to say so in its own URL before kabuki reads it.
         if (req.path === '/tv' && !hidesWatermark(req.url)) {
@@ -158,7 +174,7 @@ const attachFallback = (app) => {
 
         // The container answers a hung page by retrying for ever behind a network error.
         const fail = (what, error) => {
-            postmortem.note('upstream', `${what} on ${route.url.slice(0, 90)}: ${postmortem.describe(error)}`);
+            postmortem.note('upstream', `${what} on ${withoutQuery(route.url).slice(0, 90)}: ${postmortem.describe(error)}`);
             dev.journal.service('failed', `${what} ${route.url.slice(0, 110)}`);
 
             if (res.headersSent) return res.destroy();

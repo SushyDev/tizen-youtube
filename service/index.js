@@ -1,6 +1,15 @@
 'use strict';
 
+// First, so a service that dies while loading still leaves a trail for the boot page.
+const trail = require('./lib/trail.js');
+
+trail.begin();
+
+const dns = require('dns');
 const os = require('os');
+
+// Node 17+ hands out AAAA answers first, and a network with broken IPv6 then hangs every connection.
+if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
 
 const postmortem = require('./lib/postmortem.js');
 const lastRun = require('./lib/lastRun.js');
@@ -23,9 +32,13 @@ const routeErrors = require('./lib/routeErrors.js');
 const dev = require('./dev/index.js');
 const upgrade = require('./lib/upgrade.js');
 const knobs = require('./lib/knobs.js');
+const sending = require('./lib/sending.js');
+const addressWatch = require('./lib/addressWatch.js');
 
 // A cobalt.js that will not load must not stop the proxy starting.
 const cobalt = require('./lib/cobaltIfItLoads.js')();
+
+trail.reach('modules');
 
 const isTV = typeof tizen !== 'undefined';
 
@@ -129,6 +142,7 @@ const listen = (addresses, index) => {
         serving.yes = true;
 
         postmortem.note('listening', `${address}:${ports.PROXY}`);
+        trail.reach('listening');
         console.log(`tube service on ${address}:${ports.PROXY}`);
         if (!isTV) console.log('Running off-TV: proxy and userscript are live.');
     });
@@ -159,13 +173,12 @@ const listen = (addresses, index) => {
 const holdFor = dev.startDelay();
 if (holdFor) postmortem.note('listen', `held shut for ${holdFor / 1000}s by TUBE_START_DELAY`);
 
-setTimeout(() => listen(candidates(), 0), holdFor);
-
 // Tizen's service runner calls these on every wake message, and a missing one kills the service.
 module.exports = {
-    onStart: () => {},
+    onStart: () => trail.count('starts'),
 
     onRequest: () => {
+        trail.count('requests');
         if (!cobalt) return;
         try { cobalt.wake(); } catch (e) { postmortem.note('cobalt', e); }
     },
@@ -174,10 +187,25 @@ module.exports = {
 };
 
 // Staging a directory and issuing a certificate must not be able to stop the proxy answering.
-if (cobalt) {
-    try {
-        cobalt.prepare();
-    } catch (e) {
-        postmortem.note('cobalt', `prepare threw: ${postmortem.describe(e)}`);
+const prepare = () => {
+    if (cobalt) {
+        try {
+            cobalt.prepare();
+        } catch (e) {
+            postmortem.note('cobalt', `prepare threw: ${postmortem.describe(e)}`);
+        }
     }
-}
+
+    addressWatch.watch((was, now) => {
+        postmortem.note('address', `${was} → ${now}: dropping connections made from the old one`);
+        sending.dropAll();
+        if (cobalt) cobalt.refreshBootScreen();
+    });
+
+    trail.reach('prepared');
+};
+
+setTimeout(() => listen(candidates(), 0), holdFor);
+
+// Queued behind the listen, so the port opens before staging walks the whole content tree.
+setTimeout(prepare, 0);

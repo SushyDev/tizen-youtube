@@ -3,6 +3,7 @@ import { PASS, buttonItem, configRead, configWrite, onCommand, resolve, showToas
 import { openOptions, OPTIONS_ACTION } from '../settings/settingsOptions.js';
 import { openSpeedOptions } from '../player/speed.js';
 import { enterMiniPlayer } from '../player/pictureInPicture.js';
+import { openLauncher } from '../settings/launcher.js';
 
 
 const APP_NAME = 'YouTube';
@@ -11,6 +12,8 @@ const ACTIONS = {
     [OPTIONS_ACTION]: (parameters) => openOptions(parameters),
 
     OPEN_SPEED_OPTIONS: () => openSpeedOptions(),
+
+    TUBE_LAUNCHER: () => openLauncher(),
 
     SKIP: (parameters) => {
         const escape = document.createEvent('Event');

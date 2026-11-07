@@ -112,6 +112,27 @@ check('the rows we do not claim are left where YouTube put them', () => {
         `an unclaimed row was moved — General holds ${JSON.stringify(general)}`);
 });
 
+check('Startup opens with a Tube launcher row that runs the launcher action', () => {
+    const r = response();
+    PatchSettings(r);
+
+    const startup = r.items.map((item) => item.settingCategoryCollectionRenderer)
+        .find((found) => found && found.categoryId === 'tube_startup');
+    const row = startup && startup.items[0].settingActionRenderer;
+
+    assert.ok(row, 'no action row first in Startup');
+    assert.strictEqual(row.title.runs[0].text, 'Tube launcher');
+    assert.strictEqual(row.actionLabel.runs[0].text, 'Open');
+    assert.deepStrictEqual(row.serviceEndpoint, { customAction: { action: 'TUBE_LAUNCHER' } });
+});
+
+const { launcherUrl } = await import('../../mods/settings/launcher.js');
+
+check('the launcher opens from the service, keeping the sign-in query and staying put', () => {
+    assert.strictEqual(launcherUrl({ search: '?launch=menu&cert_scope=samsung' }), '/tube/boot.html?launch=menu&cert_scope=samsung#launcher');
+    assert.strictEqual(launcherUrl({ search: '' }), '/tube/boot.html#launcher');
+});
+
 const failed = results.filter((ok) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

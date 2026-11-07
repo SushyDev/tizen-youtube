@@ -6,19 +6,26 @@ import { say } from './screen.js';
 import { failureOf } from './failure.js';
 import { lookElsewhere } from './elsewhere.js';
 import { sayHelp } from './help.js';
+import { phoneCanHelp, refresh } from './view.js';
+import { sendReport } from './upload.js';
+import { maybeReread } from './reread.js';
+import { restartSilent } from './restart.js';
+import { stopLaunching } from './launching.js';
 
 const HOST = service.replace('http://', '');
 
-const GIVE_UP = `still not answering after ${TIMING.giveUp / 1000}s: if this screen stays, `
-    + 'turn the TV off and on again; reinstall the app if it keeps happening';
+const GIVE_UP_ALIVE = `still not answering after ${TIMING.giveUp / 1000}s: close Tube with a long press on Back and `
+    + 'open it again; if this screen comes back, turn the TV off at the power button until the Samsung logo shows';
 
-// Named even though the service is failing: a phone asks for the page over the network, not through
-// the path the container just failed on.
+const GIVE_UP_DEAD = `still not answering after ${TIMING.giveUp / 1000}s: the TV has not started Tube's background `
+    + 'service. Hold the power button until the Samsung logo shows, then open Tube';
+
+// Named only when something answers, because the page is served by the same service.
 const advise = () => {
-    if (held.advised) return;
+    if (held.advised || !phoneCanHelp()) return;
     held.advised = true;
 
-    say('tube', `open ${diag} on a phone to see what, and what to do`, 'note');
+    say('tube', `scan the code on screen, or open ${diag} on a phone: it shows what failed and what to do`, 'note');
 };
 
 const tell = (failure) => {
@@ -40,22 +47,37 @@ const nag = (waited) => {
     lookElsewhere();
 };
 
+const silentFor = (waited) => {
+    if (held.silentSince < 0) held.silentSince = waited;
+    return waited - held.silentSince;
+};
+
 export const silent = (again, status, how) => {
     const waited = elapsed();
 
     if (held.seen) {
         held.seen = false;
+        held.silentSince = -1;
         say('service', 'stopped answering', 'bad');
     }
 
+    restartSilent();
     tell(failureOf(status, how));
     nag(waited);
+    maybeReread();
+
+    if (!held.silentStuck && (held.answeredOnce ? silentFor(waited) : waited) > TIMING.stuck) {
+        held.silentStuck = true;
+        stopLaunching('the service is not answering');
+        sendReport(refresh);
+    }
 
     if (!held.gaveUp && waited > TIMING.giveUp) {
         held.gaveUp = true;
-        say('service', GIVE_UP, 'bad');
+        say('service', phoneCanHelp() ? GIVE_UP_ALIVE : GIVE_UP_DEAD, 'bad');
         sayHelp();
     }
 
+    refresh();
     setTimeout(again, TIMING.every);
 };

@@ -29,6 +29,15 @@ const bundled = async () => {
     return output[0].code;
 };
 
+const storage = (preset) => {
+    const kept = Object.assign({}, preset || {});
+    return {
+        getItem: (key) => (key in kept ? kept[key] : null),
+        setItem: (key, value) => { kept[key] = String(value); },
+        removeItem: (key) => { delete kept[key]; }
+    };
+};
+
 // Only as much of a page as the boot screen touches; replies[] answers each ask in turn.
 const run = (script, replies, turns, options) => {
     const probeStatus = options && options.probe !== undefined ? options.probe : 204;
@@ -36,23 +45,44 @@ const run = (script, replies, turns, options) => {
     const hangs = !!(options && options.hang);
     const updater = options && options.updater;
     const answered = { count: 0 };
-    const node = () => ({ className: '', textContent: '', kids: [], appendChild(kid) { this.kids.push(kid); } });
-    const log = {
-        childNodes: [],
-        appendChild(line) { this.childNodes.push(line); },
-        removeChild(line) { this.childNodes.splice(this.childNodes.indexOf(line), 1); }
+    const restarts = [];
+    const node = () => ({
+        className: '',
+        textContent: '',
+        style: {},
+        kids: [],
+        get childNodes() { return this.kids; },
+        appendChild(kid) { this.kids.push(kid); },
+        removeChild(kid) { this.kids.splice(this.kids.indexOf(kid), 1); }
+    });
+    const log = node();
+    const nodes = { log };
+    const byId = (id) => {
+        if (!nodes[id]) nodes[id] = node();
+        return nodes[id];
     };
+    const support = options && options.support;
+    const posted = [];
     const timers = [];
     const asked = [];
     const replaced = [];
     const clock = { now: 0 };
 
     function XMLHttpRequest() {}
-    XMLHttpRequest.prototype.open = function open(method, url) { this.url = url; };
+    XMLHttpRequest.prototype.open = function open(method, url) { this.method = method; this.url = url; };
     XMLHttpRequest.prototype.abort = function abort() {};
-    XMLHttpRequest.prototype.send = function send() {
+    XMLHttpRequest.prototype.setRequestHeader = function setRequestHeader() {};
+    XMLHttpRequest.prototype.send = function send(body) {
         asked.push(this.url);
         this.readyState = 4;
+
+        if (this.method === 'POST') {
+            posted.push({ url: this.url, body: JSON.parse(body) });
+            this.status = support === 'down' ? 0 : 201;
+            this.responseText = support === 'down' ? '' : JSON.stringify({ code: 'K7QF-29XM', url: 'https://help.example/r/K7QF-29XM' });
+            if (this.onreadystatechange) this.onreadystatechange();
+            return;
+        }
 
         // The probe goes to YouTube through Cobalt's proxy; a fire-and-forget send has no handler.
         if (this.url.indexOf(`${ELSEWHERE}/__tube/ping`) === 0) {
@@ -60,6 +90,12 @@ const run = (script, replies, turns, options) => {
             this.responseText = '';
         } else if (this.url.indexOf('/__tube/ping') !== -1) {
             this.status = probeStatus;
+            this.responseText = '';
+        } else if (this.url.indexOf('/__tube/restart-service') !== -1) {
+            restarts.push(this.url);
+            replies = (options && options.afterRestart) || replies;
+            answered.count = 0;
+            this.status = 202;
             this.responseText = '';
         } else if (hangs && this.url.indexOf(CONFIG.service) === 0) {
             // Dropped: only the page's own guard ends the wait.
@@ -74,26 +110,41 @@ const run = (script, replies, turns, options) => {
         if (this.onreadystatechange) this.onreadystatechange();
     };
 
+    const listeners = [];
+    const keys = (options && options.keys) || {};
     const page = {
-        document: { getElementById: () => log, createElement: node },
+        document: { getElementById: byId, createElement: node, addEventListener: (type, act) => listeners.push(act) },
         navigator: { userAgent: AGENT },
         XMLHttpRequest,
         setTimeout: (act, delay) => timers.push({ act, delay: delay || 0 }),
         window: {
-            TUBE_BOOT: CONFIG,
+            TUBE_BOOT: support ? Object.assign({}, CONFIG, { supportUrl: 'https://help.example' }) : CONFIG,
+            TUBE_TRAIL: options && options.trail,
             performance: { now: () => clock.now },
             innerWidth: 1920,
             innerHeight: 1080,
             devicePixelRatio: 1,
             h5vcc: updater ? { updater } : undefined,
-            location: { search: '?launch=menu&cert_scope=samsung', hash: '', replace: (to) => replaced.push(to) }
+            location: {
+                href: 'file:///tube/boot.html?launch=menu&cert_scope=samsung',
+                search: '?launch=menu&cert_scope=samsung',
+                hash: (options && options.hash) || '',
+                // A navigation ends this page's timers, unless the test is about a page that never arrives.
+                replace: (to) => {
+                    replaced.push(to);
+                    if (!(options && options.stays)) timers.length = 0;
+                }
+            },
+            localStorage: options && (options.storage || options.auto) ? storage(options.auto ? { 'tube.launcher.auto': options.auto } : null) : undefined
         }
     };
 
     vm.runInNewContext(script, page);
 
     // Each timer moves the page's clock on by its own delay, so waiting takes time as it would.
-    Array.from({ length: turns }).forEach(() => {
+    Array.from({ length: turns }).forEach((_, turn) => {
+        (keys[turn] || []).forEach((keyCode) => listeners.forEach((act) => act({ keyCode, preventDefault: () => undefined })));
+
         const next = timers.shift();
         if (!next) return;
 
@@ -106,7 +157,27 @@ const run = (script, replies, turns, options) => {
         tone: line.kids[2] ? line.kids[2].className : ''
     }));
 
-    return { lines, asked, replaced };
+    const card = {
+        tone: byId('card').className,
+        head: byId('state').textContent,
+        detail: byId('detail').textContent,
+        steps: byId('steps').kids.map((step) => step.textContent),
+        label: byId('aside-label').textContent,
+        code: byId('aside-code').textContent,
+        url: byId('aside-url').textContent,
+        version: byId('version').textContent,
+        qr: byId('qr').style.display === 'block' ? byId('qr').kids.length : 0,
+        platform: byId('platform').textContent,
+        checks: byId('checks').kids.map((row) => ({ state: row.className.replace('check check-', ''), name: row.kids[1].textContent, text: row.kids[2].textContent })),
+        buttons: byId('buttons').kids.map((one) => ({ label: one.textContent, off: one.className.indexOf(' off') !== -1,
+            focus: one.className.indexOf(' focus') !== -1,
+            sub: (one.kids.find((kid) => kid.className === 'sub') || {}).textContent || '',
+            value: (one.kids.find((kid) => kid.className === 'value') || {}).textContent || '' })),
+        hint: byId('hint').textContent,
+        view: byId('logs').style.display === 'block' ? 'logs' : 'launcher'
+    };
+
+    return { lines, asked, replaced, card, posted, restarts, hash: page.window.location.hash };
 };
 
 const host = (url) => url.replace('http://', '');
@@ -183,33 +254,35 @@ const checks = (script) => {
 
     // Each failed ask moves the clock 4.5s (its 4s guard, then the 0.5s retry), so 16 turns is about 36s.
     const slow = run(script, [null], 16);
+    const dead = run(script, [null], 32);
     check('a slow start is only warned about, not called a failure', slow.lines.some((line) => line.tone === 'warn')
         && slow.lines.every((line) => line.tone !== 'bad'));
 
     const silent = run(script, [null], 90);
-    check('only after a minute is it told what to do, in red', toneOf(silent.lines, 'still not answering after 60s') === 'bad');
+    const minute = run(script, [null], 30);
+    check('only after a minute is it told what to do, in red', toneOf(minute.lines, 'still not answering after 60s') === 'bad',
+        minute.lines.map((line) => line.text).join(' | '));
 
     check('it says which build wrote the page, and when', has(handed.lines, `tube: page written 0s ago by service pid ${process.pid}, patch `));
     check('a refused ask is named at once', has(slow.lines, `service: ${host(CONFIG.service)}: refused at once`),
         slow.lines.map((line) => line.text).join(' | '));
 
-    // The page is reached from a phone over the network rather than the path that just failed.
-    check('the first resistance already points at the page that explains it',
-        has(slow.lines, CONFIG.diag) && CONFIG.diag.indexOf('/diag') !== -1,
-        slow.lines.map((line) => line.text).join(' | '));
+    // The diag page is served by the service that just refused, so it would never load.
+    check('a refused service is never sent to the page it cannot serve',
+        !has(slow.lines, CONFIG.diag) && !has(silent.lines, CONFIG.diag), slow.lines.map((line) => line.text).join(' | '));
+    check('a minute of refusals says how to get the service started',
+        has(minute.lines, 'hold the power button') || has(minute.lines, 'Hold the power button'),
+        minute.lines.map((line) => line.text).join(' | '));
 
-    const advised = (lines) => lines.filter((line) => line.text.indexOf('to see what, and what to do') !== -1).length;
+    const advised = (lines) => lines.filter((line) => line.text.indexOf('it shows what failed and what to do') !== -1).length;
 
-    check('and once rather than on every retry', advised(slow.lines) === 1, `said ${advised(slow.lines)} times`);
-
-    // The screen keeps only the last 34 lines, so the line said at the first refusal has scrolled
-    // away by the time of the give-up.
-    check('a silence long enough to scroll it away still ends by naming the page',
-        has(silent.lines, CONFIG.diag), CONFIG.diag);
+    const dropped = run(script, [null], 6, { hang: true });
+    check('a service that is there but silent points at the page that explains it', has(dropped.lines, CONFIG.diag),
+        dropped.lines.map((line) => line.text).join(' | '));
+    check('and once rather than on every retry', advised(run(script, [null], 14, { hang: true }).lines) === 1);
     check('and the other addresses are asked too, without a verdict at first', has(slow.lines, 'service: nor at 127.0.0.1:8099 yet'));
     check('which comes once the silence lasts', has(slow.lines, 'nor at 127.0.0.1:8099: the service is not running, or is stuck'));
 
-    const dropped = run(script, [null], 6, { hang: true });
     check('a dropped ask is told from a refused one', has(dropped.lines, `service: ${host(CONFIG.service)}: no answer in 4s`));
 
     const blockedAddress = run(script, [null], 6, { hang: true, elsewhere: 204 });
@@ -249,10 +322,174 @@ const checks = (script) => {
     check('a start that answers at once never asks for the deep check',
         quick.asked.every((url) => url.indexOf('stuck=1') === -1), quick.asked.join(' '));
 
-    check('a service that never answers is reported the same way', has(silent.lines, `${CONFIG.journal}`)
-        && has(silent.lines, 'https://discord.gg/'));
+    check('a service that never answers is reported to the Discord, not to its own dead log',
+        has(minute.lines, 'https://discord.gg/') && !has(minute.lines, CONFIG.journal),
+        minute.lines.map((line) => line.text).join(' | '));
     check('and the checks it could not run are not claimed to have passed',
         silent.lines.every((line) => line.text.indexOf('ok: ') === -1));
+
+    const early = run(script, [null], 4);
+    check('a start still under way stays calm on the card', early.card.tone === 'tone-calm'
+        && early.card.head === 'Starting Tube' && early.card.steps.length === 0, JSON.stringify(early.card));
+    const cold = run(script, [null], 12);
+    check('a slow cold start says so calmly before it turns red', cold.card.tone === 'tone-calm'
+        && cold.card.head === 'Still starting' && cold.card.steps.length === 0, JSON.stringify(cold.card));
+    check('the card always names the build', early.card.version.indexOf('Tube ') === 0, early.card.version);
+    check('a normal start never turns the card red', handed.card.tone === 'tone-ok' && handed.card.head === 'Opening YouTube',
+        JSON.stringify(handed.card));
+    check('and shows the patch the service reports', handed.card.version === 'Tube 1.0.1-abc1234-clean', handed.card.version);
+    check('a service that answers but is not ready offers the diag page as a QR code', echoed.card.qr > 0
+        && echoed.card.label === 'Help on your phone' && echoed.card.tone === 'tone-calm', JSON.stringify(echoed.card));
+
+    check('a service that never answers turns the card into steps', dead.card.tone === 'tone-bad'
+        && dead.card.head === 'Tube\'s background service isn\'t running' && dead.card.steps.length === 3,
+        JSON.stringify(dead.card));
+    check('and never send the viewer to another app to start it',
+        dead.card.steps.concat(dead.lines.map((line) => line.text)).every((text) => text.indexOf('Homebrew') === -1),
+        dead.card.steps.join(' | '));
+    check('and without a support bot point at the Discord', dead.card.label === 'Scan to ask on Discord' && dead.card.qr > 0,
+        JSON.stringify(dead.card));
+
+    check('a broken connection to YouTube is said plainly on the card', stuck.card.tone === 'tone-bad'
+        && stuck.card.head === 'Can\'t reach YouTube' && stuck.card.qr > 0, JSON.stringify(stuck.card));
+    check('and so is YouTube not loading through the service', blocked.card.head === 'YouTube doesn\'t load through Tube',
+        JSON.stringify(blocked.card));
+
+    const reported = run(script, [null], 32, { support: true });
+    const sent = reported.posted[0] || { body: { report: { log: [] } } };
+    check('a stuck screen sends its own report, once', reported.posted.length === 1
+        && sent.url === 'https://help.example/api/reports' && sent.body.app === 'youtube', JSON.stringify(reported.posted).slice(0, 300));
+    check('with the lines it showed', sent.body.report.log.some((line) => line.text.indexOf('refused at once') !== -1));
+    check('and shows the code to post, with a QR code of it', reported.card.code === 'K7QF-29XM'
+        && reported.card.label === 'Post this code in Discord' && reported.card.qr > 0, JSON.stringify(reported.card));
+    check('and says it in the log too', has(reported.lines, 'post code K7QF-29XM'));
+    check('a normal start sends nothing', run(script, [ready], 12, { support: true }).posted.length === 0);
+
+    const ago = (ms) => Date.now() - ms;
+    const crashed = [{ at: ago(600000), uptime: 30, pid: 41, reached: [{ stage: 'loaded', after: 0 }], ended: { how: 'exit code 0', after: 900 } },
+        { at: ago(120000), uptime: 12, pid: 42, control: { operation: 'http://tizen.org/appcontrol/operation/default', caller: '' },
+            reached: [{ stage: 'loaded', after: 0 }, { stage: 'modules', after: 800 }],
+            ended: { how: 'crashed: Cannot find module \'express\'', after: 820 } }];
+    const trailed = run(script, [null], 32, { support: true, trail: crashed });
+    const trailedReport = (trailed.posted[0] || { body: { report: {} } }).body.report;
+    check('a dead service\'s last run is shown in the log from the trail it left', has(trailed.lines, 'last run started 2m ago, 12s after the TV booted, pid 42')
+        && has(trailed.lines, 'loaded → modules +0.8s') && has(trailed.lines, 'crashed: Cannot find module'),
+        trailed.lines.map((line) => line.text).join(' | ').slice(0, 600));
+    check('and only the last run, so the screen is not filled with old ones', !has(trailed.lines, 'pid 41'));
+    check('the card says the last run crashed instead of guessing', trailed.card.detail.indexOf('The last time it ran, 2m ago, it crashed') === 0,
+        trailed.card.detail);
+    check('and the report carries every run', Array.isArray(trailedReport.trail) && trailedReport.trail.length === 2,
+        JSON.stringify(trailedReport.trail));
+    const hung = run(script, [null], 32, { trail: [{ at: ago(30000), uptime: 8, pid: 43, reached: [{ stage: 'loaded', after: 0 }, { stage: 'modules', after: 700 }], ended: null }] });
+    check('a run with no ending says how far it got', hung.card.detail === 'It last started 30s ago and got as far as "modules".', hung.card.detail);
+    check('without a trail the card keeps its plain words', dead.card.detail.indexOf('The TV didn\'t start') === 0, dead.card.detail);
+
+    const OK = 13;
+    const DOWN = 40;
+    const BACK = 27;
+    const labels = (card) => card.buttons.map((one) => one.label);
+    const focused = (card) => (card.buttons.find((one) => one.focus) || {}).label;
+
+    const idle = run(script, [ready], 8, { auto: 'off' });
+    check('with auto-launch off a ready Tube waits on the launcher', idle.replaced.length === 0 && idle.card.head === 'Ready'
+        && idle.card.tone === 'tone-ok', JSON.stringify(idle.card).slice(0, 300));
+    check('with every check passed', idle.card.checks.map((one) => one.state).join(',') === 'ok,ok,ok'
+        && idle.card.checks.map((one) => one.name).join(',') === 'Background service,YouTube container,YouTube through Tube',
+        JSON.stringify(idle.card.checks));
+    check('and Launch focused first, then Logs, Restart service and Auto-launch Off',
+        labels(idle.card).join(',') === 'Launch YouTube,Logs,Restart service,Auto-launch' && focused(idle.card) === 'Launch YouTube'
+        && idle.card.buttons[3].value === 'Off', JSON.stringify(idle.card.buttons));
+    check('it names the Tizen it runs on', idle.card.platform === 'Tizen 9.0', idle.card.platform);
+
+    const launched = run(script, [ready], 8, { auto: 'off', keys: { 1: [OK] } });
+    check('OK on Launch hands over', launched.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`,
+        launched.replaced.join(' '));
+
+    const waiting = { facts: FACTS, ready: false, waiting: null, next: 1, log: [] };
+    const pending = run(script, [waiting], 4, { auto: 'off' });
+    check('a check still running greys Launch out and counts what is ready', pending.card.buttons[0].off
+        && pending.card.buttons[0].sub === ' · 2 of 3 ready' && focused(pending.card) === 'Logs',
+        JSON.stringify(pending.card.buttons));
+    check('and OK on a greyed-out Launch does nothing', run(script, [waiting], 6, { auto: 'off', keys: { 1: [OK] } }).card.view === 'logs');
+
+    const starting = run(script, [waiting], 4);
+    check('auto-launch shows Stop while it waits', labels(starting.card).join(',') === 'Stop,Logs' && focused(starting.card) === 'Stop'
+        && starting.card.hint.indexOf('Back') !== -1, JSON.stringify(starting.card.buttons));
+    const stopped = run(script, [waiting, waiting, ready], 8, { keys: { 1: [BACK] } });
+    check('Back stops it on the launcher, and it then never launches by itself', stopped.replaced.length === 0
+        && labels(stopped.card)[0] === 'Launch YouTube' && has(stopped.lines, 'stopped: showing the launcher'),
+        JSON.stringify(stopped.card.buttons));
+
+    const anyway = run(script, [{
+        facts: FACTS, ready: false, next: 0, log: [], waiting: { tone: 'bad', what: 'www.youtube.com is not reachable from the TV (ENOTFOUND)' }
+    }], 8, { keys: { 3: [OK] } });
+    check('a failed check stops auto-launch and offers Launch anyway', has(anyway.lines, 'auto-launch stopped: www.youtube.com is not reachable')
+        && anyway.card.checks[2].state === 'bad', JSON.stringify(anyway.card.checks));
+    check('which hands over when pressed', anyway.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`, anyway.replaced.join(' '));
+
+    check('a dead service greys Launch out, hides Restart and focuses Logs', dead.card.buttons[0].off
+        && dead.card.buttons[0].sub === ' · needs the service' && labels(dead.card).indexOf('Restart service') === -1
+        && focused(dead.card) === 'Logs' && dead.card.checks[0].state === 'bad' && dead.card.checks[1].state === 'idle',
+        JSON.stringify(dead.card.buttons) + JSON.stringify(dead.card.checks));
+
+    const logs = run(script, [ready], 6, { auto: 'off', keys: { 1: [DOWN, OK] } });
+    check('Logs shows the log in place of the launcher', logs.card.view === 'logs');
+    check('and Back returns to it', run(script, [ready], 6, { auto: 'off', keys: { 1: [DOWN, OK], 3: [BACK] } }).card.view === 'launcher');
+
+    const restarted = run(script, [ready], 24, { auto: 'off', keys: { 1: [DOWN, DOWN, OK] }, afterRestart: [null, null, ready] });
+    check('Restart service asks the service to restart', restarted.restarts.length === 1
+        && restarted.restarts[0] === `${CONFIG.service}/__tube/restart-service`, restarted.restarts.join(' '));
+    check('without calling the service dead while it restarts', !has(restarted.lines, 'the service is not running, or is stuck'),
+        restarted.lines.map((line) => line.text).join(' | ').slice(-600));
+    check('and says when it is back', has(restarted.lines, 'service: back after the restart') && restarted.card.head === 'Ready',
+        restarted.lines.map((line) => line.text).join(' | ').slice(-600));
+    const restartingNow = run(script, [ready], 3, { auto: 'off', keys: { 1: [DOWN, DOWN, OK] }, afterRestart: [null] });
+    check('while it restarts the card stays calm and Restart is greyed out', restartingNow.card.tone === 'tone-calm'
+        && restartingNow.card.checks[0].text === 'Restarting…' && restartingNow.card.buttons[2].off, JSON.stringify(restartingNow.card).slice(0, 400));
+
+    const auto = run(script, [ready], 6, { auto: 'off', keys: { 1: [DOWN, DOWN, DOWN, OK] } });
+    check('Auto-launch switches on from the launcher', auto.card.buttons[3].value === 'On' && has(auto.lines, 'auto-launch switched on'));
+
+    const unprepared = run(script, [{ facts: FACTS, ready: false, next: 0, log: [], cobalt: { settled: true, failed: 'EACCES: permission denied' },
+        waiting: { tone: 'bad', what: 'the service could not prepare Cobalt: EACCES: permission denied' } }], 6);
+    check('a container the service could not prepare is the check that fails', unprepared.card.checks[1].state === 'bad'
+        && unprepared.card.checks[2].state === 'idle' && unprepared.card.head === 'Tube could not start', JSON.stringify(unprepared.card.checks));
+    const preparing = run(script, [Object.assign({}, waiting, { cobalt: { settled: false, failed: null } })], 4);
+    check('and one still being prepared is pending', preparing.card.checks[1].state === 'pending', JSON.stringify(preparing.card.checks));
+
+    const served = html('', { origin: 'http://127.0.0.2:8099' });
+    const servedConfig = JSON.parse(/window\.TUBE_BOOT = (\{[^<]*\});/.exec(served)[1]);
+    check('a launcher the service sends names that address and nothing else', servedConfig.service === 'http://127.0.0.2:8099'
+        && servedConfig.target === 'http://127.0.0.2:8099/tv' && servedConfig.alternates.length === 0
+        && served.indexOf('trail.js') === -1, JSON.stringify(servedConfig).slice(0, 300));
+
+    const fromSettings = run(script, [ready], 8, { hash: '#launcher' });
+    check('opened from Tube\'s settings it stays on the launcher with auto-launch on', fromSettings.replaced.length === 0
+        && fromSettings.card.head === 'Ready' && has(fromSettings.lines, 'opened from Tube\'s settings'), JSON.stringify(fromSettings.card).slice(0, 200));
+    const relaunched = run(script, [ready], 8, { hash: '#launcher', keys: { 1: [OK] } });
+    check('and Launch from there leaves the #launcher behind', relaunched.replaced[0] === `${CONFIG.service}/tv?launch=menu&cert_scope=samsung`,
+        relaunched.replaced.join(' '));
+
+    const slowArrival = run(script, [ready], 20, { stays: true });
+    check('a YouTube that has not arrived 8s after the handover is said so on the page still showing',
+        slowArrival.replaced.length === 1 && slowArrival.card.head === 'Still opening YouTube'
+        && labels(slowArrival.card).join(',') === 'Back to launcher' && has(slowArrival.lines, 'youtube has not loaded 8s after the handover'),
+        JSON.stringify(slowArrival.card).slice(0, 300));
+    const backFromSlow = run(script, [ready], 20, { stays: true, keys: { 15: [BACK] } });
+    check('and Back then loads the launcher again instead of waiting', backFromSlow.hash === 'launcher'
+        && has(backFromSlow.lines, 'handover stopped'), backFromSlow.hash);
+    check('a quick handover never says it is slow', !has(launched.lines, 'has not loaded'));
+
+    const unsent = run(script, [null], 32, { support: 'down' });
+    check('a report that cannot be sent falls back to a photo', has(unsent.lines, 'post a photo of this screen')
+        && unsent.card.label === 'Scan to ask on Discord', JSON.stringify(unsent.card));
+
+    check('without storage the page never reads itself again', silent.replaced.length === 0, silent.replaced.join(' '));
+
+    const reread = run(script, [null], 60, { storage: true });
+    check('with storage a page nobody answers reads itself again, at most twice',
+        reread.replaced.length === 2 && reread.replaced.every((to) => to.indexOf('file:///tube/boot.html?launch=menu') === 0),
+        reread.replaced.join(' '));
 
     const page = html(script);
     const config = fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'config.xml'), 'utf8');
@@ -262,7 +499,9 @@ const checks = (script) => {
         config.indexOf('--proxy=') === -1);
     check('its policy lets it reach the service and go to the page we serve',
         page.indexOf(`connect-src ${CONFIG.service} `) !== -1
-        && page.indexOf(`h5vcc-location-src https://www.youtube.com ${CONFIG.service}`) !== -1,
+        && page.indexOf(`h5vcc-location-src https://www.youtube.com ${CONFIG.service} file:`) !== -1
+        && page.indexOf('help.example') === -1
+        && page.indexOf("script-src 'unsafe-inline' file:;") !== -1 && page.indexOf('<script src="trail.js"></script>') !== -1,
         (/content="([^"]*)"/.exec(page) || [])[1]);
 
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tube-boot-'));

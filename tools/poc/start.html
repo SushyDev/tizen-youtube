@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Tube Starter</title>
+<style>
+html, body { margin: 0; background: #101820; color: #f3f6fa; font: 25px sans-serif; }
+main { margin: 44px 64px; }
+h1 { font-size: 36px; margin: 0 0 14px; }
+p { margin: 12px 0; }
+#status { color: #ffdc83; }
+button { background: #253544; color: white; border: 3px solid #647889; padding: 12px 16px; font-size: 23px; margin: 8px 10px 8px 0; }
+button:focus { border-color: #ffd266; background: #38536b; outline: none; }
+button:disabled { opacity: 0.4; }
+#log { height: 400px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: break-word; font: 20px/1.5 monospace; background: #080e14; padding: 18px; }
+.help { color: #b6c8d6; font-size: 21px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Tube Starter — YouTube starten</h1>
+<p id="status" role="status" aria-live="polite">Web-Einstieg geladen. Warte auf sichtbare App.</p>
+<p>TubeService prüfen → auf HTTP 204 warten → Cobalt-Handoff (höchstens zwei Versuche).</p>
+<div>
+<button id="retry">YouTube erneut starten</button>
+<button id="service-only">Nur Dienst prüfen/starten</button>
+<button id="kill" disabled>Blockierenden Cobalt-Kontext bereinigen</button>
+<button id="diagnose">Nur Diagnose anzeigen</button>
+<button id="exit">Starter schließen</button>
+</div>
+<p class="help">Links/Rechts: Auswahl · OK: ausführen · Auf/Ab: Protokoll scrollen · Zurück: schließen</p>
+<p class="help">Start beim Öffnen. Nach eigenem Service-Start: höchstens eine gezielte Cobalt-Bereinigung. Sonst Bereinigung nur nach Bestätigung.</p>
+<pre id="log" aria-label="Diagnoseprotokoll"></pre>
+</main>
+<script>
+__TUBE_START_POC_SCRIPT__
+</script>
+</body>
+</html>

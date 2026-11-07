@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const { join } = require('path');
+const { execFileSync } = require('child_process');
 
 const buffer = require('../legacy/buffer.js');
 const http2 = require('../legacy/http2.js');
@@ -41,6 +42,27 @@ check('recursive mkdir makes the missing parents',
     settles(() => standIn.mkdirSync(deep, { recursive: true })) && fs.statSync(deep).isDirectory());
 check('recursive mkdir accepts a directory that exists', settles(() => standIn.mkdirSync(deep, { recursive: true })));
 check('plain mkdir still refuses a directory that exists', !settles(() => standIn.mkdirSync(deep)));
+
+// Load the built CommonJS entry in isolation; suppress timers so it never opens its proxy port.
+const bundle = join(__dirname, '..', 'dist-legacy', 'index.js');
+const exported = JSON.parse(execFileSync(process.execPath, ['-e', `
+    global.setTimeout = () => 0;
+    const service = require(${JSON.stringify(bundle)});
+    process.stdout.write(JSON.stringify(
+        Object.keys(service).filter((name) => typeof service[name] === 'function')
+    ));
+`], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: Object.assign({}, process.env, {
+        TUBE_LOG: join(scratch, 'service.log'),
+        TUBE_COBALT_CONTENT: ''
+    })
+}));
+
+['onStart', 'onRequest', 'onStop'].forEach((name) => {
+    check(`the built legacy bundle exports ${name} as a function`, exported.indexOf(name) !== -1);
+});
 
 fs.rmSync(scratch, { recursive: true, force: true });
 

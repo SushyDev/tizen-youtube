@@ -44,7 +44,6 @@ const derive = async (bytes) => {
     const webXml = xml.split('\n').filter((line) => !line.includes(`key="${PREFIX}pkgid"`)
         && !line.includes(`key="${PREFIX}nativeID"`)).join('\n')
         .replace('<name>YouTube</name>', '<name>Tube Starter</name>')
-        .replace('<icon src="icon.png"/>', '<icon src="icon-starter.png" width="117" height="117"/>')
         .replace('<tizen:privilege name="http://tizen.org/privilege/application.info"/>',
             '<tizen:privilege name="http://tizen.org/privilege/application.info"/>\n'
             + '    <tizen:privilege name="http://tizen.org/privilege/appmanager.kill"/>')
@@ -52,8 +51,7 @@ const derive = async (bytes) => {
         .replace('metadata/devel.api.version" value="5.5"', 'metadata/devel.api.version" value="5.0"')
         .replace('auto-restart="true" on-boot="true"', 'auto-restart="false" on-boot="false"');
     web.file('config.xml', webXml);
-    web.remove('icon.png');
-    web.file('icon-starter.png', readFileSync(join(ROOT, 'tools/poc/icons/icon-starter.png')));
+    web.file('icon.png', readFileSync(join(ROOT, 'app/icon.png')));
     const script = `(${start.toString()})(window, ${JSON.stringify(config)});`;
     web.file('index.html', readFileSync(join(ROOT, 'tools/poc/start.html'), 'utf8')
         .replace('__TUBE_START_POC_SCRIPT__', script));

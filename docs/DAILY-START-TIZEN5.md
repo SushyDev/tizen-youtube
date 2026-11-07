@@ -4,11 +4,17 @@ Stand: 7. November 2026. Zielgerät: Samsung QE55LS03RAUXZG, Tizen 5.0,
 Service-Laufzeit Node.js 4.4.3. Diese Version ersetzt die manuelle Bedienfolge der
 beiden bisherigen PoCs. Die Dateinamen und getrennten Icons bleiben erhalten.
 
+Aktualisierung zur Veröffentlichungsvorbereitung: Die Startlogik ist laut Benutzer
+auf dem genannten TV erfolgreich. Nur das Starter-Icon wurde auf das Original aus
+v1.5.1 zurückgestellt. Aktuelle Evidenz, bekannter Original-YouTube-Sonderfall und
+Grenzen: [Upstream-Bericht](UPSTREAM-REPORT.md). Frühere lokale Prüfungen bleiben
+als solche dokumentiert; ein neuer TV-Test der Symbolrunde wurde nicht durchgeführt.
+
 ## Pakete und Installation
 
 | Anwendung | WGT unter `release/` | App-ID | Paket-ID |
 | --- | --- | --- | --- |
-| Tube Starter (blau, Play/Zahnrad) | `tube-tizen-5.0-start-poc.wgt` | `tUb3Xq7L50.Tube` | `tUb3Xq7L50` |
+| Tube Starter (Originalsymbol aus v1.5.1) | `tube-tizen-5.0-start-poc.wgt` | `tUb3Xq7L50.Tube` | `tUb3Xq7L50` |
 | Tube Cobalt (rot, Play/Rechtspfeil) | `tube-tizen-5.0-cobalt-handoff-poc.wgt` | `tUb3Xq7LCb.TubeCobalt` | `tUb3Xq7LCb` |
 
 Die erzeugten WGTs sind **unsigniert**. Beide mit dem bisherigen Samsung-Partner-
@@ -159,7 +165,8 @@ konnte das unveränderte reguläre WGT weiterverwendet werden.
   Legacy-Service und beide Assets im Starter sind bytegleich mit regulärem
   Tizen-5.0-WGT und aktuellem Legacy-Build. Kein neuer Service-Endpunkt, keine
   Änderungen am Service, Cobalt-Bibliotheken oder an Samsungs App.
-- Beide Icons sind weiterhin unterschiedliche PNGs mit 117×117 Pixeln.
+- Starter: unverändertes Original-PNG aus v1.5.1 mit 512×512 Pixeln (RGB);
+  Handoff: weiterhin eigenes rotes 117×117-PNG (RGBA).
   Das Handoff enthält genau Manifest, Platzhalter-HTML und eigenes Icon; keinen
   Service. Die drei nativen Metadaten bleiben unverändert.
 
@@ -184,8 +191,8 @@ Erzeugte Dateien vor Signierung (diese ändert Größe und Prüfsumme):
 
 | WGT | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `tube-tizen-5.0-start-poc.wgt` | 532068 | `d4e3cabe498691800cb424df7ac2e65064eebd471bb205fdff736e0397053428` |
-| `tube-tizen-5.0-cobalt-handoff-poc.wgt` | 7177 | `e117ecd15aadc45aa1dc0c0afa1636b7978ff3c0df6565b38455edea5343a1b2` |
+| `tube-tizen-5.0-start-poc.wgt` | 786728 | `396a426a213328c99c2ff6816542a7c91ea2bd23e748dafaedcb9a5ec273a828` |
+| `tube-tizen-5.0-cobalt-handoff-poc.wgt` | 7177 | `cba655a025aca3af557fe4ca7125ecf9639230659e93391ce6e745d5d491983f` |
 
 Kein Fernseher ist an diese Umgebung angebunden. Die vorhandenen Live-YouTube-
 E2E- und Docker-Cobalt-Tests ersetzen keinen Tizen-Launcher-Test und wurden für

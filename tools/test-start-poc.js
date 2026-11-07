@@ -89,6 +89,7 @@ const main = async () => {
             '--base_url=http://127.0.0.2:8099/tv');
     fixture.file('config.xml', legacyXml);
     fixture.file('index.html', readFileSync(join(ROOT, 'app/index.html')));
+    fixture.file('icon.png', readFileSync(join(ROOT, 'app/icon.png')));
     fixture.file('service/dist/index.js', readFileSync(join(ROOT, 'service/dist-legacy/index.js')));
     fixture.file('author-signature.xml', 'stale signature');
     fixture.file('signature1.xml', 'stale signature');
@@ -109,28 +110,32 @@ const main = async () => {
         assert(webXml.includes('<tizen:privilege name="http://tizen.org/privilege/appmanager.kill"/>'));
         assert(!nativeXml.includes('privilege/appmanager.kill'));
     });
-    const starterIcon = await web.file('icon-starter.png').async('nodebuffer');
+    const starterIcon = await web.file('icon.png').async('nodebuffer');
     const cobaltIcon = await native.file('icon-cobalt.png').async('nodebuffer');
     check('widgets have different names and reference only their own PNG icons', () => {
         assert(webXml.includes('<name>Tube Starter</name>'));
         assert(nativeXml.includes('<name>Tube Cobalt</name>'));
-        assert(webXml.includes('<icon src="icon-starter.png" width="117" height="117"/>'));
+        assert(webXml.includes('<icon src="icon.png"/>'));
+        assert(starterIcon.equals(readFileSync(join(ROOT, 'app/icon.png'))));
         assert(nativeXml.includes('<icon src="icon-cobalt.png" width="117" height="117"/>'));
         assert(!starterIcon.equals(cobaltIcon));
-        assert.strictEqual(web.file('icon.png'), null);
+        assert.strictEqual(web.file('icon-starter.png'), null);
         assert.strictEqual(native.file('icon.png'), null);
         assert.strictEqual(web.file('icon-cobalt.png'), null);
         assert.strictEqual(native.file('icon-starter.png'), null);
     });
-    check('both packaged icons are 117x117 8-bit RGBA PNGs below 300 KB', () => {
+    check('starter keeps the original 512px RGB PNG and handoff keeps its 117px RGBA PNG', () => {
         [starterIcon, cobaltIcon].forEach((png) => {
             assert.strictEqual(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
-            assert.strictEqual(png.readUInt32BE(16), 117);
-            assert.strictEqual(png.readUInt32BE(20), 117);
             assert.strictEqual(png[24], 8);
-            assert.strictEqual(png[25], 6);
             assert(png.length < 300 * 1024);
         });
+        assert.strictEqual(starterIcon.readUInt32BE(16), 512);
+        assert.strictEqual(starterIcon.readUInt32BE(20), 512);
+        assert.strictEqual(starterIcon[25], 2);
+        assert.strictEqual(cobaltIcon.readUInt32BE(16), 117);
+        assert.strictEqual(cobaltIcon.readUInt32BE(20), 117);
+        assert.strictEqual(cobaltIcon[25], 6);
     });
     check('web PoC removes native pairing but retains the service origin configuration', () => {
         assert(!webXml.includes('metadata/nativeID"'));

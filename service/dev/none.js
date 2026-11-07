@@ -13,6 +13,7 @@ module.exports = {
     spoofUserAgent: (text) => text,
     upstreamHeaders: (headers) => headers,
     startDelay: () => 0,
+    openProxy: () => false,
 
     // Called on the hot path of every proxied request and tunnel, so it answers rather than being absent.
     journal: {

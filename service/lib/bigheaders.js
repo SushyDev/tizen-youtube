@@ -117,4 +117,9 @@ const fetchOverHttp2 = (target, options) => new Promise((resolve, reject) => {
 const isHeaderOverflow = (error) => !!error
     && (error.code === 'HPE_HEADER_OVERFLOW' || /header overflow/i.test(error.message || ''));
 
-module.exports = { fetchOverHttp2, isHeaderOverflow };
+const reset = () => {
+    sessions.forEach((session) => session.destroy());
+    sessions.clear();
+};
+
+module.exports = { fetchOverHttp2, isHeaderOverflow, reset };

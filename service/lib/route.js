@@ -5,6 +5,7 @@ const URL = require('url');
 const dev = require('../dev/index.js');
 const { upstream } = require('./knobs.js');
 const { restoreCookiePrefixes } = require('./rewrites.js');
+const zone = require('./zone.js');
 
 const YOUTUBE_HOST = 'www.youtube.com';
 const YOUTUBE_ORIGIN = `https://${YOUTUBE_HOST}`;
@@ -58,9 +59,11 @@ const headersFor = (req, route) => {
             ? restoreCookiePrefixes(req.headers[key])
             : req.headers[key]]);
 
-    return dev.upstreamHeaders(Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
+    const headers = Object.assign({}, Object.fromEntries(copied), { host: route.host }, presented,
         // Brotli is not decoded here.
-        { 'accept-encoding': 'gzip, deflate' }));
+        { 'accept-encoding': 'gzip, deflate' });
+
+    return dev.upstreamHeaders(zone.correctHeaders(headers, zone.current()));
 };
 
 module.exports = { routeFor, headersFor, YOUTUBE_ORIGIN };

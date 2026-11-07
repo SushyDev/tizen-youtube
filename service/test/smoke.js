@@ -44,6 +44,7 @@ process.on('exit', () => {
 });
 
 process.env.TUBE_PROXY_PORT = String(PORT);
+process.env.TUBE_BYPASS_HOSTS = '127.0.0.1';
 process.env.TUBE_LOG = path.join(scratch, 'service.log');
 
 const entry = process.env.TUBE_SMOKE_ENTRY

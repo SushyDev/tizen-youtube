@@ -76,6 +76,29 @@ check('and we are never a rival to ourselves', others.every((one) => one.id !== 
 check('a rival carries what names it on the diagnostics page',
     others[0].name === 'TizenTube' && others[0].slot === 'com.samsung.tv.cobalt-yt');
 
+// An app installed after the service started is found once the survey is old enough to be retaken.
+const realNow = Date.now;
+global.tizen.application.getAppsInfo = (answer) => answer([
+    { id: 'tUb3Xq7Lm9.Tube', name: 'YouTube', version: '1.0.1' },
+    { id: 'other.TizenTube', name: 'TizenTube', version: '2.0.0' },
+    { id: 'late.Lab', name: 'Lab', version: '0.0.1' }
+]);
+METADATA['late.Lab'] = [{ key: NATIVE_ID, value: 'com.samsung.tv.cobalt-yt' }];
+
+const fresh = claimants.rivals();
+check('a recent survey is not retaken', fresh.length === 1);
+
+Date.now = () => realNow() + 60000;
+claimants.rivals();
+const later = claimants.rivals();
+Date.now = realNow;
+
+check('an old one is, and finds the app installed since', later.length === 2 && later.some((one) => one.id === 'late.Lab'),
+    JSON.stringify(later));
+const relogged = readFileSync(LOG, 'utf8');
+check('and logs the claims again only because they changed', relogged.split('other.TizenTube "TizenTube"').length === 3
+    && relogged.indexOf('late.Lab "Lab" 0.0.1') !== -1);
+
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

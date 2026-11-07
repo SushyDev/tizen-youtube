@@ -2,6 +2,9 @@
 
 process.env.TUBE_PROXY_HOST = 'tv.example';
 
+// The stand-in upstream is not one of Google's hosts, which the bypass otherwise refuses.
+process.env.TUBE_BYPASS_HOSTS = '127.0.0.1';
+
 delete global.AbortController;
 
 const HEADERS_DEADLINE = 20000;

@@ -9,12 +9,17 @@ import { probe } from './probe.js';
 import { handOver } from './handover.js';
 import { blocked } from './blocked.js';
 import { sayHelp } from './help.js';
+import { refresh } from './view.js';
+import { sendReport } from './upload.js';
 
 const answering = () => {
     if (held.seen) return;
 
     held.seen = true;
+    held.silentSince = -1;
+    held.silentStuck = false;
     say('service', `answering after ${(elapsed() / 1000).toFixed(1)}s`, 'ok');
+    held.answeredOnce = true;
 };
 
 // The screen's own lines come back in the log, and are left out.
@@ -32,6 +37,7 @@ const showWaiting = (waiting) => {
 
     // Something is wrong rather than slow, so the next ask has the service check everything.
     if (waiting && waiting.tone === 'bad') held.stuck = true;
+    held.badWaiting = waiting && waiting.tone === 'bad' ? waiting.what : null;
 
     held.waiting = what;
     say('tube', `waiting: ${what}`, waiting && waiting.tone === 'bad' ? 'bad' : 'warn');
@@ -47,14 +53,21 @@ export const heard = (body, again) => {
     // The checks the service just ran are on screen, so this is the moment to ask for a report.
     if (checked) {
         held.diagnosed = true;
-        if (body.waiting && body.waiting.tone === 'bad') sayHelp();
+
+        if (body.waiting && body.waiting.tone === 'bad') {
+            sendReport(refresh);
+            sayHelp();
+        }
     }
 
     if (body.ready) {
+        held.badWaiting = null;
+        refresh();
         if (!held.handed) probe(handOver, () => blocked(again));
         return;
     }
 
     showWaiting(body.waiting);
+    refresh();
     setTimeout(again, TIMING.poll);
 };

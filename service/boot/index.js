@@ -4,6 +4,7 @@ import { evergreen } from './evergreen.js';
 import { ago } from './clock.js';
 import { say } from './screen.js';
 import { poll } from './poll.js';
+import { refresh } from './view.js';
 
 say('tube', `boot screen, ${engine()}`, 'note');
 
@@ -18,4 +19,5 @@ say('service', `waiting for it at ${service.replace('http://', '')}`);
 
 window.onerror = (message, source, line) => say('tube', `page error: ${message} (line ${line})`, 'bad');
 
+refresh();
 poll();

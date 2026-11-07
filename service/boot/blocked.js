@@ -3,9 +3,11 @@ import { held } from './state.js';
 import { say } from './screen.js';
 import { flush } from './outbox.js';
 import { sayHelp } from './help.js';
+import { refresh } from './view.js';
+import { sendReport } from './upload.js';
 
-const GIVE_UP = 'youtube still does not answer through the service: close the app and open it again; '
-    + 'reinstall it if this keeps happening';
+const GIVE_UP = 'youtube still does not answer through the service: close Tube with a long press on Back and '
+    + 'open it again, closing the stock YouTube app first if it is open; reinstall Tube if this keeps happening';
 
 // A new certificate is trusted only after a restart, so the service is asked for one, once.
 const askForRestart = () => {
@@ -26,9 +28,12 @@ export const blocked = (again) => {
     if (held.probed === TIMING.restartAfter) askForRestart();
 
     if (held.probed === TIMING.probeGiveUp) {
+        held.blockedOut = true;
         say('tube', GIVE_UP, 'bad');
+        sendReport(refresh);
         sayHelp();
     }
 
+    refresh();
     setTimeout(again, TIMING.poll);
 };

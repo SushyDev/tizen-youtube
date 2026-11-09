@@ -95,7 +95,7 @@ hashes.forEach((one) => {
 const { gradientOver, stretches } = await import('../../../mods/sponsorblock/segmentGradient.js');
 const { chapterIn, spansFor, piecesOf } = await import('../../../mods/sponsorblock/drawnBar.js');
 const { commaParts, transitionOf, slideOf, translateOf, shiftOf } = await import('../../../mods/sponsorblock/transitions.js');
-const { carry, structureOf } = await import('../../../mods/sponsorblock/mirror.js');
+const { carry, fade, fadeOf, structureOf } = await import('../../../mods/sponsorblock/mirror.js');
 const gradientFor = (segments, duration) => gradientOver(stretches(segments, duration), { from: 0, to: duration });
 
 const seg = (category, from, to) => ({ category, segment: [from, to], UUID: `${category}-${from}` });
@@ -291,18 +291,32 @@ const recorded = () => {
     return { writes, wrapper: { element, written: {} } };
 };
 
-check('a box is told how to move before it is told where to', () => {
+check('a band is cut, not eased, to the opacity the bar has', () => {
     const { writes, wrapper } = recorded();
-    const shown = carry(wrapper, layerOf('opacity 200ms linear 0s', '1'));
+    const shown = fade(wrapper, [layerOf('opacity 200ms linear 0s', '1')]);
+    assert.deepStrictEqual(writes, ['transition: none', 'opacity: 1']);
     writes.length = 0;
 
-    // A panel opening: YouTube cuts the controls, so ours are cut with them.
-    const hidden = carry(shown, layerOf('none', '0'));
-    assert.deepStrictEqual(writes, ['transition: none', 'opacity: 0']);
+    const hidden = fade(shown, [layerOf('opacity 200ms linear 0s', '0')]);
+    assert.deepStrictEqual(writes, ['opacity: 0']);
     writes.length = 0;
 
-    carry(hidden, layerOf('opacity 200ms linear 0s', '1'));
-    assert.deepStrictEqual(writes, ['transition: opacity 200ms linear 0s', 'opacity: 1']);
+    fade(hidden, [layerOf('opacity 200ms linear 0s', '1')]);
+    assert.deepStrictEqual(writes, ['opacity: 1']);
+});
+
+check('the bands take the opacity of every ancestor together, the empty boxes neither it nor a slide', () => {
+    const controls = Object.assign(layerOf('transform 200ms linear 0s, opacity 200ms linear 0s', '0'),
+        { transform: 'translateY(48px)' });
+    const bar = Object.assign(layerOf('none', '0.5'), { name: 'ytlr-progress-bar[progress-bar]' });
+
+    assert.deepStrictEqual(fadeOf([controls, bar]), { opacity: '0', transition: 'none' });
+    assert.deepStrictEqual(fadeOf([layerOf('none', '1'), bar]), { opacity: '0.5', transition: 'none' });
+    assert.deepStrictEqual(fadeOf([layerOf('none', '')]), { opacity: '1', transition: 'none' });
+
+    const { writes, wrapper } = recorded();
+    carry(wrapper, controls);
+    assert.deepStrictEqual(writes, ['transition: none', 'transform: none', 'visibility: visible']);
 });
 
 check('nothing that has not changed is written again', () => {

@@ -77,10 +77,15 @@ const restamp = (row) => {
     instance.template = original;
 };
 
-// `template` is assigned per instance in the constructor, so the wrap has to be an accessor.
+const notedComponents = new WeakSet();
+
+// YouTube uses both prototype methods and templates assigned by the constructor.
 const claimNotesOn = (tag, H) => {
     const component = findComponent(tag);
     if (!component) return false;
+    if (notedComponents.has(component)) return true;
+
+    const inherited = component.prototype.template;
 
     Object.defineProperty(component.prototype, 'template', {
         configurable: true,
@@ -88,7 +93,10 @@ const claimNotesOn = (tag, H) => {
         set: function (original) { this.tubeTemplate = withNote(original, H); }
     });
 
+    // Reassigning runs a prototype method through the same setter as instance templates.
+    if (typeof inherited === 'function') component.prototype.template = inherited;
     Array.from(document.querySelectorAll(tag)).forEach(restamp);
+    notedComponents.add(component);
     return true;
 };
 

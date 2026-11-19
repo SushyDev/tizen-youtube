@@ -133,6 +133,27 @@ check('the launcher opens from the service, keeping the sign-in query and stayin
     assert.strictEqual(launcherUrl({ search: '' }), '/tube/boot.html#launcher');
 });
 
+const { claimActionRows } = await import('../../mods/settings/settingComponents.js');
+
+check('claiming notes preserves a prototype template', () => {
+    const template = function (props) {
+        return { type: 'host', props: {}, children: [props.data.title] };
+    };
+    function Component() {}
+    Component.prototype.template = template;
+    const row = { __instance: new Component() };
+    window._yttv = {
+        hyperscript: (type, props, ...children) => ({ type: type, props: props, children: children })
+    };
+    document.querySelector = () => row;
+    document.querySelectorAll = () => [];
+
+    assert.strictEqual(claimActionRows(), true);
+    const tree = (new Component()).template({ data: { title: 'Setting', tubeNote: 'A note' } });
+    assert.strictEqual(tree.children.length, 2);
+    assert.strictEqual(tree.children[1].children[0].children[0], 'A note');
+});
+
 const failed = results.filter((ok) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 process.exit(failed ? 1 : 0);

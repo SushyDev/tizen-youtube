@@ -7,12 +7,13 @@ const JSZip = require('jszip');
 
 const ui = require('./lib/report.js');
 const { load, parseUrl, ROOT } = require('./lib/config.js');
+const { injectTokens } = require('./lib/inject.js');
 const paths = require('./lib/paths.js');
 const { PROXY, DEV } = require('../service/lib/ports.js');
 
 // Cobalt 20 cannot trust our CA, so the 5.0+ widget loads the launcher from the service instead.
 const APPS = [
-    { label: 'youtube 5.5+', output: paths.WGT, include: paths.WIDGET, requiredVersion: null, servedFrom: null, packageId: null },
+    { label: 'youtube 5.5+', output: paths.WGT, include: paths.WIDGET, recovery: true },
     {
         label: 'youtube 5.0+',
         output: paths.WGT_LEGACY,
@@ -188,6 +189,25 @@ function addGameMode(staging) {
     writeFileSync(path, xml.replace('</widget>', `    ${GAME_MODE}\n</widget>`));
 }
 
+function addRecovery(staging) {
+    const path = join(staging, 'config.xml');
+    const xml = readFileSync(path, 'utf8');
+    const service = /<tizen:service\s+id="([^"]+)\.TubeService"/.exec(xml);
+    if (!service) throw friendly('config.xml names no TubeService for the recovery service.');
+
+    const entry = 'service/dist/recovery.js';
+    const { code } = injectTokens(readFileSync(join(ROOT, 'service', 'recovery.js'), 'utf8'),
+        { __TUBE_PROXY_PORT__: String(PROXY) });
+    writeFileSync(join(staging, entry), code);
+    writeFileSync(path, xml.replace('</widget>', [
+        `    <tizen:service id="${service[1]}.TubeRecovery" auto-restart="true" on-boot="true">`,
+        `        <tizen:content src="${entry}"/>`,
+        '        <tizen:name>Tube Recovery</tizen:name>',
+        '    </tizen:service>',
+        '</widget>'
+    ].join('\n')));
+}
+
 // Zip entry names always use forward slashes, so a widget built on Windows unpacks the same.
 function addTree(zip, staging, directory) {
     readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
@@ -219,6 +239,7 @@ async function packageApp(config, app) {
         if (app.requiredVersion) setRequiredVersion(staging, app.requiredVersion);
         if (app.packageId) setPackageId(staging, app.packageId);
         if (app.servedFrom) servePage(staging, app.servedFrom);
+        if (app.recovery) addRecovery(staging);
         addCobaltProfile(staging);
         checkThePortsAgree(staging, config.ports);
         if (wantsGameMode()) addGameMode(staging);

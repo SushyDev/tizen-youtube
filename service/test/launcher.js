@@ -11,6 +11,9 @@ process.env.TUBE_SHARE = path.join(scratch, 'share');
 
 const express = require('express');
 const postmortem = require('../lib/postmortem.js');
+const configModule = require('../lib/cobaltConfig.js');
+const player = 'tUb3Xq7L10.Tube';
+configModule.appId = () => player;
 const bootRoutes = require('../lib/bootRoutes.js');
 const diagRoutes = require('../lib/diagRoutes.js');
 
@@ -33,6 +36,10 @@ const exits = [];
 const realExit = process.exit;
 
 const app = express();
+const preparing = { prepared: false, failed: null };
+const playerApp = express();
+bootRoutes.attach(playerApp, { cobalt: { status: () => preparing }, script: () => ({ bytes: 1 }) });
+app.use('/player', playerApp);
 bootRoutes.attach(app, { cobalt: null, script: () => ({ bytes: 1 }) });
 diagRoutes.attach(app);
 
@@ -51,6 +58,23 @@ const server = app.listen(0, '127.0.0.1', async () => {
     const boot = JSON.parse((await ask(port, '/__tube/boot?since=0')).body);
     check('without a container there is nothing to prepare', boot.cobalt && boot.cobalt.settled === true && boot.cobalt.failed === null,
         JSON.stringify(boot.cobalt));
+
+    const launchStatus = await ask(port, '/player/__tube/launcher');
+    check('the Tizen 10 launcher can identify the service and wait while Cobalt is staged',
+        launchStatus.headers['cache-control'] === 'no-store'
+        && JSON.parse(launchStatus.body).player === player
+        && JSON.parse(launchStatus.body).ready === false);
+
+    preparing.failed = 'Could not write boot.html';
+    const failedPreparation = JSON.parse((await ask(port, '/player/__tube/launcher')).body);
+    check('the Tizen 10 launcher sees preparation failures before opening Cobalt',
+        !failedPreparation.ready && failedPreparation.error === preparing.failed);
+
+    preparing.failed = null;
+    preparing.prepared = true;
+    const prepared = JSON.parse((await ask(port, '/player/__tube/launcher')).body);
+    check('the Tizen 10 launcher can start the player once the boot page is ready',
+        prepared.ready && prepared.player === player && prepared.error === null);
 
     const opened = await ask(port, '/diag/logs.txt');
     check('the logs open as text in the phone\'s browser', opened.status === 200 && /^text\/plain/.test(opened.headers['content-type'])

@@ -15,7 +15,7 @@ const LOCK_FILES = ['package-lock.json'];
 
 const VERSION = /^\d+\.\d+\.\d+$/;
 
-const WIDGET_FILES = ['app/config.xml'];
+const WIDGET_FILES = ['app/config.xml', 'app/tizen10/config.xml'];
 const WIDGET_LINE = /^(\s*<widget\b[^>]*?\bversion=")([^"]*)(")/m;
 
 function lockKeys() {

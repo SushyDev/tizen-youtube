@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="https://tube.local/launcher" version="1.6.0" viewmodes="maximized">
+    <tizen:application id="tUb3Xq7LS1.Launcher" package="tUb3Xq7LS1" required_version="10.0"/>
+    <content src="index.html"/>
+    <access origin="*" subdomains="true"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <feature name="http://tizen.org/feature/web.service"/>
+    <icon src="icon.png"/>
+    <name>YouTube for Tizen</name>
+    <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="10.0"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <tizen:setting screen-orientation="landscape" background-support="enable" hwkey-event="enable"/>
+    <tizen:profile name="tv-samsung"/>
+    <tizen:service id="tUb3Xq7LS1.TubeService" auto-restart="true" on-boot="false">
+        <tizen:content src="service/dist/index.js"/>
+        <tizen:name>TubeService</tizen:name>
+        <tizen:description>Prepares Cobalt and serves YouTube for Tizen.</tizen:description>
+    </tizen:service>
+</widget>

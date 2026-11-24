@@ -13,6 +13,8 @@ const RELEASE = 'release';
 // Named for the oldest Tizen each installs on.
 const WGT = 'release/tube-tizen-5.5.wgt';
 const WGT_LEGACY = 'release/tube-tizen-5.0.wgt';
+const WGT_TIZEN10_PLAYER = 'release/tube-tizen-10-player.wgt';
+const WGT_TIZEN10_LAUNCHER = 'release/tube-tizen-10-launcher.wgt';
 
 // Tizen resolves <content src> and <icon src> against the archive root, and service/lib/cobalt.js
 // reads ../../config.xml from service/dist/, so config.xml must land at the top of the widget.
@@ -33,6 +35,6 @@ const ARTEFACTS = [DIST, SERVICE_DIST, SERVICE_DIST_LEGACY, RELEASE];
 module.exports = {
     DIST, BUNDLE, BOOT_BUNDLE,
     SERVICE_DIST, SERVICE_BUNDLE, SERVICE_DIST_LEGACY, SERVICE_BUNDLE_LEGACY,
-    RELEASE, WGT, WGT_LEGACY,
+    RELEASE, WGT, WGT_LEGACY, WGT_TIZEN10_PLAYER, WGT_TIZEN10_LAUNCHER,
     WIDGET, WIDGET_LEGACY, ARTEFACTS
 };

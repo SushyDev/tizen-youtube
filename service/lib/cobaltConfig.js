@@ -4,7 +4,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Correct inside the widget, where lib/ sits two levels under the archive root.
-const CONFIG = path.join(__dirname, '..', '..', 'config.xml');
+const ROOT = path.join(__dirname, '..', '..');
+const CONFIG = path.join(ROOT, 'config.xml');
+const PLAYER_CONFIG = path.join(ROOT, 'cobalt.xml');
 
 // Stock YouTube's slot, for when there is no config.xml to name one.
 const DEFAULT_SLOT = 'com.samsung.tv.cobalt-yt';
@@ -16,7 +18,7 @@ const state = { config: undefined };
 const config = () => {
     if (state.config === undefined) {
         try {
-            state.config = fs.readFileSync(CONFIG, 'utf8');
+            state.config = fs.readFileSync(fs.existsSync(PLAYER_CONFIG) ? PLAYER_CONFIG : CONFIG, 'utf8');
         } catch (e) {
             state.config = null;
         }

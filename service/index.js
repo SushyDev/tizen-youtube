@@ -45,7 +45,7 @@ const isTV = typeof tizen !== 'undefined';
 const containerRoute = cobalt ? cobalt.container() : null;
 
 const platformVersion = isTV
-    ? tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version')
+    ? capability('http://tizen.org/feature/platform.version')
     : (process.env.TUBE_PLATFORM_VERSION || null);
 
 postmortem.note('platform', `tizen ${platformVersion || 'none'}, node ${process.version}, `

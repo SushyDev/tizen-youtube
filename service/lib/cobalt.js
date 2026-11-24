@@ -122,12 +122,16 @@ const prepare = (done) => {
     const content = configuredContent();
     if (!content) return finish(null, null);
 
-    if (!from) return finish(null, null);
+    if (!from) return finish(new Error(`Samsung Cobalt content could not be found under ${STOCK}`));
 
     const staged = stageOrFail(content, from);
     if (staged.error) return finish(staged.error);
 
-    guarded(() => writeBootScreen(content), (error) => note('boot screen', error));
+    try {
+        writeBootScreen(content);
+    } catch (error) {
+        return finish(error);
+    }
     guarded(() => evergreen.bootstrap(content, from), (error) => note('evergreen', error));
 
     return finish(null, { content });

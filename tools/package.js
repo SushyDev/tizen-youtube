@@ -7,6 +7,7 @@ const JSZip = require('jszip');
 
 const ui = require('./lib/report.js');
 const { load, parseUrl, ROOT } = require('./lib/config.js');
+const { injectTokens } = require('./lib/inject.js');
 const paths = require('./lib/paths.js');
 const { PROXY, DEV } = require('../service/lib/ports.js');
 
@@ -23,6 +24,63 @@ const APPS = [
         packageId: 'tUb3Xq7L50'
     }
 ];
+
+const TIZEN10_PLAYER = 'tUb3Xq7L10';
+const TIZEN10_PLAYER_CONTENT = '/home/owner/share/tube/cobalt-content-tizen10';
+const TIZEN10_LAUNCHER = [
+    { from: 'app/tizen10/config.xml', to: 'config.xml' },
+    { from: 'app/tizen10/index.html', to: 'index.html' },
+    { from: 'app/tizen10/launcher.js', to: 'launcher.js' },
+    ...paths.WIDGET.filter(({ to }) => to === 'icon.png' || to === paths.SERVICE_DIST)
+];
+
+const playerConfig = (xml) => xml
+    .replace('id="https://tube.local"', 'id="https://tube.local/player"')
+    .replace('metadata/devel.api.version" value="5.5"', 'metadata/devel.api.version" value="10.0"')
+    .replace('metadata/prelaunch.support" value="true"', 'metadata/prelaunch.support" value="false"')
+    .replace('com.samsung.tv.cobalt-yt', 'com.samsung.tv.cobalt-app-test')
+    .replace('/home/owner/share/tube/cobalt-content', TIZEN10_PLAYER_CONTENT)
+    .replace(/\s*<feature name="http:\/\/tizen\.org\/feature\/web\.service"\/>/, '')
+    .replace(/\s*<tizen:service\b[\s\S]*?<\/tizen:service>/, '')
+    .replace('<name>YouTube</name>', '<name>YouTube for Tizen Player</name>');
+
+function stageTizen10Launcher(staging, config) {
+    const launcher = join(staging, 'launcher.js');
+    const service = join(staging, paths.SERVICE_BUNDLE);
+    const prelude = readFileSync(join(__dirname, 'lib', 'wrt-service.js'), 'utf8');
+    const { code } = injectTokens(readFileSync(launcher, 'utf8'), {
+        __TUBE_PLAYER_ID__: `${TIZEN10_PLAYER}.Tube`,
+        __TUBE_LAUNCHER_PORT__: String(config.ports.proxy)
+    });
+
+    writeFileSync(launcher, code);
+    writeFileSync(service, `${prelude}\n${readFileSync(service, 'utf8')}`);
+
+    // The service in the launcher needs the same launch target and content path as the player.
+    const xml = playerConfig(readFileSync(join(ROOT, 'app', 'config.xml'), 'utf8'));
+    writeFileSync(join(staging, 'cobalt.xml'), xml);
+    setRequiredVersion(staging, '10.0', 'cobalt.xml');
+    setPackageId(staging, TIZEN10_PLAYER, 'cobalt.xml');
+}
+
+if (process.argv.includes('--tizen10')) {
+    APPS.push({
+        label: 'youtube Tizen 10 player',
+        output: paths.WGT_TIZEN10_PLAYER,
+        include: paths.WIDGET.filter(({ to }) => to !== paths.SERVICE_DIST),
+        requiredVersion: '10.0',
+        packageId: TIZEN10_PLAYER,
+        configure: (staging) => {
+            const file = join(staging, 'config.xml');
+            writeFileSync(file, playerConfig(readFileSync(file, 'utf8')));
+        }
+    }, {
+        label: 'youtube Tizen 10 launcher',
+        output: paths.WGT_TIZEN10_LAUNCHER,
+        include: TIZEN10_LAUNCHER,
+        configure: stageTizen10Launcher
+    });
+}
 
 function friendly(message) {
     const error = new Error(message);
@@ -144,8 +202,8 @@ function checkThePortsAgree(staging, ports) {
 }
 
 // Tizen refuses to install a widget whose required_version is above the platform's own.
-function setRequiredVersion(staging, version) {
-    const path = join(staging, 'config.xml');
+function setRequiredVersion(staging, version, manifest = 'config.xml') {
+    const path = join(staging, manifest);
     const xml = readFileSync(path, 'utf8');
     const expression = /(<tizen:application\b[^>]*\brequired_version=")[^"]*(")/;
 
@@ -154,8 +212,8 @@ function setRequiredVersion(staging, version) {
     writeFileSync(path, xml.replace(expression, `$1${version}$2`));
 }
 
-function setPackageId(staging, id) {
-    const path = join(staging, 'config.xml');
+function setPackageId(staging, id, manifest = 'config.xml') {
+    const path = join(staging, manifest);
     const xml = readFileSync(path, 'utf8');
     const found = /<tizen:application\b[^>]*\bpackage="([^"]+)"/.exec(xml);
 
@@ -219,7 +277,8 @@ async function packageApp(config, app) {
         if (app.requiredVersion) setRequiredVersion(staging, app.requiredVersion);
         if (app.packageId) setPackageId(staging, app.packageId);
         if (app.servedFrom) servePage(staging, app.servedFrom);
-        addCobaltProfile(staging);
+        if (app.configure) app.configure(staging, config);
+        else addCobaltProfile(staging);
         checkThePortsAgree(staging, config.ports);
         if (wantsGameMode()) addGameMode(staging);
         await writeWidget(staging, outPath);
@@ -248,8 +307,11 @@ async function main() {
 
     ui.blank();
     ui.note('Packaged, signed by nobody.');
-    ui.note(ui.style.dim('Install it through Tizen Homebrew, which signs it for the television it'));
-    ui.note(ui.style.dim('runs on. A TV refuses an unsigned widget over sdb.'));
+    ui.note(ui.style.dim('Install the standard widgets through Tizen Homebrew to sign them for the TV.'));
+    if (process.argv.includes('--tizen10')) {
+        ui.note(ui.style.dim('Sign both Tizen 10 widgets with a Samsung Partner certificate.'));
+        ui.note(ui.style.dim('Install the player first, then the launcher. Open YouTube for Tizen.'));
+    }
     ui.blank();
 }
 

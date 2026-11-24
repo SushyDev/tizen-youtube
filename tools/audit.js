@@ -8,7 +8,7 @@ const JSZip = require('jszip');
 
 const ui = require('./lib/report.js');
 const paths = require('./lib/paths.js');
-const { ROOT, load } = require('./lib/config.js');
+const { ROOT } = require('./lib/config.js');
 const { assertNoTokens } = require('./lib/inject.js');
 
 const RELEASE = process.argv.includes('--release');
@@ -44,7 +44,7 @@ const commentFailures = (config) => (config.match(/<!--[\s\S]*?-->/g) || [])
     .map((comment) => `a comment in config.xml carries a double hyphen, which no XML parser accepts: `
         + `${comment.replace(/\s+/g, ' ').slice(0, 60)}…`);
 
-const manifestFailures = (config, ports) => [].concat(
+const manifestFailures = (config) => [].concat(
     commentFailures(config),
     unless(/nativeID/.test(config), 'config.xml no longer claims a container slot'),
     unless(/multitasking\.support"\s+value="true"/.test(config),
@@ -59,14 +59,19 @@ const manifestFailures = (config, ports) => [].concat(
         'config.xml does not start the container on a page we serve')
 );
 
-const audit = async (widget) => {
+const openWidget = async (widget) => {
     const wgt = join(ROOT, widget);
     if (!existsSync(wgt)) {
         throw Object.assign(new Error(`No widget at ${widget}\n  Run: npm run package`),
             { isFriendly: true });
     }
 
-    const zip = await JSZip.loadAsync(readFileSync(wgt));
+    return JSZip.loadAsync(readFileSync(wgt));
+};
+
+const audit = async (widget) => {
+    const zip = await openWidget(widget);
+    const launcher = widget === paths.WGT_TIZEN10_LAUNCHER;
     const named = Object.keys(zip.files).filter((name) => !zip.files[name].dir);
 
     const service = named.indexOf('service/dist/index.js') !== -1
@@ -96,7 +101,7 @@ const audit = async (widget) => {
         RELEASE ? present.map((surface) => `${surface.what} is in the shipped service bundle`) : [],
         unless(size <= MOST_BYTES,
             `the userscript is ${ui.bytes(size)}, over the ${ui.bytes(MOST_BYTES)} budget`),
-        config === null ? [] : manifestFailures(config, load().ports)
+        config === null ? [] : (launcher ? commentFailures(config) : manifestFailures(config))
     );
 
     const notes = RELEASE ? [] : present.map((surface) => `carries ${surface.what}`);
@@ -106,11 +111,38 @@ const audit = async (widget) => {
 
 const WIDGETS = [paths.WGT, paths.WGT_LEGACY];
 
+const auditTizen10 = async () => {
+    const [player, launcher] = await Promise.all([paths.WGT_TIZEN10_PLAYER, paths.WGT_TIZEN10_LAUNCHER].map(openWidget));
+    const read = (zip, name) => zip.file(name)?.async('string') || '';
+    const [playerConfig, copy, launcherConfig, launcherCode] = await Promise.all([
+        read(player, 'config.xml'), read(launcher, 'cobalt.xml'), read(launcher, 'config.xml'), read(launcher, 'launcher.js')
+    ]);
+    const playerId = /<tizen:application\s+id="([^"]+)"/.exec(playerConfig)?.[1];
+    const failures = [].concat(
+        manifestFailures(playerConfig),
+        unless(!!playerId && playerConfig === copy && launcherCode.includes(`'${playerId}'`),
+            'the launcher must use the packaged player ID and manifest'),
+        unless(/nativeID"\s+value="com\.samsung\.tv\.cobalt-app-test"/.test(playerConfig),
+            'the player must use the separate Cobalt slot'),
+        unless(!/<tizen:service\b/.test(playerConfig) && !player.file(paths.SERVICE_BUNDLE)
+            && !/metadata\/nativeID/.test(launcherConfig) && /<tizen:service\b/.test(launcherConfig),
+            'only the launcher may contain and start the service'),
+        unless([playerConfig, launcherConfig].every((xml) => /required_version="10\.0"/.test(xml)
+            && /metadata\/devel\.api\.version"\s+value="10\.0"/.test(xml)),
+            'both Tizen 10 manifests must declare matching 10.0 API versions')
+    );
+    return { widget: paths.WGT_TIZEN10_PLAYER, failures, notes: [], named: Object.keys(player.files), size: 0 };
+};
+
 const main = async () => {
     ui.heading(RELEASE ? 'audit (release)' : 'audit');
 
-    const audited = await Promise.all(WIDGETS.map((widget) => audit(widget)
+    const widgets = WIDGETS.slice();
+    const tizen10 = process.argv.includes('--tizen10');
+    if (tizen10) widgets.push(paths.WGT_TIZEN10_LAUNCHER);
+    const audited = await Promise.all(widgets.map((widget) => audit(widget)
         .then((result) => Object.assign({ widget }, result))));
+    if (tizen10) audited.push(await auditTizen10());
 
     const failures = audited.flatMap((result) => result.failures
         .map((message) => ({ widget: result.widget, message })));
@@ -123,7 +155,8 @@ const main = async () => {
     }
 
     audited.forEach((result) => {
-        ui.ok(basename(result.widget), `${result.named.length} entries · userscript ${ui.bytes(result.size)}`);
+        const userscript = result.size ? ` · userscript ${ui.bytes(result.size)}` : '';
+        ui.ok(basename(result.widget), `${result.named.length} entries${userscript}`);
         result.notes.forEach((note) => ui.warn(note));
     });
     ui.blank();

@@ -6,6 +6,7 @@ const { report } = require('./bootReport.js');
 const { fromScreen } = require('./pageLines.js');
 const { html } = require('./bootScreen.js');
 const { BOOT_PAGE, read } = require('./shipped.js');
+const { appId } = require('./cobaltConfig.js');
 
 // Nothing to prepare, as on the 5.0 widget, counts as prepared.
 const NO_COBALT = { prepared: false, settled: true, failed: null };
@@ -19,6 +20,13 @@ const noteWait = (waited) => {
 const attach = (app, { cobalt, script }) => {
     // Asked as YouTube's host, so an answer proves the whole path.
     app.get('/__tube/ping', (_, res) => res.status(204).end());
+
+    // The Tizen launcher needs the staged boot page and the identity of the service on this port.
+    app.get('/__tube/launcher', (_, res) => {
+        const status = cobalt ? cobalt.status() : NO_COBALT;
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({ player: appId(), ready: status.prepared, error: status.failed });
+    });
 
     // Asked from inside the container, so an answer also claims it.
     app.get('/__tube/boot', (req, res) => {

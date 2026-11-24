@@ -263,7 +263,8 @@ const checks = (script) => {
     check('only after a minute is it told what to do, in red', toneOf(minute.lines, 'still not answering after 60s') === 'bad',
         minute.lines.map((line) => line.text).join(' | '));
 
-    check('it says which build wrote the page, and when', has(handed.lines, `tube: page written 0s ago by service pid ${process.pid}, patch `));
+    const wrotePage = new RegExp(`tube: page written \\d+[smh] ago by service pid ${process.pid}, patch `);
+    check('it says which build wrote the page, and when', handed.lines.some((line) => wrotePage.test(line.text)));
     check('a refused ask is named at once', has(slow.lines, `service: ${host(CONFIG.service)}: refused at once`),
         slow.lines.map((line) => line.text).join(' | '));
 

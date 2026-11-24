@@ -75,6 +75,14 @@ npm run package    # release/tube-tizen-5.5.wgt and tube-tizen-5.0.wgt, for Tize
 Load the one for your TV — `tube-tizen-5.5.wgt` from Tizen 5.5, `tube-tizen-5.0.wgt` from 5.0 — through
 Homebrew's **Upload** tab; [DEVELOP.md](DEVELOP.md) has the other commands.
 
+### Tizen 10 launcher build
+
+If the TV closes the app before the Cobalt boot screen appears, use `npm run package -- --tizen10`
+and sign both widgets with a Samsung Partner certificate for the TV. Install
+`release/tube-tizen-10-player.wgt` first, then `release/tube-tizen-10-launcher.wgt`. Open
+**YouTube for Tizen** from Smart Hub. It starts the service, waits for the boot page, and then opens
+the player. The TV must have the `com.samsung.tv.cobalt-app-test` slot registered.
+
 ---
 
 Licensed GPL-3.0-only. Derived from

@@ -12,7 +12,9 @@
 | `npm run test:cobalt` | The same in Cobalt itself, from the published image; needs Docker and a `TUBE_DEV=1` build |
 | `npm run test:matrix` | Load both service bundles on every Node from 4.4.3 up; needs fnm |
 | `npm run package` | Build the unsigned `.wgt`s for Tizen Homebrew: `tube-tizen-5.5.wgt` and `tube-tizen-5.0.wgt` |
+| `npm run package -- --tizen10` | Also build the Tizen 10 player and launcher widgets |
 | `npm run audit` | Check what is inside both `.wgt`s; `-- --release` fails on anything dev-only |
+| `npm run audit -- --release --tizen10` | Check all four widgets, including the Tizen 10 launcher and player pairing |
 | `npm run deploy` | Package a dev build and install it on the set; needs `TUBE_DEV_TOKEN` |
 | `npm run dev` | YouTube with the mods in a browser, no hardware needed |
 | `npm run dev:service` | The service off-TV, on `:8099` |
